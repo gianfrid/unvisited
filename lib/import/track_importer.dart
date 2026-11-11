@@ -10,13 +10,21 @@ export 'track_parser.dart' show UnsupportedTrackException, TrackParseException;
 /// The one unified import pipeline every source (SAF folder, share intent,
 /// file picker) flows through.
 ///
-/// Format priority per AGENTS.md: GPX first, then FIT, then KMZ, then TCX.
+/// Format priority per AGENTS.md: GPX first, then FIT, then KMZ, then TCX
+/// (plain KML handled alongside KMZ — OpenTracks exports both).
 /// Detection is content-based (magic bytes / root element); extensions are
 /// never the source of truth, so every source with any naming convention
 /// funnels through identically.
 class TrackImporter {
   TrackImporter({List<TrackParser>? parsers})
-      : _parsers = parsers ?? [GpxParser(), FitParser(), KmzParser(), TcxParser()];
+      : _parsers = parsers ??
+            [
+              GpxParser(),
+              FitParser(),
+              KmzParser(),
+              TcxParser(),
+              KmlParser(KmzParser()),
+            ];
 
   final List<TrackParser> _parsers;
 

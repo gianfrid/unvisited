@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- OSM map tiles are the app's only network use. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="unvisited"
         android:name="${applicationName}"
@@ -23,6 +25,20 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Share intents: OpenTracks / file managers send single tracks.
+                 Detection is content-based on the Dart side, so accepting a
+                 slightly wider mime set is safer than missing an export. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="application/gpx+xml"/>
+                <data android:mimeType="application/vnd.google-earth.kmz"/>
+                <data android:mimeType="application/vnd.google-earth.kml+xml"/>
+                <data android:mimeType="application/vnd.garmin.fit"/>
+                <data android:mimeType="application/fit"/>
+                <data android:mimeType="application/octet-stream"/>
+                <data android:mimeType="text/xml"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

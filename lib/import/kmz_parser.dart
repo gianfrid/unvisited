@@ -53,7 +53,7 @@ class KmzParser implements TrackParser {
     }
 
     return TrackData(
-      name: _kmlName(kmlText) ?? baseName(sourceFilename),
+      name: kmlDisplayName(kmlText) ?? baseName(sourceFilename),
       format: format,
       points: points,
     );
@@ -118,7 +118,7 @@ class KmzParser implements TrackParser {
     }
   }
 
-  String? _kmlName(String kmlText) {
+  String? kmlDisplayName(String kmlText) {
     try {
       final doc = XmlDocument.parse(kmlText);
       final root = doc.rootElement;
@@ -140,5 +140,36 @@ class KmzParser implements TrackParser {
       // fall through to null
     }
     return null;
+  }
+}
+
+/// Plain (unzipped) KML — OpenTracks offers KML exports next to KMZ/GPX.
+/// Reuses the KMZ parser's coordinate handling.
+class KmlParser implements TrackParser {
+  KmlParser(this._kmz);
+
+  final KmzParser _kmz;
+
+  @override
+  String get format => 'KML';
+
+  @override
+  bool accepts(List<int> bytes) {
+    return looksLikeXml(bytes) && sniffHead(bytes).contains('<kml');
+  }
+
+  @override
+  TrackData parse(List<int> bytes, {String? sourceFilename}) {
+    final text = String.fromCharCodes(bytes);
+    final points = _kmz.parseKml(text);
+    if (points.isEmpty) {
+      throw const TrackParseException(
+          'KML', 'no coordinates found in KML document');
+    }
+    return TrackData(
+      name: _kmz.kmlDisplayName(text) ?? baseName(sourceFilename),
+      format: format,
+      points: points,
+    );
   }
 }
