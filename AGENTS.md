@@ -1,19 +1,27 @@
 # Unvisited
 
-Android app (Flutter) that imports GPS tracks from multiple sources and plots all of them together on one OpenStreetMap-based map. Companion to recording apps (OpenTracks, Garmin devices, Strava exports) — this app does not record activities.
+Flutter app (Android first, with a desktop Linux target for development testing) that imports GPS tracks from multiple sources and plots all of them together on one OpenStreetMap-based map. Companion to recording apps (OpenTracks, Garmin devices, Strava exports) — this app does not record activities.
 
 ## Scope (MVP)
 
-1. Import tracks from local files via Storage Access Framework (SAF) folder access and share intents. No per-service integrations, no cloud, no backend, no accounts.
-2. Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX. All sources flow through one unified import pipeline.
-3. Persist imported tracks locally as files (local-only storage).
+1. Import tracks from local files via Storage Access Framework (SAF) folder access and share intents (Android) or file/folder pickers (desktop). No per-service integrations, no cloud, no backend, no accounts.
+2. Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX (plain KML is handled alongside KMZ — OpenTracks exports both). All sources flow through one unified import pipeline.
+3. Persist imported tracks locally as files under an app-private storage root; catalog metadata lives in a JSON index (`index.json`) next to a `tracks/` directory. No database package.
 4. Show every imported track together on a single map using OpenStreetMap tiles.
 5. No in-app recording. No explored/unexplored road coloring, no OSM road matching, no route planning yet — those come after this prototype works.
+
+## Desktop Linux development target
+
+`flutter run -d linux` is the supported way to quick-test without a smartphone: the import pipeline, track store and map render identically there. The Android-only pieces stay Android-only:
+
+- Storage root on desktop is the XDG data home (`$XDG_DATA_HOME/unvisited`, defaulting to `~/.local/share/unvisited`); on Android it is the host channel's `filesDir`.
+- Share intents (OpenTracks share sheet) do not exist on desktop — imports go through the file/folder pickers there.
+- `file_picker` implements both file and directory picking on Linux via the platform portals.
 
 ## Import sources and constraints
 
 - OpenTracks: first-class source. Its data lives in an app-private directory; exports arrive as KMZ/KML/GPX written to a user-chosen directory or via the share sheet. Import via SAF folder access or share intent only.
-- Garmin (Instinct gen 1 and Instinct 3 test devices): FIT files in `GARMIN/Activity/` (older firmware: `GARMIN/ACTIVITY/` — treat folder names case-insensitively). On Android, USB-OTG + SAF DocumentsProvider can browse the watch storage directly.
+- Garmin (Instinct gen 1 and Instinct 3 test devices): FIT files in `GARMIN/Activity/` (older firmware: `GARMIN/ACTIVITY/` — folder picking scans recursively, extensions are matched case-insensitively). On Android, USB-OTG + SAF DocumentsProvider can browse the watch storage directly.
 - Strava: GPX exports or the bulk archive (original FIT files).
 - FIT parsing rules:
   - Key off the FIT File Id message: type 4 = activity, type 32 = monitoring. Do not branch on filename or folder path.
@@ -22,13 +30,16 @@ Android app (Flutter) that imports GPS tracks from multiple sources and plots al
 
 ## Architecture decisions
 
-- Flutter frontend. Parsing and future OSM matching should stay portable; a Rust core behind Dart FFI (flutter_rust_bridge) is the preferred path for FIT parsing. Pure-Dart GPX/KMZ parsing is fine.
+- Flutter frontend. One unified import pipeline (`lib/import/`) with content-based format detection (magic bytes / root element, never file extensions). Parsing logic is decoupled from UI widgets so it stays unit-testable against fixtures in `test/fixtures/`.
+- FIT parsing: pure Dart for the MVP (`lib/import/fit_parser.dart`) — decided to keep the prototype toolchain-light; the file implements compressed timestamps, chained headers, developer fields, little/big endianness and truncation tolerance. The long-term preference for a Rust core behind Dart FFI (flutter_rust_bridge) still stands and should sit behind the same `TrackParser` interface when that work happens; keep parsing portable, not tied to Flutter.
+- GPX/TCX parsing uses `package:xml`; KMZ uses `package:archive` plus the same KML coordinate path.
 - Data is local only. No cloud sync, no server component, no analytics.
-- Track deduplication matters: multiple sources may export the same activity.
+- Track deduplication matters: byte-identical re-imports dedup by 64-bit FNV-1a content hash (id = hash). The same activity exported once by Garmin as FIT and once by Strava as GPX has different bytes and will appear twice — cross-format activity dedup is future work.
 
 ## Working agreements
 
 - Implement in small vertical slices; each slice ends with unit tests against fixture files in `test/fixtures/`.
+- Binary FIT/KMZ fixtures are generated by `dart tool/make_fixtures.dart` and committed; re-run the tool when a fixture must change.
 - Never add network calls beyond fetching OSM map tiles.
 - Keep import parsing logic decoupled from UI widgets so it is unit-testable.
-- Ask before adding packages beyond the established set (flutter_map, file_picker or SAF equivalents, a database such as drift if persistence needs it).
+- Ask before adding packages beyond the established set (flutter_map + latlong2, file_picker, xml, archive; no database — JSON index by design).

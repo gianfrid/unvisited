@@ -22,8 +22,8 @@ Future<void> main() async {
   runApp(UnvisitedApp(model: model));
 }
 
-/// App-private storage: Android's filesDir via the host channel; falls back
-/// to a local folder when running on the host/desktop without the channel.
+/// App-private storage. Android: the host channel's `filesDir`.
+/// Desktop (Linux dev runs): the XDG data home. Last resort: a local folder.
 Future<Directory> _resolveStorageRoot() async {
   try {
     final path = await _hostChannel.invokeMethod<String>('getFilesDir');
@@ -31,11 +31,15 @@ Future<Directory> _resolveStorageRoot() async {
       return Directory(path);
     }
   } on MissingPluginException {
-    // no host implementation (desktop/tests): use a project-local folder
+    // no host implementation (desktop run): fall through to XDG below
   } on PlatformException {
-    // ignore: treat as absent
+    // host error: fall through, storage choice is not fatal
   }
-  return Directory('.unvisited');
+  final env = Platform.environment;
+  final dataHome = env['XDG_DATA_HOME'] ??
+      (env['HOME'] != null ? '${env['HOME']}/.local/share' : null);
+  if (dataHome != null) return Directory('$dataHome/unvisited');
+  return Directory('.unvisited'); // a last-resort folder next to the app
 }
 
 void _listenForSharedTracks(AppModel model) {
@@ -47,7 +51,9 @@ void _listenForSharedTracks(AppModel model) {
       if (path != null) await model.importFromFile(path, name: name);
     }
   });
-  _sharedChannel.invokeMethod('ready');
+  // The channel only has a native side on Android; on desktop there is
+  // nothing to listen for share intents, so a missing handler is expected.
+  _sharedChannel.invokeMethod('ready').catchError((_) {});
 }
 
 class UnvisitedApp extends StatelessWidget {
