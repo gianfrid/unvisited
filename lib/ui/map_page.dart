@@ -891,6 +891,19 @@ class _SettingsSheet extends StatelessWidget {
                         model.setZoomSliderSide(selection.first),
                   ),
                 ),
+                ListTile(
+                  dense: true,
+                  title: Text(strings.language),
+                  subtitle: Text(strings.languageSubtitle),
+                  trailing: Text(
+                    model.language == 'system'
+                        ? strings.systemLanguage
+                        : strings.languageName(model.language),
+                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                  onTap: () => _pickLanguage(context, model),
+                ),
               ],
             ),
           ),
@@ -911,6 +924,45 @@ class _SettingsSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Language picker: "system" plus one entry per supported language.
+///
+/// A dialog rather than a DropdownButton so the choice is one tap on a
+/// phone, and each language is named in itself ("Italiano", "English") -
+/// someone who switched by accident can always find their way back even
+/// if they cannot read the current UI language.
+Future<void> _pickLanguage(BuildContext context, AppModel model) async {
+  final choice = await showDialog<String>(
+    context: context,
+    builder: (context) {
+      final strings = AppStrings.ofContext(context);
+      return SimpleDialog(
+        title: Text(strings.language),
+        children: [
+          RadioGroup<String>(
+            groupValue: model.language,
+            onChanged: (value) => Navigator.of(context).pop(value),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  value: 'system',
+                  title: Text(strings.systemLanguage),
+                ),
+                for (final locale in AppStrings.supportedLocales)
+                  RadioListTile<String>(
+                    value: locale.languageCode,
+                    title: Text(strings.languageName(locale.languageCode)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      );
+    },
+  );
+  if (choice != null) await model.setLanguage(choice);
 }
 
 /// One selectable tint swatch for the exploration overlay, labeled by

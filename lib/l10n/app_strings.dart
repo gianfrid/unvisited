@@ -79,6 +79,16 @@ abstract class AppStrings {
   String get trackColorSubtitle;
   String get zoomSlider;
   String get zoomSliderSubtitle;
+  String get language;
+  String get languageSubtitle;
+
+  /// Name of a language as shown in the picker, written in that language
+  /// (so a user who cannot read the current UI language still finds
+  /// theirs). [code] is a supported language code.
+  String languageName(String code);
+
+  /// The "follow the device language" option.
+  String get systemLanguage;
   String get left;
   String get right;
   String get deleteAllTracks;
@@ -187,6 +197,18 @@ class EnglishStrings extends AppStrings {
   String get zoomSlider => 'Zoom slider';
   @override
   String get zoomSliderSubtitle => 'Screen edge the zoom slider sits on';
+  @override
+  String get language => 'Language';
+  @override
+  String get languageSubtitle => 'Language of the app';
+  @override
+  String languageName(String code) => switch (code) {
+        'en' => 'English',
+        'it' => 'Italiano',
+        _ => code,
+      };
+  @override
+  String get systemLanguage => 'System language';
   @override
   String get left => 'Left';
   @override
@@ -323,6 +345,18 @@ class ItalianStrings extends AppStrings {
   String get zoomSlider => 'Cursore dello zoom';
   @override
   String get zoomSliderSubtitle => 'Lato dello schermo su cui si trova';
+  @override
+  String get language => 'Lingua';
+  @override
+  String get languageSubtitle => "Lingua dell'app";
+  @override
+  String languageName(String code) => switch (code) {
+        'en' => 'English',
+        'it' => 'Italiano',
+        _ => code,
+      };
+  @override
+  String get systemLanguage => 'Lingua di sistema';
   @override
   String get left => 'Sinistra';
   @override

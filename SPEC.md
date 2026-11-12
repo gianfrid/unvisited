@@ -51,7 +51,7 @@ flutter analyze    # must be clean
 - Match the existing code style (indentation, naming, error handling density); minimal diffs.
 - Keep parsing portable — not tied to Flutter. Any future Rust core (behind Dart FFI, flutter_rust_bridge) must sit behind the same `TrackParser` interface; the pure-Dart MVP parser implements compressed timestamps, chained headers, developer fields, little/big endianness and truncation tolerance.
 - Ask before adding packages beyond the established set: `flutter_map` + `latlong2`, `file_picker`, `xml`, `archive`. No database — JSON index by design.
-- No user-visible text is hardcoded in widgets: every string comes from `lib/l10n/app_strings.dart`, in every supported language (currently English and Italian). Localization is hand-rolled rather than `flutter_localizations` + ARB — one screen, ~40 strings — so adding a language means one `AppStrings` subclass and one entry in `AppStrings.supported`; the tests fail on any untranslated string. Model/state classes never build user-facing sentences (see `ImportSummary.describe`); they take the strings from the caller.
+- No user-visible text is hardcoded in widgets: every string comes from `lib/l10n/app_strings.dart`, in every supported language (currently English and Italian). Localization is hand-rolled rather than `flutter_localizations` + ARB — one screen, ~40 strings — so adding a language means one `AppStrings` subclass, one entry in `AppStrings.supported` and one entry in `languageName`; the tests fail on any untranslated string. Model/state classes never build user-facing sentences (see `ImportSummary.describe`); they take the strings from the caller.
 
 ## Manual verification steps
 

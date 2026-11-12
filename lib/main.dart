@@ -20,12 +20,14 @@ Future<void> main() async {
   final model = AppModel(store);
   await model.load();
   _listenForSharedTracks(model);
-  runApp(UnvisitedApp(
-    model: model,
-    cacheDir: cacheDir,
-    versionFuture: AppVersion.resolve(hostBuildTime: hostBuildTime),
-    locationSupported: locationSupportAvailable,
-  ));
+  runApp(
+    UnvisitedApp(
+      model: model,
+      cacheDir: cacheDir,
+      versionFuture: AppVersion.resolve(hostBuildTime: hostBuildTime),
+      locationSupported: locationSupportAvailable,
+    ),
+  );
 }
 
 /// Whether this platform has a location plugin at all. geolocator ships
@@ -48,7 +50,8 @@ Future<Directory> _resolveStorageRoot() async {
     // host error: fall through, storage choice is not fatal
   }
   final env = Platform.environment;
-  final dataHome = env['XDG_DATA_HOME'] ??
+  final dataHome =
+      env['XDG_DATA_HOME'] ??
       (env['HOME'] != null ? '${env['HOME']}/.local/share' : null);
   if (dataHome != null) return Directory('$dataHome/unvisited');
   return Directory('.unvisited'); // a last-resort folder next to the app
@@ -69,7 +72,8 @@ Future<Directory> _resolveCacheRoot() async {
     // host error: fall through, storage choice is not fatal
   }
   final env = Platform.environment;
-  final cacheHome = env['XDG_CACHE_HOME'] ??
+  final cacheHome =
+      env['XDG_CACHE_HOME'] ??
       (env['HOME'] != null ? '${env['HOME']}/.cache' : null);
   if (cacheHome != null) return Directory('$cacheHome/unvisited');
   return Directory('.unvisited_cache'); // a last-resort folder next to the app
@@ -103,12 +107,13 @@ void _listenForSharedTracks(AppModel model) {
 }
 
 class UnvisitedApp extends StatelessWidget {
-  const UnvisitedApp(
-      {super.key,
-      required this.model,
-      required this.cacheDir,
-      this.versionFuture,
-      this.locationSupported = false});
+  const UnvisitedApp({
+    super.key,
+    required this.model,
+    required this.cacheDir,
+    this.versionFuture,
+    this.locationSupported = false,
+  });
 
   final AppModel model;
   final Directory cacheDir;
@@ -120,32 +125,40 @@ class UnvisitedApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Unvisited',
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF4363D8),
-        useMaterial3: true,
-      ),
-      // The app's own strings are looked up through AppStrings; the
-      // delegate only makes MaterialApp resolve and expose the locale.
-      // Material's built-in widget labels stay English (the app ships
-      // without flutter_localizations), hence the _AnyLocale delegates:
-      // Flutter's own Default* delegates only claim English, and a
-      // supported locale they reject leaves the tree without
-      // MaterialLocalizations - Scaffold's drawer and every Material
-      // widget then fail to build.
-      localizationsDelegates: const [
-        _AnyLocaleMaterialDelegate(),
-        _AnyLocaleWidgetsDelegate(),
-        _AnyLocaleCupertinoDelegate(),
-        _AppLocaleDelegate(),
-      ],
-      supportedLocales: AppStrings.supportedLocales,
-      home: MapPage(
-        model: model,
-        cacheDir: cacheDir,
-        versionFuture: versionFuture,
-        locationSupported: locationSupported,
+    // The language is a setting (Settings sheet), so the app root listens
+    // to the model: changing it rebuilds MaterialApp with a new `locale`
+    // and the whole tree re-resolves its strings. Null means "follow the
+    // device".
+    return AnimatedBuilder(
+      animation: model,
+      builder: (context, _) => MaterialApp(
+        title: 'Unvisited',
+        locale: model.locale,
+        theme: ThemeData(
+          colorSchemeSeed: const Color(0xFF4363D8),
+          useMaterial3: true,
+        ),
+        // The app's own strings are looked up through AppStrings; the
+        // delegate only makes MaterialApp resolve and expose the locale.
+        // Material's built-in widget labels stay English (the app ships
+        // without flutter_localizations), hence the _AnyLocale delegates:
+        // Flutter's own Default* delegates only claim English, and a
+        // supported locale they reject leaves the tree without
+        // MaterialLocalizations - Scaffold's drawer and every Material
+        // widget then fail to build.
+        localizationsDelegates: const [
+          _AnyLocaleMaterialDelegate(),
+          _AnyLocaleWidgetsDelegate(),
+          _AnyLocaleCupertinoDelegate(),
+          _AppLocaleDelegate(),
+        ],
+        supportedLocales: AppStrings.supportedLocales,
+        home: MapPage(
+          model: model,
+          cacheDir: cacheDir,
+          versionFuture: versionFuture,
+          locationSupported: locationSupported,
+        ),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -330,6 +331,25 @@ class AppModel extends ChangeNotifier {
 
   Future<void> setZoomSliderSide(String side) async {
     await store.saveZoomSliderSide(side);
+    notifyListeners();
+  }
+
+  /// UI language choice: 'system' or a language code. The app rebuilds in
+  /// the new language through the usual notification (MaterialApp watches
+  /// the model for exactly this).
+  String get language => store.language;
+
+  /// The locale the UI should use, or null to follow the device. Unknown
+  /// codes (hand-edited index, a language that was dropped) fall back to
+  /// following the system rather than to a broken locale.
+  Locale? get locale {
+    final code = language;
+    if (code == 'system') return null;
+    return AppStrings.supported.containsKey(code) ? Locale(code) : null;
+  }
+
+  Future<void> setLanguage(String code) async {
+    await store.saveLanguage(code);
     notifyListeners();
   }
 

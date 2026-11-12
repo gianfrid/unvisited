@@ -126,6 +126,13 @@ class TrackStore {
   String _zoomSliderSide = 'right';
   String get zoomSliderSide => _zoomSliderSide;
 
+  /// UI language: 'system' (follow the device) or a language code such as
+  /// 'it'. Stored as a raw string so an unknown value from a hand-edited
+  /// index can never break startup - the UI falls back to the system
+  /// language for anything it does not recognize.
+  String _language = 'system';
+  String get language => _language;
+
   /// Saves the device position as the map start center for next launch.
   /// This survives [clearAll]: it is the user's location, not track data.
   Future<void> savePosition(double lat, double lon) async {
@@ -146,6 +153,13 @@ class TrackStore {
     _saveIndex();
   }
 
+  /// Saves the UI language choice ('system' or a language code). A
+  /// preference like the tint: it survives [clearAll].
+  Future<void> saveLanguage(String language) async {
+    _language = language;
+    _saveIndex();
+  }
+
   Future<void> load() async {
     _tracks.clear();
     final f = indexFile;
@@ -163,6 +177,7 @@ class TrackStore {
         _tint = (settings['tint'] as String?) ?? _tint;
         _zoomSliderSide =
             (settings['zoomSliderSide'] as String?) ?? _zoomSliderSide;
+        _language = (settings['language'] as String?) ?? _language;
       }
       final list = map['tracks'] as List;
       for (final raw in list) {
@@ -264,7 +279,11 @@ class TrackStore {
       'tracks': _tracks.map((t) => t.toMap()).toList(),
       if (_lastPositionLat != null && _lastPositionLon != null)
         'lastPosition': {'lat': _lastPositionLat, 'lon': _lastPositionLon},
-      'settings': {'tint': _tint, 'zoomSliderSide': _zoomSliderSide},
+      'settings': {
+        'tint': _tint,
+        'zoomSliderSide': _zoomSliderSide,
+        'language': _language,
+      },
     };
     root.createSync(recursive: true);
     indexFile.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(map),

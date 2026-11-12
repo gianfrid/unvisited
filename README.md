@@ -4,7 +4,7 @@ A Flutter app that imports GPS tracks from multiple sources — OpenTracks expor
 
 Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
 
-The interface is available in **English** and **Italian**; it follows the system language and falls back to English for anything else.
+The interface is available in **English** and **Italian**. By default it follows the system language (falling back to English for anything else); Settings → Language switches it, and the choice is remembered.
 
 How this project is documented:
 

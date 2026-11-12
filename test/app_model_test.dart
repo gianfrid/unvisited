@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
@@ -132,6 +134,35 @@ void main() {
     // Unknown keys (hand-edited index, older app) never break rendering:
     // the tint falls back to the default color.
     expect(exploredAreaColor('not-a-tint'), exploredAreaColor('green'));
+  });
+
+  test('language choice persists, survives deleteAll and falls back safely',
+      () async {
+    // Out of the box the app follows the device language.
+    expect(model.language, 'system');
+    expect(model.locale, isNull);
+
+    await model.setLanguage('it');
+    expect(model.language, 'it');
+    expect(model.locale, const Locale('it'));
+
+    final reloaded = AppModel(TrackStore(root));
+    await reloaded.load();
+    expect(reloaded.language, 'it');
+    expect(reloaded.locale, const Locale('it'));
+
+    // A preference, not track data.
+    await reloaded.deleteAll();
+    final after = AppModel(TrackStore(root));
+    await after.load();
+    expect(after.language, 'it');
+
+    // A hand-edited index naming a language the app does not speak must
+    // not produce a broken locale: follow the device instead.
+    await after.setLanguage('kl');
+    expect(after.locale, isNull);
+    expect(AppStrings.of(after.locale ?? const Locale('fr')),
+        isA<EnglishStrings>());
   });
 
   test('saved position persists in the index and survives a reload',
