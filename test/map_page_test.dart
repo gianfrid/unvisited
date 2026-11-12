@@ -163,6 +163,47 @@ void main() {
     expect(tracksDir.listSync(), isEmpty);
   });
 
+  testWidgets('header actions carry labels naming what they do',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+
+    for (final label in const ['Import', 'Merge', 'Locate', 'Tracks',
+        'Settings']) {
+      expect(find.text(label), findsOneWidget,
+          reason: 'the $label action must be captioned');
+    }
+    // Fit is disabled on the empty map, but still shows its label.
+    expect(find.text('Fit'), findsOneWidget);
+
+    // The merge action's caption states the mode it would switch to.
+    await tester.tap(find.byTooltip('Toggle merged/split tracks'));
+    await tester.pump();
+    expect(find.text('Split'), findsOneWidget);
+    expect(find.text('Merge'), findsNothing);
+    await tester.tap(find.byTooltip('Toggle merged/split tracks'));
+    await tester.pump();
+    expect(find.text('Merge'), findsOneWidget);
+  });
+
   testWidgets('settings sheet shows the About card and delete-all entry',
       (tester) async {
     final root = createRoot();
@@ -192,9 +233,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Settings'), findsOneWidget);
-    // Once in the app bar title, once in the About card.
-    expect(find.text('Unvisited'), findsNWidgets(2));
+    // Two 'Settings' texts: the header caption behind the modal sheet
+    // and the sheet's own header.
+    expect(find.text('Settings'), findsNWidgets(2));
+    expect(find.text('Unvisited'), findsOneWidget, // About card
+        reason: 'the app-bar title is gone; only the About card names it');
     expect(find.text('Build date: 2026-11-12 17:41'), findsOneWidget);
     expect(find.text('Delete all tracks'), findsOneWidget);
     expect(find.text('1 stored'), findsOneWidget);

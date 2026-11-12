@@ -291,39 +291,50 @@ class _MapPageState extends State<MapPage> {
     final mapTracks = widget.model.visibleTracks;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Unvisited'),
+        // No title: the labeled actions need the width more than the
+        // app's name does (the launcher and the About card carry it).
         actions: [
-          IconButton(
-            tooltip: 'Import tracks',
+          _HeaderAction(
             icon: const Icon(Icons.add),
-            onPressed: _chooseImport,
+            label: 'Import',
+            tooltip: 'Import tracks',
+            onTap: _chooseImport,
           ),
-          IconButton(
+          _HeaderAction(
+            icon: Icon(widget.model.mergeTracks
+                ? Icons.layers
+                : Icons.layers_clear),
+            // The label states the mode, not the icon: clear even before
+            // the tooltip ever appears.
+            label: widget.model.mergeTracks ? 'Merge' : 'Split',
             tooltip: 'Toggle merged/split tracks',
-            icon: Icon(widget.model.mergeTracks ? Icons.layers : Icons.layers_clear),
-            onPressed: widget.model.toggleMergeTracks,
+            onTap: widget.model.toggleMergeTracks,
           ),
-          IconButton(
-            tooltip: 'Fit tracks',
+          _HeaderAction(
             icon: const Icon(Icons.zoom_out_map),
-            onPressed: mapTracks.isEmpty ? null : _fitTracks,
+            label: 'Fit',
+            tooltip: 'Fit tracks',
+            onTap: mapTracks.isEmpty ? null : _fitTracks,
           ),
-          IconButton(
-            tooltip: 'Center on current position',
+          _HeaderAction(
             icon: const Icon(Icons.my_location),
-            onPressed: _locate,
+            label: 'Locate',
+            tooltip: 'Center on current position',
+            onTap: _locate,
           ),
           Builder(
-            builder: (context) => IconButton(
-              tooltip: 'Tracks',
+            builder: (context) => _HeaderAction(
               icon: const _BadgeIcon(),
-              onPressed: () => Scaffold.of(context).openEndDrawer(),
+              label: 'Tracks',
+              tooltip: 'Tracks',
+              onTap: () => Scaffold.of(context).openEndDrawer(),
             ),
           ),
-          IconButton(
-            tooltip: 'Settings',
+          _HeaderAction(
             icon: const Icon(Icons.settings_outlined),
-            onPressed: _openSettings,
+            label: 'Settings',
+            tooltip: 'Settings',
+            onTap: _openSettings,
           ),
         ],
       ),
@@ -466,6 +477,63 @@ class _BadgeIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Icon(Icons.stacked_line_chart);
+}
+
+/// A header action that says what it does: icon over a short caption.
+/// Tooltips stay for long-press/hover explanations; the caption alone
+/// is meant to make them unnecessary.
+class _HeaderAction extends StatelessWidget {
+  const _HeaderAction({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    this.onTap,
+  });
+
+  final Widget icon;
+  final String label;
+  final String tooltip;
+
+  /// Null disables the action (see the Fit button on an empty map).
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final enabled = onTap != null;
+    final color = scheme.onSurface.withValues(alpha: enabled ? 1 : 0.38);
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 48,
+        height: kToolbarHeight,
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconTheme.merge(
+                data: IconThemeData(size: 20, color: color),
+                child: icon,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  height: 1.0,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Lateral zoom slider pinned to the map's left edge: step buttons at the
