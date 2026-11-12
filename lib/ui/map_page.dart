@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -28,6 +29,11 @@ class MapPage extends StatefulWidget {
   @override
   State<MapPage> createState() => _MapPageState();
 }
+
+/// OSM standard tiles exist between zoom 0 and 19; 3 is a world view that
+/// still feels like a map. Both the camera and the zoom slider stay inside.
+const _minZoom = 3.0;
+const _maxZoom = 19.0;
 
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
@@ -293,22 +299,6 @@ class _MapPageState extends State<MapPage> {
             onPressed: _chooseImport,
           ),
           IconButton(
-            tooltip: 'Zoom in (Ctrl+ or Ctrl+MouseWheel)',
-            icon: const Icon(Icons.zoom_in),
-            onPressed: () {
-              final camera = _mapController.camera;
-              _mapController.move(camera.center, camera.zoom + 1);
-            },
-          ),
-          IconButton(
-            tooltip: 'Zoom out (Ctrl- or Ctrl+MouseWheel)',
-            icon: const Icon(Icons.zoom_out),
-            onPressed: () {
-              final camera = _mapController.camera;
-              _mapController.move(camera.center, camera.zoom - 1);
-            },
-          ),
-          IconButton(
             tooltip: 'Toggle merged/split tracks',
             icon: Icon(widget.model.mergeTracks ? Icons.layers : Icons.layers_clear),
             onPressed: widget.model.toggleMergeTracks,
@@ -350,6 +340,8 @@ class _MapPageState extends State<MapPage> {
               // run fallback); a live fix refines this after startup.
               initialCenter: widget.model.savedPosition ?? _berlinCenter,
               initialZoom: _startZoom,
+              minZoom: _minZoom,
+              maxZoom: _maxZoom,
               // Startup fit for saved tracks goes through the engine path:
               // flutter_map applies it only once the camera has a real
               // size, guarding against the zero-sized startup constraints
@@ -415,6 +407,12 @@ class _MapPageState extends State<MapPage> {
               ),
             ],
           ),
+          // Lateral zoom control: replaces the header's zoom buttons.
+          Positioned(
+            top: 16,
+            left: 12,
+            child: _ZoomSlider(controller: _mapController),
+          ),
           if (mapTracks.isEmpty)
             const Center(
               child: _EmptyHint(),
@@ -468,6 +466,167 @@ class _BadgeIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Icon(Icons.stacked_line_chart);
+}
+
+/// Lateral zoom slider pinned to the map's left edge: step buttons at the
+/// ends and a draggable rail whose thumb shows the live zoom level. It
+/// tracks every camera change (wheel, pinch, keyboard R/F and double-tap),
+/// not just its own input.
+class _ZoomSlider extends StatefulWidget {
+  const _ZoomSlider({required this.controller});
+
+  final MapController controller;
+
+  @override
+  State<_ZoomSlider> createState() => _ZoomSliderState();
+}
+
+class _ZoomSliderState extends State<_ZoomSlider> {
+  static const _trackExtent = 180.0;
+  static const _thumbExtent = 28.0;
+
+  StreamSubscription<MapEvent>? _events;
+  double _zoom = _minZoom; // overwritten in initState from the camera
+
+  @override
+  void initState() {
+    super.initState();
+    _zoom = widget.controller.camera.zoom.clamp(_minZoom, _maxZoom);
+    // Any camera move (pinch, wheel, fit) updates the thumb's position.
+    _events = widget.controller.mapEventStream.listen((event) {
+      final zoom = event.camera.zoom.clamp(_minZoom, _maxZoom);
+      if (zoom != _zoom) setState(() => _zoom = zoom);
+    });
+  }
+
+  @override
+  void dispose() {
+    _events?.cancel();
+    super.dispose();
+  }
+
+  void _moveTo(double zoom) {
+    final target = zoom.clamp(_minZoom, _maxZoom);
+    if (target == _zoom) return;
+    final camera = widget.controller.camera;
+    widget.controller.move(camera.center, target);
+  }
+
+  void _dragTo(Offset localPosition) {
+    // Top of the rail is max zoom; dragging up zooms in.
+    final fraction =
+        (1 - localPosition.dy / _trackExtent).clamp(0.0, 1.0);
+    _moveTo(_minZoom + fraction * (_maxZoom - _minZoom));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fraction = (_zoom - _minZoom) / (_maxZoom - _minZoom);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            blurRadius: 6,
+            color: Colors.black26,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ZoomStepButton(
+            icon: Icons.add,
+            tooltip: 'Zoom in',
+            onTap: () => _moveTo(_zoom + 1),
+          ),
+          SizedBox(
+            key: const ValueKey('zoom-track'),
+            width: 40,
+            height: _trackExtent,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragStart: (details) =>
+                  _dragTo(details.localPosition),
+              onVerticalDragUpdate: (details) =>
+                  _dragTo(details.localPosition),
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 4,
+                      height: _trackExtent - 8,
+                      decoration: BoxDecoration(
+                        color: scheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: fraction * (_trackExtent - _thumbExtent),
+                    child: Container(
+                      width: _thumbExtent,
+                      height: _thumbExtent,
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        shape: BoxShape.circle,
+                        boxShadow: const [
+                          BoxShadow(blurRadius: 4, color: Colors.black38),
+                        ],
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${_zoom.round()}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: scheme.onPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _ZoomStepButton(
+            icon: Icons.remove,
+            tooltip: 'Zoom out',
+            onTap: () => _moveTo(_zoom - 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ZoomStepButton extends StatelessWidget {
+  const _ZoomStepButton(
+      {required this.icon, required this.tooltip, required this.onTap});
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 40,
+      height: 32,
+      child: IconButton(
+        tooltip: tooltip,
+        icon: Icon(icon, size: 18),
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        onPressed: onTap,
+      ),
+    );
+  }
 }
 
 /// Bottom sheet hosting all app settings: an About card (build date) and

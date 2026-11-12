@@ -364,6 +364,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('lateral zoom slider steps and drags the camera zoom',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    // The thumb shows the live zoom level (Berlin start camera: 13).
+    expect(find.text('13'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Zoom in'));
+    await tester.pump();
+    expect(find.text('14'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Zoom out'));
+    await tester.pump();
+    expect(find.text('13'), findsOneWidget);
+
+    // Full upward rail drag tops out at the OSM zoom limit, downward at
+    // the world floor; the clamps also apply to the header's old buttons.
+    await tester.drag(
+        find.byKey(const ValueKey('zoom-track')), const Offset(0, -400));
+    await tester.pump();
+    expect(find.text('19'), findsOneWidget);
+
+    await tester.drag(
+        find.byKey(const ValueKey('zoom-track')), const Offset(0, 400));
+    await tester.pump();
+    expect(find.text('3'), findsOneWidget);
+  });
+
   testWidgets('startup fit goes through the guarded initialCameraFit',
       (tester) async {
     final root = createRoot();
