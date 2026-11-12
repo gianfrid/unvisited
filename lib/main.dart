@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'build_version.dart';
 import 'host_channel.dart';
 import 'storage/track_store.dart';
 import 'ui/app_model.dart';
@@ -12,11 +13,16 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final root = await _resolveStorageRoot();
   final cacheDir = await _resolveCacheRoot();
+  final hostBuildTime = await _resolveHostBuildTime();
   final store = TrackStore(root);
   final model = AppModel(store);
   await model.load();
   _listenForSharedTracks(model);
-  runApp(UnvisitedApp(model: model, cacheDir: cacheDir));
+  runApp(UnvisitedApp(
+    model: model,
+    cacheDir: cacheDir,
+    versionFuture: AppVersion.resolve(hostBuildTime: hostBuildTime),
+  ));
 }
 
 /// App-private storage. Android: the host channel's `filesDir`.
@@ -60,6 +66,19 @@ Future<Directory> _resolveCacheRoot() async {
   return Directory('.unvisited_cache'); // a last-resort folder next to the app
 }
 
+/// Build time baked into the app by the Android build: gradle reads the
+/// latest commit's time, which an installed app cannot do at runtime.
+/// Desktop runs have no host implementation; the git probe covers them.
+Future<String?> _resolveHostBuildTime() async {
+  try {
+    return await hostChannel.invokeMethod<String?>('getBuildTime');
+  } on MissingPluginException {
+    return null; // desktop run: no host implementation
+  } on PlatformException {
+    return null; // host error: fall through, the version tag is not fatal
+  }
+}
+
 void _listenForSharedTracks(AppModel model) {
   sharedChannel.setMethodCallHandler((call) async {
     if (call.method == 'sharedTrack') {
@@ -75,10 +94,15 @@ void _listenForSharedTracks(AppModel model) {
 }
 
 class UnvisitedApp extends StatelessWidget {
-  const UnvisitedApp({super.key, required this.model, required this.cacheDir});
+  const UnvisitedApp(
+      {super.key,
+      required this.model,
+      required this.cacheDir,
+      this.versionFuture});
 
   final AppModel model;
   final Directory cacheDir;
+  final Future<String>? versionFuture;
 
   @override
   Widget build(BuildContext context) {
@@ -88,7 +112,11 @@ class UnvisitedApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF4363D8),
         useMaterial3: true,
       ),
-      home: MapPage(model: model, cacheDir: cacheDir),
+      home: MapPage(
+        model: model,
+        cacheDir: cacheDir,
+        versionFuture: versionFuture,
+      ),
     );
   }
 }

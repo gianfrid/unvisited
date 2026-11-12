@@ -17,23 +17,31 @@ class AppVersion {
 
   static Future<String>? _cached;
 
-  /// The resolved build time; computed once per run.
-  static Future<String> resolve() async =>
+  /// The resolved build time; computed once per run. [hostBuildTime] is the
+  /// value baked into an APK by the Android build (gradle reads git, since
+  /// an installed app cannot).
+  static Future<String> resolve({String? hostBuildTime}) async =>
       _cached ??= Future.value(pickBuildTime(
         define: _buildTimeDefine,
         gitCommitTime: await probeGitCommitTime(),
+        hostBuildTime: hostBuildTime,
       ));
 
   /// Pure decision + formatting step, public for unit tests.
-  static String pickBuildTime({required String define, String? gitCommitTime}) {
+  static String pickBuildTime({
+    required String define,
+    String? gitCommitTime,
+    String? hostBuildTime,
+  }) {
     final baked = define.trim();
     if (baked.isNotEmpty) {
       // Lenient: a non-ISO custom string is shown as given; ISO timestamps
       // are reformatted for readability in the viewer's local time.
       return _humanize(baked) ?? baked;
     }
-    if (gitCommitTime != null) {
-      return _humanize(gitCommitTime) ?? gitCommitTime;
+    final time = gitCommitTime ?? hostBuildTime;
+    if (time != null) {
+      return _humanize(time) ?? time;
     }
     return 'dev';
   }

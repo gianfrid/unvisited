@@ -30,6 +30,31 @@ void main() {
       );
     });
 
+    test('on Android the gradle-baked build time is the fallback', () {
+      const iso = '2026-11-12T22:30:00+03:00';
+      expect(
+        AppVersion.pickBuildTime(
+          define: '',
+          gitCommitTime: null, // an installed APK has no checkout
+          hostBuildTime: iso,
+        ),
+        humanized(iso),
+      );
+    });
+
+    test('the git probe wins over the baked host time', () {
+      const gitIso = '2026-11-12T09:15:00+01:00';
+      const hostIso = '2020-01-01T00:00:00+00:00';
+      expect(
+        AppVersion.pickBuildTime(
+          define: '',
+          gitCommitTime: gitIso,
+          hostBuildTime: hostIso,
+        ),
+        humanized(gitIso),
+      );
+    });
+
     test('a non-ISO baked define is shown verbatim', () {
       expect(
         AppVersion.pickBuildTime(define: 'custom-label', gitCommitTime: null),

@@ -30,7 +30,7 @@ On desktop Linux the app runs identically (`flutter run -d linux`); only the pla
 
 Platform channels to the Android host:
 
-- `unvisited/host` — storage root, cache dir, SAF folder picks and share-intent temp files. There is no native side on desktop; callers fall back to platform defaults when methods are missing.
+- `unvisited/host` — storage root, cache dir, gradle-baked build time, SAF folder picks and share-intent temp files. There is no native side on desktop; callers fall back to platform defaults when methods are missing.
 - `unvisited/shared` — fires as soon as the Dart side is listening for shared tracks.
 
 ### UI (`lib/ui/`)

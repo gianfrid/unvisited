@@ -68,6 +68,6 @@ flutter test       # all parsing/storage logic is pure Dart, covered by unit tes
 flutter analyze
 ```
 
-- Desktop dev runs resolve the build time (shown at the bottom of the track drawer) from the latest git commit automatically. To bake it into an APK build: `flutter build apk --dart-define=BUILD_TIME=$(git log -1 --format=%cI)`.
+- The build time (shown at the bottom of the track drawer) is the latest git commit's time: desktop dev runs read it from the checkout at runtime, and APK builds bake it automatically via gradle (`flutter build apk` needs no extra flags). A `BUILD_TIME` dart-define overrides both.
 
 Details on the testing strategy, conventions and the rules that govern changes are in [SPEC.md](SPEC.md); how the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).

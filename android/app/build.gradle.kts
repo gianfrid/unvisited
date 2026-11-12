@@ -4,10 +4,29 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Build date shown in the app: the latest commit's time (same source as the
+// desktop's runtime git probe). An APK cannot read git at runtime, so gradle
+// bakes it into BuildConfig here - no extra flags needed on flutter build.
+// Empty outside a checkout; the app then falls back to "dev".
+fun gitCommitTime(): String = try {
+    val proc = ProcessBuilder("git", "log", "-1", "--format=%cI")
+        .directory(projectDir)
+        .start()
+    val text = proc.inputStream.bufferedReader().use { it.readText() }.trim()
+    proc.waitFor()
+    if (proc.exitValue() == 0 && text.isNotEmpty()) text else ""
+} catch (e: Exception) {
+    ""
+}
+
 android {
     namespace = "com.example.unvisited"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    buildFeatures {
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -27,6 +46,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        buildConfigField("String", "BUILD_TIME", "\"${gitCommitTime()}\"")
     }
 
     buildTypes {

@@ -1,6 +1,6 @@
 - [ ] application should start with the current position, or the last saved before getting an updated one from the system. manage permissions for different systems and add a button to center on current position
 - [x] add select/deselect all tracks button — drawer header button toggles every track's visibility in one action (persists via index.json); covered by model and widget tests
-- build tag is always "dev" in android apk, put the build date please
+- [x] build tag is always "dev" in android apk, put the build date please — gradle bakes the latest commit time into BuildConfig at build time, MainActivity serves it over the host channel; the drawer footer shows it, no extra build flags needed
 - find and set app icon for both Linux and Android
 - import button could be unified
 - top buttons are not enough clear of what they do

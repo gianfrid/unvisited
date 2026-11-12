@@ -288,6 +288,13 @@ class MainActivity : FlutterActivity() {
                     // path that is unwritable on Android, which stalls every
                     // tile load.
                     "getCacheDir" -> result.success(cacheDir.absolutePath)
+                    // Build time (latest commit time) baked by gradle at
+                    // build time; null outside a git checkout, so the Dart
+                    // side falls back to the plain "dev" tag.
+                    "getBuildTime" -> {
+                        val t = BuildConfig.BUILD_TIME
+                        if (t.isEmpty()) result.success(null) else result.success(t)
+                    }
                     "pickDirectory" -> pickSafDirectory(result)
                     "listTrackFiles" ->
                         listSafTrackFiles(call.arguments?.toString() ?: "", result)
