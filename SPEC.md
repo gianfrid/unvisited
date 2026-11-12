@@ -60,7 +60,7 @@ Desktop Linux (no phone needed):
 
 1. `flutter run -d linux`
 2. Import GPX/FIT/KMZ/TCX files via the Import button; verify they render on the map.
-3. Import a folder (e.g. one containing `GARMIN/Activity/`) via the folder button; verify recursive import of all supported files.
+3. Import a folder (e.g. one containing `GARMIN/Activity/`) via Import → A folder; verify recursive import of all supported files.
 4. Re-import the same file; verify no duplicate track appears (dedup by content hash).
 5. Restart the app; verify tracks and catalog persist under `$XDG_DATA_HOME/unvisited`.
 6. Delete that directory; verify the app starts empty.

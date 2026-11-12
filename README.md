@@ -57,7 +57,7 @@ flutter run -d linux
 
 The import pipeline, track store and map render identically to Android, so this is the supported way to quick-test without a smartphone.
 
-Import tracks with the **Import** button (file picker, supports multiple files) or the folder button above it (imports recursively, e.g. a `GARMIN/Activity/` folder). Tracks and the catalog are stored under `$XDG_DATA_HOME/unvisited` (default `~/.local/share/unvisited`) and survive restarts. Deleting that directory resets the app state.
+Import tracks with the **Import** button: it offers **Track files** (the file picker, supports multiple files) and **A folder** (imports recursively, e.g. a `GARMIN/Activity/` folder). Tracks and the catalog are stored under `$XDG_DATA_HOME/unvisited` (default `~/.local/share/unvisited`) and survive restarts. Deleting that directory resets the app state.
 
 Re-importing a byte-identical file does not create a duplicate — tracks are deduplicated by content hash.
 
@@ -86,6 +86,6 @@ flutter test       # all parsing/storage logic is pure Dart, covered by unit tes
 flutter analyze
 ```
 
-- The build time (shown at the bottom of the track drawer) is the latest git commit's time: desktop dev runs read it from the checkout at runtime, and APK builds bake it automatically via gradle (`flutter build apk` needs no extra flags). A `BUILD_TIME` dart-define overrides both.
+- The build time (shown in Settings → About) is the latest git commit's time: desktop dev runs read it from the checkout at runtime, and APK builds bake it automatically via gradle (`flutter build apk` needs no extra flags). A `BUILD_TIME` dart-define overrides both.
 
 Details on the testing strategy, conventions and the rules that govern changes are in [SPEC.md](SPEC.md); how the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).

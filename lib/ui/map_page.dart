@@ -25,8 +25,8 @@ class MapPage extends StatefulWidget {
   final AppModel model;
   final Directory cacheDir;
 
-  /// Build time shown in the drawer footer; tests inject a fixed value so
-  /// no git process is spawned from a widget test.
+  /// Build time shown in the Settings sheet's About card; tests inject a
+  /// fixed value so no git process is spawned from a widget test.
   final Future<String>? versionFuture;
 
   /// Whether the platform has a location plugin. When false (desktop

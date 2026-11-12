@@ -88,7 +88,8 @@ class ImportSummary {
   }
 }
 
-/// UI state root: owns the store, caches parsed polylines, exposes actions.
+/// UI state root: owns the store, caches each visible track's points for
+/// the fog-of-war overlay, exposes actions.
 class AppModel extends ChangeNotifier {
   AppModel(this.store);
 
