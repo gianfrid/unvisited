@@ -12,6 +12,7 @@ Map<String, String> allStrings(AppStrings s) => {
       'fitTooltip': s.fitTooltip,
       'locateLabel': s.locateLabel,
       'locateTooltip': s.locateTooltip,
+      'locating': s.locating,
       'tracksLabel': s.tracksLabel,
       'settingsLabel': s.settingsLabel,
       'importTrackFiles': s.importTrackFiles,

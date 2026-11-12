@@ -462,6 +462,7 @@ void main() {
     required int permission,
     bool serviceEnabled = true,
     Map<String, double>? position,
+    Duration fixDelay = Duration.zero,
   }) {
     const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -473,6 +474,9 @@ void main() {
         case 'requestPermission':
           return permission;
         case 'getCurrentPosition':
+          // A real fix is never instant; a delay lets tests observe the
+          // in-flight state.
+          if (fixDelay > Duration.zero) await Future.delayed(fixDelay);
           if (position == null) {
             throw PlatformException(code: 'TIMEOUT', message: 'no fix');
           }
@@ -564,6 +568,60 @@ void main() {
     expect(camera.zoom, greaterThan(13.0));
     // The fix is saved for the next start.
     expect(model.savedPosition!.latitude, closeTo(48.8584, 1e-6));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('locate shows a spinner while the fix is in flight',
+      (tester) async {
+    mockGeolocator(tester, permission: 3, fixDelay: const Duration(seconds: 2),
+        position: {
+          'lat': 48.8584,
+          'lon': 2.2945,
+        });
+    await pumpMap(tester);
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump(); // start the attempt
+
+    // Waiting for the fix: the button is a spinner captioned "Locating…",
+    // so a slow GPS never looks like a dead button.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('Locating…'), findsOneWidget);
+    expect(find.text('Locate'), findsNothing);
+
+    // A second tap while in flight must not start another request.
+    await tester.tap(find.text('Locating…'));
+    await tester.pump();
+
+    // The fix arrives: spinner gone, caption restored, camera moved.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Locate'), findsOneWidget);
+    final camera = tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .mapController!
+        .camera;
+    expect(camera.center.latitude, closeTo(48.8584, 1e-6));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the locate spinner clears when the fix fails', (tester) async {
+    // Granted permission, but no fix ever arrives.
+    mockGeolocator(tester, permission: 3, fixDelay: const Duration(seconds: 1));
+    await pumpMap(tester);
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    // Failure is reported and the button is usable again.
+    expect(find.textContaining('Location unavailable'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Locate'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

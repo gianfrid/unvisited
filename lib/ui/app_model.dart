@@ -365,6 +365,9 @@ class AppModel extends ChangeNotifier {
     return result.position;
   }
 
+  /// Upper bound on a locate attempt; see [locate].
+  static const _locateTimeout = Duration(seconds: 10);
+
   /// The device's current position together with the reason it is
   /// missing, so the UI can say what to fix instead of a generic
   /// "unavailable".
@@ -389,9 +392,15 @@ class AppModel extends ChangeNotifier {
       if (permission == LocationPermission.denied) {
         return const LocateResult.failure(LocationFailure.permissionDenied);
       }
+      // Bounded: without a time limit a cold fix can wait indefinitely,
+      // and the UI (which shows a spinner meanwhile) would never settle.
+      // Ten seconds is long enough for a cold GPS fix outdoors and short
+      // enough not to feel stuck.
       final position = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.best),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          timeLimit: _locateTimeout,
+        ),
       );
       final pos = LatLng(position.latitude, position.longitude);
       await store.savePosition(pos.latitude, pos.longitude);

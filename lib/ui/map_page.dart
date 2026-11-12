@@ -97,6 +97,11 @@ class _MapPageState extends State<MapPage> {
   /// events in initState and read when the circles are built.
   double _fogCellSize = baseCellSizeMeters;
 
+  /// True while a locate attempt is in flight. Acquiring a fix takes
+  /// seconds (longer on a cold GPS), so the button shows a spinner and
+  /// ignores further taps instead of looking dead.
+  bool _locating = false;
+
   /// Cached unlock centers keyed to the current overlay inputs (visible
   /// track ids + cell size), so pans and transient item rebuilds do not
   /// re-walk every track point.
@@ -196,21 +201,33 @@ class _MapPageState extends State<MapPage> {
   /// then centers the map on the current position and zooms in. When no
   /// position can be had, says why — a silent no-op reads as a broken
   /// button.
+  ///
+  /// The whole attempt is bracketed by [_locating], so the toolbar button
+  /// turns into a spinner for as long as the fix takes. Re-entrant taps
+  /// are ignored: a second GPS request would not answer any sooner.
   Future<void> _locate() async {
+    if (_locating) return;
     final strings = AppStrings.ofContext(context);
-    final result = await widget.model.locate(prompt: true);
-    if (!mounted) return;
-    final pos = result.position;
-    if (pos == null) {
-      _toast(_locateFailureMessage(strings, result.failure));
-      return;
+    setState(() => _locating = true);
+    try {
+      final result = await widget.model.locate(prompt: true);
+      if (!mounted) return;
+      final pos = result.position;
+      if (pos == null) {
+        _toast(_locateFailureMessage(strings, result.failure));
+        return;
+      }
+      // Never zoom out: a user already closer than the locate zoom keeps
+      // their detail level.
+      final zoom = _mapController.camera.zoom < _locateZoom
+          ? _locateZoom
+          : _mapController.camera.zoom;
+      _mapController.move(pos, zoom);
+    } finally {
+      // Also runs when the widget went away mid-flight; the mounted check
+      // keeps setState off a disposed element.
+      if (mounted) setState(() => _locating = false);
     }
-    // Never zoom out: a user already closer than the locate zoom keeps
-    // their detail level.
-    final zoom = _mapController.camera.zoom < _locateZoom
-        ? _locateZoom
-        : _mapController.camera.zoom;
-    _mapController.move(pos, zoom);
   }
 
   static String _locateFailureMessage(
@@ -468,10 +485,18 @@ class _MapPageState extends State<MapPage> {
                   // is worse than none.
                   if (widget.locationSupported)
                     _HeaderAction(
-                      icon: const Icon(Icons.my_location),
-                      label: strings.locateLabel,
+                      // A spinner replaces the icon while a fix is being
+                      // acquired; the caption says what is happening.
+                      icon: _locating
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location),
+                      label: _locating ? strings.locating : strings.locateLabel,
                       tooltip: strings.locateTooltip,
-                      onTap: _locate,
+                      onTap: _locating ? null : _locate,
                     ),
                   Builder(
                     builder: (context) => _HeaderAction(

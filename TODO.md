@@ -1,1 +1,0 @@
-- [] the locate has latency, the user should have a visual signal that the application is waiting for the data, without it seems to just hang

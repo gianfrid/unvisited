@@ -40,6 +40,10 @@ abstract class AppStrings {
   String get fitTooltip;
   String get locateLabel;
   String get locateTooltip;
+
+  /// Shown while a fix is being acquired: the GPS can take seconds to
+  /// answer, and an unchanged button reads as a dead one.
+  String get locating;
   String get tracksLabel;
   String get settingsLabel;
 
@@ -128,6 +132,8 @@ class EnglishStrings extends AppStrings {
   String get locateLabel => 'Locate';
   @override
   String get locateTooltip => 'Center on current position';
+  @override
+  String get locating => 'Locating…';
   @override
   String get tracksLabel => 'Tracks';
   @override
@@ -269,6 +275,8 @@ class ItalianStrings extends AppStrings {
   String get locateLabel => 'Posizione';
   @override
   String get locateTooltip => 'Centra sulla posizione attuale';
+  @override
+  String get locating => 'Localizzazione…';
   @override
   String get tracksLabel => 'Tracce';
   @override
