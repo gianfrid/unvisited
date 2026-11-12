@@ -15,11 +15,10 @@ const _palette = <Color>[
   Color(0xFF009E9E),
 ];
 
-/// One color for every track when uniform coloring is toggled on: with the
-/// per-track palette muted, roads covered vs not covered by any track read
-/// at a glance. Same value as the app's color scheme seed, and the color
-/// the merged rendering uses, so both modes stay consistent.
-const singleTrackColor = Color(0xFF4363D8);
+/// Color of the merged (single-polyline) rendering: one uniform color for
+/// all tracks, so roads covered vs not covered by any track read at a
+/// glance. Same value as the app's color scheme seed.
+const mergedTrackColor = Color(0xFF4363D8);
 
 Color colorForTrack(String id) {
   var v = 0;

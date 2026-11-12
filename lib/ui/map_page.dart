@@ -159,7 +159,7 @@ class _MapPageState extends State<MapPage> {
       for (final segment in segments)
         Polyline(
           points: segment,
-          color: singleTrackColor,
+          color: mergedTrackColor,
           strokeWidth: 3.5,
           borderStrokeWidth: 1,
           borderColor: Colors.black38,
@@ -207,15 +207,6 @@ class _MapPageState extends State<MapPage> {
             tooltip: 'Toggle merged/split tracks',
             icon: Icon(widget.model.mergeTracks ? Icons.layers : Icons.layers_clear),
             onPressed: widget.model.toggleMergeTracks,
-          ),
-          IconButton(
-            tooltip: widget.model.uniformTrackColor
-                ? 'Per-track colors'
-                : 'Same color for all tracks',
-            icon: Icon(widget.model.uniformTrackColor
-                ? Icons.format_color_fill
-                : Icons.palette),
-            onPressed: widget.model.toggleUniformTrackColor,
           ),
           IconButton(
             tooltip: 'Fit tracks',
@@ -444,7 +435,7 @@ class TrackDrawer extends StatelessWidget {
               builder: (context, snapshot) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
-                  snapshot.data ?? '...',
+                  'Build date: ${snapshot.data ?? '...'}',
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall

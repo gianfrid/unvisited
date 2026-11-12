@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/map_page.dart';
-import 'package:unvisited/ui/track_colors.dart';
 
 import 'helpers.dart';
 
@@ -178,50 +177,7 @@ void main() {
     tester.state<ScaffoldState>(find.byType(Scaffold)).openEndDrawer();
     await tester.pumpAndSettle();
 
-    expect(find.text('2026-11-12 17:41'), findsOneWidget);
-  });
-
-  testWidgets('same-color button repaints split tracks in one color',
-      (tester) async {
-    final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    model.store.importBytes(fixture('morning_walk.gpx'));
-    model.store.importBytes(fixture('eiffel_ride.tcx'));
-    expect(model.visibleTracks.length, 2);
-    model.toggleMergeTracks(); // split mode: per-track polylines
-
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
-
-    List<Color> polylineColors() => (tester
-            .widget<PolylineLayer>(find.byType(PolylineLayer))
-            .polylines)
-        .map((p) => p.color)
-        .toList();
-
-    expect(polylineColors().toSet().length, 2,
-        reason: 'per-track colors start out distinct');
-
-    await tester.tap(find.byTooltip('Same color for all tracks'));
-    await tester.pump();
-
-    expect(model.uniformTrackColor, isTrue);
-    expect(polylineColors().toSet(), {singleTrackColor});
-    expect(find.byTooltip('Per-track colors'), findsOneWidget);
+    expect(find.text('Build date: 2026-11-12 17:41'), findsOneWidget);
   });
 
   testWidgets('startup fit goes through the guarded initialCameraFit',

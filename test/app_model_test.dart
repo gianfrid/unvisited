@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
-import 'package:unvisited/ui/track_colors.dart';
 
 import 'helpers.dart';
 
@@ -99,37 +98,12 @@ void main() {
     expect(model.mergeTracks, true);
   });
 
-  test('uniformTrackColor defaults to per-track palette colors', () async {
+  test('tracks start out in distinct per-track palette colors', () async {
     await model.importFromDirectory(stageDir().path);
-    expect(model.uniformTrackColor, isFalse);
-
     final colors = model.visibleTracks.map((t) => t.color).toSet();
+    expect(model.visibleTracks.length, 2);
     expect(colors.length, model.visibleTracks.length,
         reason: 'distinct tracks must start out in distinct colors');
-  });
-
-  test('toggleUniformTrackColor repaints every track in one color',
-      () async {
-    await model.importFromDirectory(stageDir().path);
-
-    var notifications = 0;
-    model.addListener(() => notifications++);
-    model.toggleUniformTrackColor();
-
-    expect(notifications, 1);
-    expect(model.uniformTrackColor, isTrue);
-    expect(
-      model.visibleTracks.map((t) => t.color).toSet(),
-      {singleTrackColor},
-    );
-
-    model.toggleUniformTrackColor();
-    expect(model.uniformTrackColor, isFalse);
-    expect(
-      model.visibleTracks.map((t) => t.color).toSet().length,
-      model.visibleTracks.length,
-      reason: 'per-track palette colors come back',
-    );
   });
 
   group('bulk visibility', () {
