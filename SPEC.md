@@ -8,9 +8,9 @@ The rules: scope, invariants, testing, conventions and acceptance criteria. How 
 2. Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX (plain KML is handled alongside KMZ — OpenTracks exports both). All sources flow through one unified import pipeline.
 3. Persist imported tracks locally as files under an app-private storage root; catalog metadata lives in a JSON index (`index.json`) next to a `tracks/` directory. No database package.
 4. Show every imported track together on a single map using OpenStreetMap tiles.
-5. No in-app recording. No explored/unexplored road coloring, no OSM road matching, no route planning yet — those come after this prototype works.
+5. No in-app recording, no route planning yet. The map shows an exploration overlay in fog-of-war style: every track point unlocks the area around it (15 m radius circles drawn translucently over the tiles, which stay a fully legible map), and a section of an OSM road/trail that runs close to unlocked points is matched and unlocked with it. Road matching needs an OSM road-data source (Overpass queries vs an offline extract) that is not picked yet — it is the next phase, and whatever it is must respect the privacy rules below.
 
-Out of scope until the MVP is done: recording, road coloring, OSM matching, route planning, cross-service integrations, cloud sync.
+Out of scope until the MVP is done: recording, route planning, cross-service integrations, cloud sync.
 
 ## Hard rules and invariants
 

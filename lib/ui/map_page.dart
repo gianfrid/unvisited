@@ -10,6 +10,7 @@ import '../storage/track_store.dart';
 import '../tile_source.dart';
 import '../build_version.dart';
 import 'app_model.dart';
+import 'fog_of_war.dart';
 import 'track_colors.dart';
 
 class MapPage extends StatefulWidget {
@@ -37,6 +38,7 @@ const _maxZoom = 19.0;
 
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
+  StreamSubscription<MapEvent>? _mapEvents;
   int _seenImportEpoch = 0;
 
   static const _berlinCenter = LatLng(52.5200, 13.4050);
@@ -61,6 +63,16 @@ class _MapPageState extends State<MapPage> {
       );
     }
     widget.model.addListener(_onModelChanged);
+    // Cross a zoom level: the fog coarseness is keyed to the zoom, so the
+    // overlay must be rebuilt when the view moves between zoom levels
+    // (the cell grid doubles per band — see fogCellSizeFor).
+    _mapEvents = _mapController.mapEventStream.listen((event) {
+      final cell = fogCellSizeFor(
+          zoom: event.camera.zoom, latitude: event.camera.center.latitude);
+      if (cell != _fogCellSize) {
+        setState(() => _fogCellSize = cell);
+      }
+    });
     // Start silently with the last saved position (never prompting) and
     // let a live fix override it once it arrives. With no location
     // permission granted yet this is a no-op — only the locate button
@@ -69,6 +81,16 @@ class _MapPageState extends State<MapPage> {
   }
 
   late final bool _cacheUsable;
+
+  /// Current fog-cell edge for the explored overlay; updated from map
+  /// events in initState and read when the circles are built.
+  double _fogCellSize = baseCellSizeMeters;
+
+  /// Cached unlock centers keyed to the current overlay inputs (visible
+  /// track ids + cell size), so pans and transient item rebuilds do not
+  /// re-walk every track point.
+  String? _fogCentersKey;
+  List<LatLng> _fogCenters = const [];
 
   /// Creates the provider's `fm_cache` subdirectory synchronously; fails
   /// fast when the location is unwritable.
@@ -84,6 +106,7 @@ class _MapPageState extends State<MapPage> {
 
   @override
   void dispose() {
+    _mapEvents?.cancel();
     widget.model.removeListener(_onModelChanged);
     super.dispose();
   }
@@ -101,10 +124,6 @@ class _MapPageState extends State<MapPage> {
           padding: _fitPadding,
         ));
       }
-    }
-    // Invalidate merged points cache when tracks change visibility
-    if (widget.model.mergeTracks) {
-      widget.model.mergedPoints; // Access to update cache
     }
     setState(() {});
   }
@@ -133,9 +152,7 @@ class _MapPageState extends State<MapPage> {
   }
 
   void _fitTracks() {
-    final pts = widget.model.mergeTracks
-        ? widget.model.mergedPoints
-        : widget.model.allVisiblePoints;
+    final pts = widget.model.allVisiblePoints;
     if (pts.isEmpty) return;
     _fitWhenSized(
         CameraFit.coordinates(coordinates: pts, padding: _fitPadding));
@@ -256,32 +273,27 @@ class _MapPageState extends State<MapPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  List<Polyline> _buildMergedPolyline(List<MapTrack> tracks) {
-    if (tracks.isEmpty) return [];
-    final segments = widget.model.mergedTrackSegments;
-    if (segments.isEmpty) return [];
-    
+  /// Fog-of-war overlay: one translucent circle per unlocked grid cell, in
+  /// the single exploration tint. Track polylines are gone by design — the
+  /// union of circles is how a visited area shows on the map.
+  List<CircleMarker> _buildFogCircles(List<MapTrack> tracks) {
+    final key =
+        '${[for (final t in tracks) t.meta.id].join('|')}@$_fogCellSize';
+    if (key != _fogCentersKey) {
+      _fogCentersKey = key;
+      _fogCenters = unlockCenters(
+        tracks.expand((t) => t.points),
+        cellSizeMeters: _fogCellSize,
+      );
+    }
+    final radius = unlockRadiusForCell(_fogCellSize);
     return [
-      for (final segment in segments)
-        Polyline(
-          points: segment,
-          color: mergedTrackColor,
-          strokeWidth: 3.5,
-          borderStrokeWidth: 1,
-          borderColor: Colors.black38,
-        ),
-    ];
-  }
-
-  List<Polyline> _buildIndividualPolylines(List<MapTrack> tracks) {
-    return [
-      for (final t in tracks)
-        Polyline(
-          points: t.points,
-          color: t.color,
-          strokeWidth: 3.5,
-          borderStrokeWidth: 1,
-          borderColor: Colors.black38,
+      for (final c in _fogCenters)
+        CircleMarker(
+          point: c,
+          color: exploredAreaColor,
+          radius: radius,
+          useRadiusInMeter: true,
         ),
     ];
   }
@@ -356,10 +368,8 @@ class _MapPageState extends State<MapPage> {
                       : const DisabledMapCachingProvider(),
                 ),
               ),
-              PolylineLayer(
-                polylines: widget.model.mergeTracks
-                    ? _buildMergedPolyline(mapTracks)
-                    : _buildIndividualPolylines(mapTracks),
+              CircleLayer(
+                circles: _buildFogCircles(mapTracks),
               ),
               RichAttributionWidget(
                 // The default flutter_map logo badge is redundant next to
@@ -398,16 +408,6 @@ class _MapPageState extends State<MapPage> {
                     label: 'Import',
                     tooltip: 'Import tracks',
                     onTap: _chooseImport,
-                  ),
-                  _HeaderAction(
-                    icon: Icon(widget.model.mergeTracks
-                        ? Icons.layers
-                        : Icons.layers_clear),
-                    // The label states the mode, not the icon: clear even
-                    // before the tooltip ever appears.
-                    label: widget.model.mergeTracks ? 'Merge' : 'Split',
-                    tooltip: 'Toggle merged/split tracks',
-                    onTap: widget.model.toggleMergeTracks,
                   ),
                   _HeaderAction(
                     icon: const Icon(Icons.zoom_out_map),

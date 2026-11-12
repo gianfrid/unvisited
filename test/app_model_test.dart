@@ -86,38 +86,18 @@ void main() {
     expect(model.lastImportedPoints, isEmpty);
   });
 
-  test('mergeTracks defaults to true', () {
-    expect(model.mergeTracks, true);
-  });
-
-  test('toggleMergeTracks switches the mode', () {
-    expect(model.mergeTracks, true);
-    model.toggleMergeTracks();
-    expect(model.mergeTracks, false);
-    model.toggleMergeTracks();
-    expect(model.mergeTracks, true);
-  });
-
-  test('tracks start out in distinct per-track palette colors', () async {
-    await model.importFromDirectory(stageDir().path);
-    final colors = model.visibleTracks.map((t) => t.color).toSet();
-    expect(model.visibleTracks.length, 2);
-    expect(colors.length, model.visibleTracks.length,
-        reason: 'distinct tracks must start out in distinct colors');
-  });
-
   test('deleteAll removes every track, file and index entry', () async {
     await model.importFromDirectory(stageDir().path);
     expect(model.tracks.length, 2);
     final tracksDir = Directory('${root.path}${Platform.pathSeparator}tracks');
     expect(tracksDir.listSync().length, 2);
-    expect(model.mergedPoints, isNotEmpty);
+    expect(model.allVisiblePoints, isNotEmpty);
 
     await model.deleteAll();
 
     expect(model.tracks, isEmpty);
     expect(model.visibleTracks, isEmpty);
-    expect(model.mergedPoints, isEmpty);
+    expect(model.allVisiblePoints, isEmpty);
     expect(tracksDir.listSync(), isEmpty);
 
     // Must survive a store reload: the persisted index is empty too.
@@ -170,7 +150,7 @@ void main() {
       expect(notifications, greaterThan(0));
       expect(model.allTracksVisible, isFalse);
       expect(model.visibleTracks, isEmpty);
-      expect(model.mergedPoints, isEmpty);
+      expect(model.allVisiblePoints, isEmpty);
 
       // Must survive a store reload (visibility lives in index.json).
       final reloaded = TrackStore(root);
@@ -187,39 +167,8 @@ void main() {
 
       expect(model.allTracksVisible, isTrue);
       expect(model.visibleTracks.length, 2);
-      expect(model.mergedPoints, isNotEmpty);
+      expect(model.allVisiblePoints, isNotEmpty);
     });
-  });
-
-  test('mergedPoints returns deduplicated points from all visible tracks',
-      () async {
-    await model.importFromDirectory(stageDir().path);
-
-    // Should have imported 2 tracks (GPX + TCX)
-    expect(model.tracks.length, 2);
-
-    // Get merged points
-    final merged = model.mergedPoints;
-    expect(merged, isNotEmpty);
-
-    // Verify deduplication: merged points should be <= total points
-    final totalPoints = model.allVisiblePoints.length;
-    final mergedCount = merged.length;
-    expect(mergedCount, lessThanOrEqualTo(totalPoints));
-  });
-
-  test('mergedPoints cache is invalidated when tracks change', () async {
-    await model.importFromDirectory(stageDir().path);
-    final merged1 = model.mergedPoints;
-    expect(merged1, isNotEmpty);
-
-    // Toggle a track visibility
-    final firstTrack = model.tracks.first;
-    await model.toggleVisible(firstTrack);
-
-    // Access mergedPoints again to ensure cache is invalidated
-    // (no assertion needed, just verifying it doesn't throw)
-    model.mergedPoints;
   });
 
   group('SAF folder import (Android host channel)', () {

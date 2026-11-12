@@ -6,7 +6,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
+import 'package:unvisited/ui/fog_of_war.dart';
 import 'package:unvisited/ui/map_page.dart';
+import 'package:unvisited/ui/track_colors.dart';
 
 import 'helpers.dart';
 
@@ -186,22 +188,50 @@ void main() {
       ),
     ));
 
-    for (final label in const ['Import', 'Merge', 'Locate', 'Tracks',
-        'Settings']) {
+    for (final label in const ['Import', 'Locate', 'Tracks', 'Settings']) {
       expect(find.text(label), findsOneWidget,
           reason: 'the $label action must be captioned');
     }
     // Fit is disabled on the empty map, but still shows its label.
     expect(find.text('Fit'), findsOneWidget);
+  });
 
-    // The merge action's caption states the mode it would switch to.
-    await tester.tap(find.byTooltip('Toggle merged/split tracks'));
+  testWidgets('visited tracks plot as fog-of-war unlock circles', (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // See above.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    model.store.importBytes(fixture('eiffel_ride.tcx'));
+    expect(model.tracks.length, 2);
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
     await tester.pump();
-    expect(find.text('Split'), findsOneWidget);
-    expect(find.text('Merge'), findsNothing);
-    await tester.tap(find.byTooltip('Toggle merged/split tracks'));
-    await tester.pump();
-    expect(find.text('Merge'), findsOneWidget);
+
+    // The polylines are gone by design: the fog-of-war overlay replaces
+    // them — one translucent circle per unlocked grid cell.
+    expect(find.byType(PolylineLayer), findsNothing);
+    final circles = tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
+    expect(circles, isNotEmpty);
+    expect(circles.every((c) => c.useRadiusInMeter), isTrue,
+        reason: 'unlock circles are sized as real ground areas');
+    expect(circles.every((c) => c.color == exploredAreaColor), isTrue,
+        reason: 'one uniform exploration tint, map stays legible');
+    expect(circles.every((c) => c.radius >= unlockRadiusMeters - 1e-9),
+        isTrue,
+        reason: 'never smaller than the base unlock radius');
   });
 
   testWidgets('settings sheet shows the About card and delete-all entry',

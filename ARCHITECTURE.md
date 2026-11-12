@@ -8,7 +8,7 @@ Flutter frontend (Android first, with a desktop Linux target for development tes
 
 1. **One unified import pipeline** (`lib/import/`) — content-based format detection (magic bytes / root element, never file extensions) feeding a set of `TrackParser` implementations.
 2. **A local track store** (`lib/storage/track_store.dart`) — imported track files under an app-private storage root, catalogued by a JSON index (`index.json`) next to a `tracks/` directory. No database package.
-3. **A single map view** (`lib/ui/map_page.dart`) — every imported track plotted together on one OpenStreetMap-based map via `flutter_map`.
+3. **A single map view** (`lib/ui/map_page.dart`) — every imported track plotted together on one OpenStreetMap-based map via `flutter_map`, as a fog-of-war exploration overlay: each track point "unlocks" a ~15 m circular area around it, and the unlocked union reads as the corridors the user has actually traveled.
 
 On desktop Linux the app runs identically (`flutter run -d linux`); only the platform glue differs (see [Platform differences](#platform-differences-android-vs-desktop-linux)).
 
@@ -35,7 +35,9 @@ Platform channels to the Android host:
 
 ### UI (`lib/ui/`)
 
-`app_model.dart` (state), `map_page.dart` (map + import buttons), `track_colors.dart`, plus `tile_source.dart` for OSM tiles with built-in caching.
+`app_model.dart` (state), `map_page.dart` (map + import buttons), `fog_of_war.dart` (overlay math), `track_colors.dart` (the exploration tint), plus `tile_source.dart` for OSM tiles with built-in caching.
+
+Rendering is the fog-of-war overlay, not polylines: `fog_of_war.dart` coalesces every visible track's points into a square grid (one unlock circle per occupied cell, 12 m cells at street zoom) drawn as translucent `CircleMarker`s in a single tint (`track_colors.dart`). The grid coarsens in power-of-two steps as the view zooms out (keyed to the ground resolution), so a whole-hobby catalog collapses to a few hundred blobs at world zoom instead of hundreds of thousands of sub-pixel circles; circle centers are cached per visible-track set + cell size, so pans and zoom-band crossings are the only recomputes. Per-track polylines, the per-track color palette and the merge/split toggle were removed with this — the unlocked union is the app's one visualization. Matching unlocked corridors to OSM road geometry is the next phase (deferred until a road-data source is picked; see SPEC.md).
 
 The startup camera fit for saved tracks goes through `MapOptions.initialCameraFit`, which flutter_map applies only once the camera has a real size. At launch the window surface may not be ready — the first layouts can have zero-sized constraints — and a manual `MapController.fitCamera` against them degenerates the camera, leaving the tile layer rendering nothing until the user pans (grey map at startup). The manual fits that remain (import refits, the fit button) wait for a non-zero camera size before applying.
 

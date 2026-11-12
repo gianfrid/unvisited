@@ -8,19 +8,13 @@ import 'package:latlong2/latlong.dart';
 
 import '../host_channel.dart';
 import '../storage/track_store.dart';
-import 'track_colors.dart';
-
-/// Distance threshold in meters for deduplicating nearby points when merging tracks.
-/// GPS accuracy is typically 3-10m for consumer devices, so 2m is a safe threshold.
-const _mergeDedupeDistanceMeters = 2.0;
 
 /// A track prepared for drawing on the map.
 class MapTrack {
-  const MapTrack({required this.meta, required this.points, required this.color});
+  const MapTrack({required this.meta, required this.points});
 
   final StoredTrack meta;
   final List<LatLng> points;
-  final Color color;
 }
 
 class ImportSummary {
@@ -74,16 +68,6 @@ class AppModel extends ChangeNotifier {
 
   bool _busy = false;
   bool get busy => _busy;
-
-  /// Whether to merge all visible tracks into a single polyline for rendering.
-  /// Defaults to true for better performance and cleaner visualization.
-  bool _mergeTracks = true;
-  bool get mergeTracks => _mergeTracks;
-
-  /// All points from all visible tracks, merged and deduplicated.
-  /// Only valid when [mergeTracks] is true.
-  List<LatLng>? _mergedPointsCache;
-  int _mergedPointsEpoch = 0;
 
   /// Points of the tracks added by the most recent import operation, so the
   /// map can refit its camera on what was just imported. [importEpoch] is
@@ -262,7 +246,6 @@ class AppModel extends ChangeNotifier {
       out.add(MapTrack(
         meta: t,
         points: pts,
-        color: colorForTrack(t.id),
       ));
     }
     return out;
@@ -292,7 +275,6 @@ class AppModel extends ChangeNotifier {
   Future<void> deleteAll() async {
     await store.clearAll();
     _pointCache.clear();
-    _mergedPointsCache = null;
     notifyListeners();
   }
 
@@ -339,90 +321,4 @@ class AppModel extends ChangeNotifier {
   /// All points of all visible tracks, for fitting the camera.
   List<LatLng> get allVisiblePoints =>
       visibleTracks.expand((t) => t.points).toList();
-
-  /// Toggles between merged and individual track rendering modes.
-  void toggleMergeTracks() {
-    _mergeTracks = !_mergeTracks;
-    _mergedPointsCache = null; // Invalidate cache
-    notifyListeners();
-  }
-
-  /// Returns the merged, deduplicated points for all visible tracks.
-  /// This concatenates all track points into a single list for camera fitting.
-  /// Note: For rendering, use [mergedTrackSegments] to avoid artificial connections.
-  List<LatLng> get mergedPoints {
-    // Check cache validity
-    final currentEpoch = _computeEpoch();
-    if (_mergedPointsCache != null && _mergedPointsEpoch == currentEpoch) {
-      return _mergedPointsCache!;
-    }
-
-    final allPoints = <LatLng>[];
-    for (final segment in mergedTrackSegments) {
-      allPoints.addAll(segment);
-    }
-
-    _mergedPointsCache = allPoints;
-    _mergedPointsEpoch = currentEpoch;
-    return allPoints;
-  }
-
-  /// Computes a cache epoch based on visible tracks and their point caches.
-  int _computeEpoch() {
-    var epoch = 0;
-    for (final t in store.tracks) {
-      if (t.visible) {
-        epoch ^= t.id.hashCode;
-        if (_pointCache.containsKey(t.id)) {
-          epoch ^= _pointCache[t.id]!.length;
-        }
-      }
-    }
-    return epoch;
-  }
-
-  /// Returns deduplicated points for a single track, skipping points that are
-  /// too close to the previous point (within [_mergeDedupeDistanceMeters]).
-  List<LatLng> _deduplicateTrack(List<LatLng> trackPoints) {
-    if (trackPoints.isEmpty) return const [];
-
-    final deduplicated = <LatLng>[];
-    final distance = const Distance();
-
-    for (final point in trackPoints) {
-      if (deduplicated.isEmpty) {
-        deduplicated.add(point);
-      } else {
-        final last = deduplicated.last;
-        final dist = distance(last, point);
-        if (dist >= _mergeDedupeDistanceMeters) {
-          deduplicated.add(point);
-        }
-        // else: skip this point, it's too close to the last point
-      }
-    }
-
-    return deduplicated;
-  }
-
-  /// Returns all visible tracks with deduplicated points.
-  /// Each track is kept separate to avoid creating artificial connections
-  /// between unrelated tracks.
-  List<List<LatLng>> get mergedTrackSegments {
-    final allSegments = <List<LatLng>>[];
-    for (final t in store.tracks) {
-      if (!t.visible) continue;
-      var pts = _pointCache[t.id];
-      if (pts == null) {
-        final data = store.loadPoints(t);
-        if (data == null) continue;
-        pts = data.points.map((p) => LatLng(p.lat, p.lon)).toList();
-        _pointCache[t.id] = pts;
-      }
-      if (pts.isNotEmpty) {
-        allSegments.add(_deduplicateTrack(pts));
-      }
-    }
-    return allSegments;
-  }
 }
