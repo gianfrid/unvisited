@@ -30,3 +30,4 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md).
 4. Before finishing a slice, run `flutter analyze` (must be clean) and `flutter test`.
 5. When a binary fixture must change, regenerate it with `dart tool/make_fixtures.dart` and commit it — never hand-edit binary fixtures. The same goes for app icons: edit `assets/icon/icon.svg`, then run `dart tool/make_icons.dart`.
 6. Preserve the separation of concerns in these docs when updating them: user-facing info in README.md, design in ARCHITECTURE.md, rules and conventions in SPEC.md.
+7. TODO.md holds open work only. When a task is done, delete its entry in the same commit that completes it — do not tick it, annotate it or leave it as history. What was built belongs in the commit message and in ARCHITECTURE.md/SPEC.md; git history is the record.
