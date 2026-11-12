@@ -290,54 +290,10 @@ class _MapPageState extends State<MapPage> {
   Widget build(BuildContext context) {
     final mapTracks = widget.model.visibleTracks;
     return Scaffold(
-      appBar: AppBar(
-        // No title: the labeled actions need the width more than the
-        // app's name does (the launcher and the About card carry it).
-        actions: [
-          _HeaderAction(
-            icon: const Icon(Icons.add),
-            label: 'Import',
-            tooltip: 'Import tracks',
-            onTap: _chooseImport,
-          ),
-          _HeaderAction(
-            icon: Icon(widget.model.mergeTracks
-                ? Icons.layers
-                : Icons.layers_clear),
-            // The label states the mode, not the icon: clear even before
-            // the tooltip ever appears.
-            label: widget.model.mergeTracks ? 'Merge' : 'Split',
-            tooltip: 'Toggle merged/split tracks',
-            onTap: widget.model.toggleMergeTracks,
-          ),
-          _HeaderAction(
-            icon: const Icon(Icons.zoom_out_map),
-            label: 'Fit',
-            tooltip: 'Fit tracks',
-            onTap: mapTracks.isEmpty ? null : _fitTracks,
-          ),
-          _HeaderAction(
-            icon: const Icon(Icons.my_location),
-            label: 'Locate',
-            tooltip: 'Center on current position',
-            onTap: _locate,
-          ),
-          Builder(
-            builder: (context) => _HeaderAction(
-              icon: const _BadgeIcon(),
-              label: 'Tracks',
-              tooltip: 'Tracks',
-              onTap: () => Scaffold.of(context).openEndDrawer(),
-            ),
-          ),
-          _HeaderAction(
-            icon: const Icon(Icons.settings_outlined),
-            label: 'Settings',
-            tooltip: 'Settings',
-            onTap: _openSettings,
-          ),
-        ],
-      ),
+      // No app bar: the labeled actions live on a compact floating
+      // toolbar that hugs its content at the top-right corner, so the
+      // map map keeps rendering behind it instead of being pushed down
+      // by a full-width bar.
       endDrawerEnableOpenDragGesture: false,
       endDrawer: TrackDrawer(
         model: widget.model,
@@ -419,10 +375,69 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
           // Lateral zoom control: replaces the header's zoom buttons.
+          // SafeArea: without an app bar the window insets (notches,
+          // status bar) are the map's top edge now.
           Positioned(
-            top: 16,
+            top: 0,
             left: 12,
-            child: _ZoomSlider(controller: _mapController),
+            child: SafeArea(
+              minimum: const EdgeInsets.only(top: 16),
+              child: _ZoomSlider(controller: _mapController),
+            ),
+          ),
+          // Compact floating toolbar instead of a full-width app bar.
+          Positioned(
+            top: 0,
+            right: 12,
+            child: SafeArea(
+              minimum: const EdgeInsets.only(top: 8),
+              child: _FloatingToolbar(
+                children: [
+                  _HeaderAction(
+                    icon: const Icon(Icons.add),
+                    label: 'Import',
+                    tooltip: 'Import tracks',
+                    onTap: _chooseImport,
+                  ),
+                  _HeaderAction(
+                    icon: Icon(widget.model.mergeTracks
+                        ? Icons.layers
+                        : Icons.layers_clear),
+                    // The label states the mode, not the icon: clear even
+                    // before the tooltip ever appears.
+                    label: widget.model.mergeTracks ? 'Merge' : 'Split',
+                    tooltip: 'Toggle merged/split tracks',
+                    onTap: widget.model.toggleMergeTracks,
+                  ),
+                  _HeaderAction(
+                    icon: const Icon(Icons.zoom_out_map),
+                    label: 'Fit',
+                    tooltip: 'Fit tracks',
+                    onTap: mapTracks.isEmpty ? null : _fitTracks,
+                  ),
+                  _HeaderAction(
+                    icon: const Icon(Icons.my_location),
+                    label: 'Locate',
+                    tooltip: 'Center on current position',
+                    onTap: _locate,
+                  ),
+                  Builder(
+                    builder: (context) => _HeaderAction(
+                      icon: const _BadgeIcon(),
+                      label: 'Tracks',
+                      tooltip: 'Tracks',
+                      onTap: () => Scaffold.of(context).openEndDrawer(),
+                    ),
+                  ),
+                  _HeaderAction(
+                    icon: const Icon(Icons.settings_outlined),
+                    label: 'Settings',
+                    tooltip: 'Settings',
+                    onTap: _openSettings,
+                  ),
+                ],
+              ),
+            ),
           ),
           if (mapTracks.isEmpty)
             const Center(
@@ -477,6 +492,27 @@ class _BadgeIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Icon(Icons.stacked_line_chart);
+}
+
+/// The header as a compact pill that hugs its content, floating above
+/// the map at the top-right corner instead of a full-width bar.
+class _FloatingToolbar extends StatelessWidget {
+  const _FloatingToolbar({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(24),
+      color: Theme.of(context).colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(mainAxisSize: MainAxisSize.min, children: children),
+      ),
+    );
+  }
 }
 
 /// A header action that says what it does: icon over a short caption.
