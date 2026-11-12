@@ -37,7 +37,7 @@ void main() {
     await model.load();
 
     await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache)),
+      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
     );
     await tester.pump();
 
@@ -66,7 +66,7 @@ void main() {
     expect(model.tracks.length, 2);
 
     await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache)),
+      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
     );
     await tester.tap(find.byTooltip('Tracks'));
     // Fixed pumps, not pumpAndSettle: the tile-backed map keeps scheduling
@@ -102,7 +102,7 @@ void main() {
     expect(model.tracks.length, 1);
 
     await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache)),
+      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
     );
     await tester.tap(find.byTooltip('Tracks')); // open the drawer
     await tester.pump(const Duration(milliseconds: 300));
@@ -125,13 +125,13 @@ void main() {
       home: Scaffold(
         endDrawer: TrackDrawer(
           model: model,
-          versionFuture: Future.value('abc1234'),
+          versionFuture: Future.value('2026-11-12 17:41'),
         ),
       ),
     ));
     tester.state<ScaffoldState>(find.byType(Scaffold)).openEndDrawer();
     await tester.pumpAndSettle();
 
-    expect(find.text('version abc1234'), findsOneWidget);
+    expect(find.text('2026-11-12 17:41'), findsOneWidget);
   });
 }

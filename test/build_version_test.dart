@@ -3,47 +3,67 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/build_version.dart';
 
+/// Same shape AppVersion formats with, to build timezone-independent
+/// expectations from a fixed-offset input.
+String humanized(String iso) {
+  final local = DateTime.parse(iso).toLocal();
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${local.year}-${two(local.month)}-${two(local.day)} '
+      '${two(local.hour)}:${two(local.minute)}';
+}
+
 void main() {
-  group('pickVersion', () {
-    test('the baked GIT_COMMIT define wins', () {
+  group('AppVersion.pickBuildTime', () {
+    test('the baked BUILD_TIME define is humanized in local time', () {
+      const iso = '2026-11-12T17:41:00+01:00';
       expect(
-        AppVersion.pickVersion(define: 'abc1234', gitRevision: 'zzz'),
-        'abc1234',
+        AppVersion.pickBuildTime(define: iso, gitCommitTime: null),
+        humanized(iso),
       );
     });
 
-    test('whitespace around the define is tolerated', () {
-      expect(AppVersion.pickVersion(define: '  abc1234 \n', gitRevision: null), 'abc1234');
+    test('an empty define falls back to the git commit time', () {
+      const iso = '2026-11-12T09:15:00+01:00';
+      expect(
+        AppVersion.pickBuildTime(define: '', gitCommitTime: iso),
+        humanized(iso),
+      );
     });
 
-    test('falls back to the runtime git revision', () {
-      expect(AppVersion.pickVersion(define: '', gitRevision: '0dd8041'), '0dd8041');
+    test('a non-ISO baked define is shown verbatim', () {
+      expect(
+        AppVersion.pickBuildTime(define: 'custom-label', gitCommitTime: null),
+        'custom-label',
+      );
     });
 
     test('falls back to dev outside any checkout', () {
-      expect(AppVersion.pickVersion(define: '', gitRevision: null), 'dev');
+      expect(AppVersion.pickBuildTime(define: '', gitCommitTime: null), 'dev');
     });
   });
 
-  group('probeGitRevision', () {
+  group('AppVersion.probeGitCommitTime', () {
     test('finds this repository and agrees with git itself', () async {
       // The suite runs inside the project checkout, so the probe must find
-      // it (from the working directory) and return the real short hash.
-      final probed = await AppVersion.probeGitRevision();
+      // it (from the working directory) and return the real commit time.
+      final probed = await AppVersion.probeGitCommitTime();
       final git = await Process.run(
         'git',
-        const ['rev-parse', '--short', 'HEAD'],
+        const ['log', '-1', '--format=%cI'],
         workingDirectory: Directory.current.path,
       );
+      expect(probed, isNotNull);
       expect(probed, (git.stdout as String).trim());
-      expect(probed, matches(RegExp(r'^[0-9a-f]{7,40}$')));
     });
   });
 
-  test('resolve() prefers the probe when no define was baked', () async {
-    // GIT_COMMIT is not defined during `flutter test`, so resolve() must
-    // agree with the probe; both hit the repository we run in.
-    expect(await AppVersion.resolve(), await AppVersion.probeGitRevision());
+  test('resolve() humanizes the probed commit time', () async {
+    // BUILD_TIME is not defined during `flutter test`, so resolve() must be
+    // the humanized commit time of the repository we run in.
+    final resolved = await AppVersion.resolve();
+    final probed = await AppVersion.probeGitCommitTime();
+    expect(resolved, isNot('dev'));
+    expect(resolved, humanized(probed!));
   });
 
   test('resolve() is stable across calls', () async {

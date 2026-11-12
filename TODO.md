@@ -4,6 +4,6 @@
 - find and set app icon for both Linux and Android
 - import button could be unified
 - top buttons are not enough clear of what they do
-- settings menu, with the build version (latest git commit checksum) at the bottom — version display done as a footer in the track drawer; the settings menu itself is still open
+- settings menu, with the build version at the bottom — drawer footer done, shows the latest commit's human-readable timestamp; the settings menu itself is still open
 - [x] split AGENTS.md into README.md (user-facing), ARCHITECTURE.md (design) and SPEC.md (rules/conventions); AGENTS.md is now an agent meta-document. All content preserved, no duplication.
 - [x] add a way to delete tracks — explicit delete button on each track tile in the drawer (swipe-to-delete remains); removes the track file and catalog entry

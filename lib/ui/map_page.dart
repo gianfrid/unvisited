@@ -11,10 +11,18 @@ import '../build_version.dart';
 import 'app_model.dart';
 
 class MapPage extends StatefulWidget {
-  const MapPage({super.key, required this.model, required this.cacheDir});
+  const MapPage(
+      {super.key,
+      required this.model,
+      required this.cacheDir,
+      this.versionFuture});
 
   final AppModel model;
   final Directory cacheDir;
+
+  /// Build time shown in the drawer footer; tests inject a fixed value so
+  /// no git process is spawned from a widget test.
+  final Future<String>? versionFuture;
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -191,7 +199,10 @@ class _MapPageState extends State<MapPage> {
         ],
       ),
       endDrawerEnableOpenDragGesture: false,
-      endDrawer: TrackDrawer(model: widget.model),
+      endDrawer: TrackDrawer(
+        model: widget.model,
+        versionFuture: widget.versionFuture,
+      ),
       body: Stack(
         children: [
           FlutterMap(
@@ -381,7 +392,7 @@ class TrackDrawer extends StatelessWidget {
               builder: (context, snapshot) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
-                  'version ${snapshot.data ?? '...'}',
+                  snapshot.data ?? '...',
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
