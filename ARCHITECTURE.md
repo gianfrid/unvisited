@@ -1,0 +1,76 @@
+# Unvisited — Architecture
+
+How the pieces fit together. For how to run the app see [README.md](README.md); for the rules and invariants that constrain this design see [SPEC.md](SPEC.md).
+
+## System overview
+
+Flutter frontend (Android first, with a desktop Linux target for development testing) built around three layers:
+
+1. **One unified import pipeline** (`lib/import/`) — content-based format detection (magic bytes / root element, never file extensions) feeding a set of `TrackParser` implementations.
+2. **A local track store** (`lib/storage/track_store.dart`) — imported track files under an app-private storage root, catalogued by a JSON index (`index.json`) next to a `tracks/` directory. No database package.
+3. **A single map view** (`lib/ui/map_page.dart`) — every imported track plotted together on one OpenStreetMap-based map via `flutter_map`.
+
+On desktop Linux the app runs identically (`flutter run -d linux`); only the platform glue differs (see [Platform differences](#platform-differences-android-vs-desktop-linux)).
+
+## Components
+
+### Import pipeline (`lib/import/`)
+
+- `track_parser.dart` — the `TrackParser` interface plus content-sniffing helpers. A parser declares a `format` label, an `accepts(bytes)` predicate used for content sniffing independent of file extensions, and a `parse(bytes)` method. Also defines `TrackParseException` (parse failure) and `UnsupportedTrackException` (expected skips, e.g. FIT monitoring files — not an error).
+- `track_importer.dart` (`TrackImporter`) — orchestrates detection and parsing; all sources flow through this one path.
+- `gpx_parser.dart`, `tcx_parser.dart` — XML-based formats via `package:xml`.
+- `kmz_parser.dart` — ZIP container via `package:archive`, then the same KML coordinate path (plain KML is handled alongside KMZ — OpenTracks exports both).
+- `fit_parser.dart` — pure-Dart FIT decoder for the MVP: compressed timestamps, chained headers, developer fields, little/big endianness and truncation tolerance.
+
+### Storage (`lib/storage/track_store.dart`)
+
+`TrackStore` persists each imported track as a file under `tracks/` and records metadata in `index.json`. Track identity is a 64-bit FNV-1a content hash (the id); the deduplication rules it implements are specified in [SPEC.md](SPEC.md).
+
+### Host channel (`lib/host_channel.dart`)
+
+Platform channels to the Android host:
+
+- `unvisited/host` — storage root, cache dir, SAF folder picks and share-intent temp files. There is no native side on desktop; callers fall back to platform defaults when methods are missing.
+- `unvisited/shared` — fires as soon as the Dart side is listening for shared tracks.
+
+### UI (`lib/ui/`)
+
+`app_model.dart` (state), `map_page.dart` (map + import buttons), `track_colors.dart`, plus `tile_source.dart` for OSM tiles with built-in caching.
+
+## Import sources
+
+- **OpenTracks** (first-class) — its data lives in an app-private directory; exports arrive as KMZ/KML/GPX written to a user-chosen directory or via the share sheet. Import via SAF folder access or share intent only.
+- **Garmin** (Instinct gen 1 and Instinct 3 test devices) — FIT files in `GARMIN/Activity/` (older firmware: `GARMIN/ACTIVITY/` — folder picking scans recursively, extensions are matched case-insensitively). On Android, USB-OTG + SAF DocumentsProvider can browse the watch storage directly.
+- **Strava** — GPX exports or the bulk archive (original FIT files).
+
+Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX.
+
+## Data flow
+
+```
+source bytes                       parse                     persist             render
+┌──────────────────────────┐   ┌────────────────────┐   ┌──────────────┐   ┌─────────┐
+│ SAF folder scan (Android)│   │                    │   │              │   │         │
+│ Share intent (Android)  │──▶│  TrackImporter     │──▶│  TrackStore  │──▶│ MapPage │
+│ File/folder picker      │   │  sniff → Parser →  │   │ hash id →   │   │ flutter │
+│ (desktop + Android)     │   │  TrackData        │   │ tracks/ +   │   │ _map +  │
+└──────────────────────────┘   └────────────────────┘   │ index.json  │   │ OSM     │
+                                                        └──────────────┘   └─────────┘
+```
+
+## Platform differences (Android vs desktop Linux)
+
+| | Android | Desktop Linux |
+|---|---|---|
+| Storage root | host channel's `filesDir` | `$XDG_DATA_HOME/unvisited` (default `~/.local/share/unvisited`) |
+| File import | file picker + share intents + SAF | `file_picker` (file and directory) via platform portals |
+| Folder import | SAF: `unvisited/host` `pickDirectory` + `listTrackFiles` | `file_picker` `getDirectoryPath`, listed with `dart:io` |
+
+Why SAF folder import is Android-only: `file_picker`'s `getDirectoryPath` returns a raw path under the picked tree URI, which `dart:io` cannot list under scoped storage — no storage permission can grant that on Android 13+, and USB-OTG providers never had real paths. The host channel scans the tree via `DocumentsContract`, stages supported files in a cache dir, and Dart consumes the staged bytes through the unified pipeline. Share intents (OpenTracks share sheet) do not exist on desktop — imports go through the file/folder pickers there.
+
+## Technology choices
+
+- **No database package** — JSON index by design (see [SPEC.md](SPEC.md)).
+- **Pure Dart FIT parsing** for the MVP — decided to keep the prototype toolchain-light. The long-term preference for a Rust core behind Dart FFI (flutter_rust_bridge) still stands and should sit behind the same `TrackParser` interface when that work happens.
+- **`package:xml`** for GPX/TCX, **`package:archive`** for KMZ.
+- **`flutter_map` + `latlong2`** for the map; **`file_picker`** for desktop and Android file/directory picking.

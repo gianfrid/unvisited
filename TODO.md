@@ -4,3 +4,4 @@
 - find and set app icon for both Linux and Android
 - import button could be unified
 - top buttons are not enough clear of what they do
+- [x] split AGENTS.md into README.md (user-facing), ARCHITECTURE.md (design) and SPEC.md (rules/conventions); AGENTS.md is now an agent meta-document. All content preserved, no duplication.
