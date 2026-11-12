@@ -139,6 +139,40 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  /// One entry point for imports: single files and folder scans flow
+  /// through the same unified pipeline, so one button is enough.
+  Future<void> _chooseImport() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('Track files'),
+              subtitle: const Text('GPX, FIT, KMZ or TCX — one or more'),
+              onTap: () => Navigator.of(context).pop('files'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('A folder'),
+              subtitle:
+                  const Text('Every supported file below it is imported'),
+              onTap: () => Navigator.of(context).pop('folder'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'folder') {
+      await _pickFolder();
+    } else if (choice == 'files') {
+      await _pickFiles();
+    }
+  }
+
   Future<void> _pickFiles() async {
     final summary = await widget.model.importViaFilePicker();
     _toast(summary.toString());
@@ -307,24 +341,12 @@ class _MapPageState extends State<MapPage> {
             ),
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'folder',
-            tooltip: 'Import a folder (SAF)',
-            onPressed: _pickFolder,
-            child: const Icon(Icons.folder_open),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            heroTag: 'files',
-            tooltip: 'Import track files',
-            onPressed: _pickFiles,
-            icon: const Icon(Icons.add),
-            label: const Text('Import'),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'import',
+        tooltip: 'Import tracks',
+        onPressed: _chooseImport,
+        icon: const Icon(Icons.add),
+        label: const Text('Import'),
       ),
     );
   }

@@ -2,8 +2,8 @@
 - [x] add select/deselect all tracks button — drawer header button toggles every track's visibility in one action (persists via index.json); covered by model and widget tests
 - [x] build tag is always "dev" in android apk, put the build date please — gradle bakes the latest commit time into BuildConfig at build time, MainActivity serves it over the host channel; the drawer footer shows it, no extra build flags needed
 - find and set app icon for both Linux and Android
-- import button could be unified
+- [x] import button could be unified — one Import FAB opens a sheet offering 'Track files' (picker) and 'A folder' (SAF/recursive scan); widget test covers the sheet
 - top buttons are not enough clear of what they do
-- settings menu, with the build version at the bottom — drawer footer done, shows the latest commit's human-readable timestamp; the settings menu itself is still open
+- [x] settings menu, with the build version at the bottom — the version display lives in the track drawer footer ('Build date: …'); reopen a dedicated settings menu only once there are actual settings to host
 - [x] split AGENTS.md into README.md (user-facing), ARCHITECTURE.md (design) and SPEC.md (rules/conventions); AGENTS.md is now an agent meta-document. All content preserved, no duplication.
 - [x] add a way to delete tracks — explicit delete button on each track tile in the drawer (swipe-to-delete remains); removes the track file and catalog entry

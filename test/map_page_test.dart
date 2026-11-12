@@ -180,6 +180,38 @@ void main() {
     expect(find.text('Build date: 2026-11-12 17:41'), findsOneWidget);
   });
 
+  testWidgets('one Import button offers files and folder import',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+
+    await tester.tap(find.byTooltip('Import tracks'));
+    // Fixed pumps, not pumpAndSettle: the tile-backed map never settles.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Track files'), findsOneWidget);
+    expect(find.text('A folder'), findsOneWidget);
+  });
+
   testWidgets('startup fit goes through the guarded initialCameraFit',
       (tester) async {
     final root = createRoot();
