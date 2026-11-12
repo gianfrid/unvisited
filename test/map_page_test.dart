@@ -84,4 +84,36 @@ void main() {
     await tester.pump();
     expect(model.allTracksVisible, isTrue);
   });
+
+  testWidgets('track tile delete button removes the track',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    expect(model.tracks.length, 1);
+
+    await tester.pumpWidget(
+      MaterialApp(home: MapPage(model: model, cacheDir: cache)),
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    final tracksDir = Directory('${root.path}${Platform.pathSeparator}tracks');
+    expect(tracksDir.listSync().length, 1);
+
+    await tester.tap(find.byTooltip('Delete track'));
+    await tester.pump();
+
+    expect(model.tracks, isEmpty);
+    expect(tracksDir.listSync(), isEmpty);
+  });
 }

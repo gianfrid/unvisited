@@ -410,9 +410,26 @@ class _TrackTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        secondary: Text(
-          date.replaceAll(' · ', ''),
-          style: Theme.of(context).textTheme.bodySmall,
+        secondary: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                date.replaceAll(' · ', ''),
+                style: Theme.of(context).textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // Discoverable next to the swipe-to-delete on touch devices;
+            // there is no swipe equivalent with a mouse on the desktop.
+            IconButton(
+              tooltip: 'Delete track',
+              icon: const Icon(Icons.delete_outline),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => model.delete(track),
+            ),
+          ],
         ),
         dense: true,
       ),
