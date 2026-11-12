@@ -79,6 +79,18 @@ class AppModel extends ChangeNotifier {
   bool _mergeTracks = true;
   bool get mergeTracks => _mergeTracks;
 
+  /// Whether every track draws in [singleTrackColor] instead of its
+  /// per-track palette color. Off by default; on, roads covered vs not
+  /// covered by any track read at a glance instead of per-track noise.
+  bool _uniformTrackColor = false;
+  bool get uniformTrackColor => _uniformTrackColor;
+
+  /// Toggles between uniform and per-track track coloring.
+  void toggleUniformTrackColor() {
+    _uniformTrackColor = !_uniformTrackColor;
+    notifyListeners();
+  }
+
   /// All points from all visible tracks, merged and deduplicated.
   /// Only valid when [mergeTracks] is true.
   List<LatLng>? _mergedPointsCache;
@@ -258,7 +270,11 @@ class AppModel extends ChangeNotifier {
         _pointCache[t.id] = pts;
       }
       if (pts.isEmpty) continue;
-      out.add(MapTrack(meta: t, points: pts, color: colorForTrack(t.id)));
+      out.add(MapTrack(
+        meta: t,
+        points: pts,
+        color: _uniformTrackColor ? singleTrackColor : colorForTrack(t.id),
+      ));
     }
     return out;
   }

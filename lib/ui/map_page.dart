@@ -9,6 +9,7 @@ import '../storage/track_store.dart';
 import '../tile_source.dart';
 import '../build_version.dart';
 import 'app_model.dart';
+import 'track_colors.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage(
@@ -158,7 +159,7 @@ class _MapPageState extends State<MapPage> {
       for (final segment in segments)
         Polyline(
           points: segment,
-          color: Colors.blue,
+          color: singleTrackColor,
           strokeWidth: 3.5,
           borderStrokeWidth: 1,
           borderColor: Colors.black38,
@@ -206,6 +207,15 @@ class _MapPageState extends State<MapPage> {
             tooltip: 'Toggle merged/split tracks',
             icon: Icon(widget.model.mergeTracks ? Icons.layers : Icons.layers_clear),
             onPressed: widget.model.toggleMergeTracks,
+          ),
+          IconButton(
+            tooltip: widget.model.uniformTrackColor
+                ? 'Per-track colors'
+                : 'Same color for all tracks',
+            icon: Icon(widget.model.uniformTrackColor
+                ? Icons.format_color_fill
+                : Icons.palette),
+            onPressed: widget.model.toggleUniformTrackColor,
           ),
           IconButton(
             tooltip: 'Fit tracks',
