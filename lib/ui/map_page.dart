@@ -141,6 +141,22 @@ class _MapPageState extends State<MapPage> {
         title: const Text('Unvisited'),
         actions: [
           IconButton(
+            tooltip: 'Zoom in (Ctrl+ or Ctrl+MouseWheel)',
+            icon: const Icon(Icons.zoom_in),
+            onPressed: () {
+              final camera = _mapController.camera;
+              _mapController.move(camera.center, camera.zoom + 1);
+            },
+          ),
+          IconButton(
+            tooltip: 'Zoom out (Ctrl- or Ctrl+MouseWheel)',
+            icon: const Icon(Icons.zoom_out),
+            onPressed: () {
+              final camera = _mapController.camera;
+              _mapController.move(camera.center, camera.zoom - 1);
+            },
+          ),
+          IconButton(
             tooltip: 'Toggle merged/split tracks',
             icon: Icon(widget.model.mergeTracks ? Icons.layers : Icons.layers_clear),
             onPressed: widget.model.toggleMergeTracks,
@@ -165,9 +181,17 @@ class _MapPageState extends State<MapPage> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
+            options: MapOptions(
               initialCenter: _startCenter,
               initialZoom: _startZoom,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all,
+                keyboardOptions: KeyboardOptions(
+                  enableArrowKeysPanning: true,
+                  enableRFZooming: true, // Enable R/F keys for zoom
+                  autofocus: true,
+                ),
+              ),
             ),
             children: [
               TileLayer(
