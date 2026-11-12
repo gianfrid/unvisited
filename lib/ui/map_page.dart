@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -6,9 +8,10 @@ import '../storage/track_store.dart';
 import 'app_model.dart';
 
 class MapPage extends StatefulWidget {
-  const MapPage({super.key, required this.model});
+  const MapPage({super.key, required this.model, required this.cacheDir});
 
   final AppModel model;
+  final Directory cacheDir;
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -27,6 +30,11 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     _seenImportEpoch = widget.model.importEpoch;
+    // Initialize the built-in caching provider with our cache directory
+    BuiltInMapCachingProvider.getOrCreateInstance(
+      cacheDirectory: widget.cacheDir.path,
+      maxCacheSize: 500 * 1024 * 1024, // 500 MB cache limit
+    );
     widget.model.addListener(_onModelChanged);
   }
 
@@ -195,9 +203,11 @@ class _MapPageState extends State<MapPage> {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'dev.unvisited.app',
+                tileProvider: NetworkTileProvider(
+                  headers: const {'User-Agent': 'dev.unvisited.app'},
+                ),
               ),
               PolylineLayer(
                 polylines: widget.model.mergeTracks
