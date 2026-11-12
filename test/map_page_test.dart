@@ -162,22 +162,85 @@ void main() {
     expect(tracksDir.listSync(), isEmpty);
   });
 
-  testWidgets('track drawer footer shows the build version', (tester) async {
+  testWidgets('settings sheet shows the About card and delete-all entry',
+      (tester) async {
     final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
     final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    expect(model.tracks.length, 1);
 
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        endDrawer: TrackDrawer(
-          model: model,
-          versionFuture: Future.value('2026-11-12 17:41'),
-        ),
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 17:41'),
       ),
     ));
-    tester.state<ScaffoldState>(find.byType(Scaffold)).openEndDrawer();
-    await tester.pumpAndSettle();
 
+    await tester.tap(find.byTooltip('Settings'));
+    // Fixed pumps, not pumpAndSettle: the tile-backed map never settles.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Settings'), findsOneWidget);
+    // Once in the app bar title, once in the About card.
+    expect(find.text('Unvisited'), findsNWidgets(2));
     expect(find.text('Build date: 2026-11-12 17:41'), findsOneWidget);
+    expect(find.text('Delete all tracks'), findsOneWidget);
+    expect(find.text('1 stored'), findsOneWidget);
+  });
+
+  testWidgets('settings delete-all removes files only after confirmation',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    model.store.importBytes(fixture('eiffel_ride.tcx'));
+    final tracksDir = Directory('${root.path}${Platform.pathSeparator}tracks');
+    expect(tracksDir.listSync().length, 2);
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Delete all tracks'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Confirmation prompt first: nothing is deleted until confirmed.
+    expect(find.text('Delete all tracks?'), findsOneWidget);
+    expect(tracksDir.listSync().length, 2);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(model.tracks, isEmpty);
+    expect(tracksDir.listSync(), isEmpty);
   });
 
   testWidgets('one Import button offers files and folder import',

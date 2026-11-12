@@ -173,6 +173,17 @@ class TrackStore {
     _saveIndex();
   }
 
+  /// Removes every cataloged track: all files under `tracks/` and all
+  /// index entries. The empty index is persisted immediately.
+  Future<void> clearAll() async {
+    for (final t in _tracks) {
+      final f = File(_pathFor(t));
+      if (f.existsSync()) f.deleteSync();
+    }
+    _tracks.clear();
+    _saveIndex();
+  }
+
   Future<void> setVisible(StoredTrack track, bool visible) async {
     track.visible = visible;
     _saveIndex();

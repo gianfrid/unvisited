@@ -178,6 +178,42 @@ class _MapPageState extends State<MapPage> {
     _toast(summary.toString());
   }
 
+  /// Settings sheet: About card (build date) and the delete-all action.
+  Future<void> _openSettings() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => _SettingsSheet(
+        trackCount: widget.model.tracks.length,
+        versionFuture: widget.versionFuture,
+      ),
+    );
+    if (!mounted || choice != 'deleteAll') return;
+    final trackCount = widget.model.tracks.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete all tracks?'),
+        content: Text(
+          'This permanently deletes all $trackCount stored tracks. '
+          'The original files you imported them from are not touched.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    await widget.model.deleteAll();
+    _toast('All tracks deleted');
+  }
+
   void _toast(String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context)
@@ -259,12 +295,16 @@ class _MapPageState extends State<MapPage> {
               onPressed: () => Scaffold.of(context).openEndDrawer(),
             ),
           ),
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _openSettings,
+          ),
         ],
       ),
       endDrawerEnableOpenDragGesture: false,
       endDrawer: TrackDrawer(
         model: widget.model,
-        versionFuture: widget.versionFuture,
       ),
       body: Stack(
         children: [
@@ -393,14 +433,82 @@ class _BadgeIcon extends StatelessWidget {
   Widget build(BuildContext context) => const Icon(Icons.stacked_line_chart);
 }
 
-class TrackDrawer extends StatelessWidget {
-  const TrackDrawer({super.key, required this.model, this.versionFuture});
+/// Bottom sheet hosting all app settings: an About card (build date) and
+/// the destructive delete-all entry.
+class _SettingsSheet extends StatelessWidget {
+  const _SettingsSheet({required this.trackCount, this.versionFuture});
 
-  final AppModel model;
+  final int trackCount;
 
-  /// Build version to show in the footer; tests inject a fixed value so
+  /// Build time shown in the About card; tests inject a fixed value so
   /// no git process is spawned from a widget test.
   final Future<String>? versionFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Settings',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Unvisited',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Local-only track viewer for GPX, FIT, KMZ '
+                      'and TCX files on OpenStreetMap.'),
+                  const SizedBox(height: 8),
+                  FutureBuilder<String>(
+                    future: versionFuture ?? AppVersion.resolve(),
+                    builder: (context, snapshot) => Text(
+                      'Build date: ${snapshot.data ?? '...'}',
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Theme.of(context).hintColor),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_forever_outlined),
+            title: const Text('Delete all tracks'),
+            subtitle: Text(
+              trackCount == 0 ? 'No stored tracks' : '$trackCount stored',
+            ),
+            enabled: trackCount > 0,
+            onTap: () => Navigator.of(context).pop('deleteAll'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class TrackDrawer extends StatelessWidget {
+  const TrackDrawer({super.key, required this.model});
+
+  final AppModel model;
 
   @override
   Widget build(BuildContext context) {
@@ -453,19 +561,6 @@ class TrackDrawer extends StatelessWidget {
                     ),
             ),
             const Divider(height: 1),
-            FutureBuilder<String>(
-              future: versionFuture ?? AppVersion.resolve(),
-              builder: (context, snapshot) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(
-                  'Build date: ${snapshot.data ?? '...'}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .bodySmall
-                      ?.copyWith(color: Theme.of(context).hintColor),
-                ),
-              ),
-            ),
           ],
         ),
       ),

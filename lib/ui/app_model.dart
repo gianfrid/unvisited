@@ -287,6 +287,14 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Deletes every stored track (files and catalog entries).
+  Future<void> deleteAll() async {
+    await store.clearAll();
+    _pointCache.clear();
+    _mergedPointsCache = null;
+    notifyListeners();
+  }
+
   /// All points of all visible tracks, for fitting the camera.
   List<LatLng> get allVisiblePoints =>
       visibleTracks.expand((t) => t.points).toList();

@@ -106,6 +106,26 @@ void main() {
         reason: 'distinct tracks must start out in distinct colors');
   });
 
+  test('deleteAll removes every track, file and index entry', () async {
+    await model.importFromDirectory(stageDir().path);
+    expect(model.tracks.length, 2);
+    final tracksDir = Directory('${root.path}${Platform.pathSeparator}tracks');
+    expect(tracksDir.listSync().length, 2);
+    expect(model.mergedPoints, isNotEmpty);
+
+    await model.deleteAll();
+
+    expect(model.tracks, isEmpty);
+    expect(model.visibleTracks, isEmpty);
+    expect(model.mergedPoints, isEmpty);
+    expect(tracksDir.listSync(), isEmpty);
+
+    // Must survive a store reload: the persisted index is empty too.
+    final reloaded = TrackStore(root);
+    await reloaded.load();
+    expect(reloaded.tracks, isEmpty);
+  });
+
   group('bulk visibility', () {
     test('allTracksVisible is true for an empty catalog', () {
       expect(model.allTracksVisible, isTrue);

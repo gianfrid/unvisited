@@ -1,9 +1,10 @@
+- [x] add a settings menu where I could delete all tracks (ask confirmation), move the build built time there in a About card — gear button in the header opens a Settings sheet with an About card (build date moved out of the drawer footer) and a delete-all entry that asks for confirmation; covered by model and widget tests
 - [ ] application should start with the current position, or the last saved before getting an updated one from the system. manage permissions for different systems and add a button to center on current position
 - [x] add select/deselect all tracks button — drawer header button toggles every track's visibility in one action (persists via index.json); covered by model and widget tests
 - [x] build tag is always "dev" in android apk, put the build date please — gradle bakes the latest commit time into BuildConfig at build time, MainActivity serves it over the host channel; the drawer footer shows it, no extra build flags needed
 - find and set app icon for both Linux and Android
 - [x] import button could be unified — one Import FAB opens a sheet offering 'Track files' (picker) and 'A folder' (SAF/recursive scan); widget test covers the sheet
 - top buttons are not enough clear of what they do
-- [x] settings menu, with the build version at the bottom — the version display lives in the track drawer footer ('Build date: …'); reopen a dedicated settings menu only once there are actual settings to host
+- [x] settings menu, with the build version at the bottom — superseded: the build date now lives in the Settings sheet's About card (see the settings/delete-all entry above)
 - [x] split AGENTS.md into README.md (user-facing), ARCHITECTURE.md (design) and SPEC.md (rules/conventions); AGENTS.md is now an agent meta-document. All content preserved, no duplication.
 - [x] add a way to delete tracks — explicit delete button on each track tile in the drawer (swipe-to-delete remains); removes the track file and catalog entry
