@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
+import 'package:unvisited/ui/track_colors.dart';
 
 import 'helpers.dart';
 
@@ -104,6 +105,33 @@ void main() {
     final reloaded = TrackStore(root);
     await reloaded.load();
     expect(reloaded.tracks, isEmpty);
+  });
+
+  test('appearance settings persist and survive deleteAll', () async {
+    // Out-of-the-box look: green overlay, slider on the right.
+    expect(model.trackTint, 'green');
+    expect(model.zoomSliderSide, 'right');
+
+    await model.setTrackTint('blue');
+    await model.setZoomSliderSide('left');
+    expect(model.trackTint, 'blue');
+    expect(model.zoomSliderSide, 'left');
+
+    final reloaded = AppModel(TrackStore(root));
+    await reloaded.load();
+    expect(reloaded.trackTint, 'blue');
+    expect(reloaded.zoomSliderSide, 'left');
+
+    // A preference is not track data: the settings survive deleteAll.
+    await reloaded.deleteAll();
+    final after = AppModel(TrackStore(root));
+    await after.load();
+    expect(after.trackTint, 'blue');
+    expect(after.zoomSliderSide, 'left');
+
+    // Unknown keys (hand-edited index, older app) never break rendering:
+    // the tint falls back to the default color.
+    expect(exploredAreaColor('not-a-tint'), exploredAreaColor('green'));
   });
 
   test('saved position persists in the index and survives a reload',

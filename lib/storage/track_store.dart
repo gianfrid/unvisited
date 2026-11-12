@@ -117,11 +117,32 @@ class TrackStore {
   double? get lastPositionLat => _lastPositionLat;
   double? get lastPositionLon => _lastPositionLon;
 
+  /// Overlay tint key (see the exploration tints in the UI). Persisted in
+  /// the index like the last position: a user preference, not track data.
+  String _tint = 'green';
+  String get tint => _tint;
+
+  /// Which screen edge the zoom slider hugs: 'left' or 'right'.
+  String _zoomSliderSide = 'right';
+  String get zoomSliderSide => _zoomSliderSide;
+
   /// Saves the device position as the map start center for next launch.
   /// This survives [clearAll]: it is the user's location, not track data.
   Future<void> savePosition(double lat, double lon) async {
     _lastPositionLat = lat;
     _lastPositionLon = lon;
+    _saveIndex();
+  }
+
+  /// Saves the exploration overlay tint. Survives [clearAll] like the
+  /// position: a preference, not catalog content.
+  Future<void> saveTint(String tint) async {
+    _tint = tint;
+    _saveIndex();
+  }
+
+  Future<void> saveZoomSliderSide(String side) async {
+    _zoomSliderSide = side;
     _saveIndex();
   }
 
@@ -136,6 +157,12 @@ class TrackStore {
       if (pos is Map) {
         _lastPositionLat = (pos['lat'] as num?)?.toDouble();
         _lastPositionLon = (pos['lon'] as num?)?.toDouble();
+      }
+      final settings = map['settings'];
+      if (settings is Map) {
+        _tint = (settings['tint'] as String?) ?? _tint;
+        _zoomSliderSide =
+            (settings['zoomSliderSide'] as String?) ?? _zoomSliderSide;
       }
       final list = map['tracks'] as List;
       for (final raw in list) {
@@ -237,6 +264,7 @@ class TrackStore {
       'tracks': _tracks.map((t) => t.toMap()).toList(),
       if (_lastPositionLat != null && _lastPositionLon != null)
         'lastPosition': {'lat': _lastPositionLat, 'lon': _lastPositionLon},
+      'settings': {'tint': _tint, 'zoomSliderSide': _zoomSliderSide},
     };
     root.createSync(recursive: true);
     indexFile.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(map),

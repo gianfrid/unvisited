@@ -284,6 +284,25 @@ class AppModel extends ChangeNotifier {
       ? null
       : LatLng(store.lastPositionLat!, store.lastPositionLon!);
 
+  /// Exploration overlay tint key (see the tints in track_colors.dart),
+  /// persisted in the index.
+  String get trackTint => store.tint;
+
+  /// Which screen edge the zoom slider hugs: 'left' or 'right'.
+  String get zoomSliderSide => store.zoomSliderSide;
+
+  /// Saves the exploration overlay tint; the map repaints via the usual
+  /// notification.
+  Future<void> setTrackTint(String key) async {
+    await store.saveTint(key);
+    notifyListeners();
+  }
+
+  Future<void> setZoomSliderSide(String side) async {
+    await store.saveZoomSliderSide(side);
+    notifyListeners();
+  }
+
   /// The device's current position, or null when it cannot be obtained
   /// (permission denied, location services off, or no plugin — desktop
   /// Linux has no geolocator implementation).

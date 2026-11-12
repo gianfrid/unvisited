@@ -236,6 +236,7 @@ class _MapPageState extends State<MapPage> {
     final choice = await showModalBottomSheet<String>(
       context: context,
       builder: (context) => _SettingsSheet(
+        model: widget.model,
         trackCount: widget.model.tracks.length,
         versionFuture: widget.versionFuture,
       ),
@@ -287,11 +288,12 @@ class _MapPageState extends State<MapPage> {
       );
     }
     final radius = unlockRadiusForCell(_fogCellSize);
+    final tint = exploredAreaColor(widget.model.trackTint);
     return [
       for (final c in _fogCenters)
         CircleMarker(
           point: c,
-          color: exploredAreaColor,
+          color: tint,
           radius: radius,
           useRadiusInMeter: true,
         ),
@@ -384,25 +386,35 @@ class _MapPageState extends State<MapPage> {
               ),
             ],
           ),
-          // Lateral zoom control: replaces the header's zoom buttons.
+          // Lateral zoom control on the configured edge (settings).
           // SafeArea: without an app bar the window insets (notches,
-          // status bar) are the map's top edge now.
+          // status bar) are the map's top edge now. On the right it starts
+          // below the toolbar band, so the two never overlap on narrow
+          // screens (the toolbar is centered and can reach the edges).
           Positioned(
             top: 0,
-            left: 12,
+            left: widget.model.zoomSliderSide == 'left' ? 12 : null,
+            right: widget.model.zoomSliderSide == 'left' ? null : 12,
             child: SafeArea(
-              minimum: const EdgeInsets.only(top: 16),
+              minimum: EdgeInsets.only(
+                  top: widget.model.zoomSliderSide == 'left'
+                      ? 16
+                      : kToolbarHeight + 24),
               child: _ZoomSlider(controller: _mapController),
             ),
           ),
-          // Compact floating toolbar instead of a full-width app bar.
+          // Compact floating toolbar, centered across the top instead of
+          // a full-width app bar.
           Positioned(
             top: 0,
-            right: 12,
+            left: 0,
+            right: 0,
             child: SafeArea(
               minimum: const EdgeInsets.only(top: 8),
-              child: _FloatingToolbar(
-                children: [
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: _FloatingToolbar(
+                  children: [
                   _HeaderAction(
                     icon: const Icon(Icons.add),
                     label: 'Import',
@@ -435,7 +447,8 @@ class _MapPageState extends State<MapPage> {
                     tooltip: 'Settings',
                     onTap: _openSettings,
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -683,15 +696,6 @@ class _ZoomSliderState extends State<_ZoomSlider> {
                           BoxShadow(blurRadius: 4, color: Colors.black38),
                         ],
                       ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        '${_zoom.round()}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: scheme.onPrimary,
-                        ),
-                      ),
                     ),
                   ),
                 ],
@@ -733,11 +737,15 @@ class _ZoomStepButton extends StatelessWidget {
   }
 }
 
-/// Bottom sheet hosting all app settings: an About card (build date) and
-/// the destructive delete-all entry.
+/// Bottom sheet hosting all app settings: an About card (build date), the
+/// map appearance controls and the destructive delete-all entry.
 class _SettingsSheet extends StatelessWidget {
-  const _SettingsSheet({required this.trackCount, this.versionFuture});
+  const _SettingsSheet(
+      {required this.model,
+      required this.trackCount,
+      this.versionFuture});
 
+  final AppModel model;
   final int trackCount;
 
   /// Build time shown in the About card; tests inject a fixed value so
@@ -747,9 +755,10 @@ class _SettingsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           Padding(
             padding: const EdgeInsets.all(16),
             child: Align(
@@ -789,6 +798,59 @@ class _SettingsSheet extends StatelessWidget {
               ),
             ),
           ),
+          // The appearance controls read the live model, so changes show on
+          // the map behind the sheet immediately.
+          AnimatedBuilder(
+            animation: model,
+            builder: (context, _) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const ListTile(
+                  dense: true,
+                  title: Text('Track color'),
+                  subtitle: Text('Tint of the unlocked areas on the map'),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      for (final entry in explorationTints.entries)
+                        _TintSwatch(
+                          tintKey: entry.key,
+                          color: entry.value,
+                          selected: model.trackTint == entry.key,
+                          onTap: () => model.setTrackTint(entry.key),
+                        ),
+                    ],
+                  ),
+                ),
+                ListTile(
+                  dense: true,
+                  title: const Text('Zoom slider'),
+                  subtitle:
+                      const Text('Screen edge the zoom slider sits on'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'left', label: Text('Left')),
+                      ButtonSegment(value: 'right', label: Text('Right')),
+                    ],
+                    selected: {model.zoomSliderSide},
+                    onSelectionChanged: (selection) =>
+                        model.setZoomSliderSide(selection.first),
+                  ),
+                ),
+              ],
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined),
             title: const Text('Delete all tracks'),
@@ -799,7 +861,64 @@ class _SettingsSheet extends StatelessWidget {
             onTap: () => Navigator.of(context).pop('deleteAll'),
           ),
           const SizedBox(height: 8),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One selectable tint swatch for the exploration overlay, labeled by
+/// its tooltip; the selection ring marks the persisted tint.
+class _TintSwatch extends StatelessWidget {
+  const _TintSwatch({
+    required this.tintKey,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String tintKey;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = tintKey[0].toUpperCase() + tintKey.substring(1);
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: Tooltip(
+        message: name,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: ShapeDecoration(
+              shape: CircleBorder(
+                side: BorderSide(
+                  width: 2,
+                  color: selected ? scheme.primary : Colors.transparent,
+                ),
+              ),
+            ),
+            child: Center(
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  // The overlay tint is translucent by design; the swatch
+                  // shows the solid color it is made from.
+                  color: color.withValues(alpha: 1),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

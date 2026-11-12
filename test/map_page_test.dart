@@ -227,7 +227,8 @@ void main() {
     expect(circles, isNotEmpty);
     expect(circles.every((c) => c.useRadiusInMeter), isTrue,
         reason: 'unlock circles are sized as real ground areas');
-    expect(circles.every((c) => c.color == exploredAreaColor), isTrue,
+    expect(circles.every((c) => c.color == exploredAreaColor('green')),
+        isTrue,
         reason: 'one uniform exploration tint, map stays legible');
     expect(circles.every((c) => c.radius >= unlockRadiusMeters - 1e-9),
         isTrue,
@@ -302,6 +303,8 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(find.text('Delete all tracks'));
+    await tester.pump();
     await tester.tap(find.text('Delete all tracks'));
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -461,28 +464,126 @@ void main() {
     ));
     await tester.pump();
 
-    // The thumb shows the live zoom level (Berlin start camera: 13).
-    expect(find.text('13'), findsOneWidget);
+    double cameraZoom() => tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .mapController!
+        .camera
+        .zoom;
+    expect(cameraZoom(), 13.0); // Berlin start camera
 
     await tester.tap(find.byTooltip('Zoom in'));
     await tester.pump();
-    expect(find.text('14'), findsOneWidget);
+    expect(cameraZoom(), 14.0);
 
     await tester.tap(find.byTooltip('Zoom out'));
     await tester.pump();
-    expect(find.text('13'), findsOneWidget);
+    expect(cameraZoom(), 13.0);
 
     // Full upward rail drag tops out at the OSM zoom limit, downward at
     // the world floor; the clamps also apply to the header's old buttons.
     await tester.drag(
         find.byKey(const ValueKey('zoom-track')), const Offset(0, -400));
     await tester.pump();
-    expect(find.text('19'), findsOneWidget);
+    expect(cameraZoom(), 19.0);
 
     await tester.drag(
         find.byKey(const ValueKey('zoom-track')), const Offset(0, 400));
     await tester.pump();
-    expect(find.text('3'), findsOneWidget);
+    expect(cameraZoom(), 3.0);
+  });
+
+  testWidgets('zoom slider hugs the configured screen edge', (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    await TrackStore(root).saveZoomSliderSide('left');
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    expect(model.zoomSliderSide, 'left');
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    Positioned sliderOf() => tester.widget<Positioned>(
+        find.ancestor(
+            of: find.byKey(const ValueKey('zoom-track')),
+            matching: find.byType(Positioned)));
+
+    expect(sliderOf().left, 12, reason: 'setting says left edge');
+    expect(sliderOf().right, isNull);
+
+    await model.setZoomSliderSide('right');
+    await tester.pump();
+    expect(sliderOf().left, isNull);
+    expect(sliderOf().right, 12, reason: 'setting says right edge');
+  });
+
+  testWidgets('settings sheet picks the track color and slider side',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Both appearance controls are present with their choices visible.
+    expect(find.text('Track color'), findsOneWidget);
+    expect(find.text('Zoom slider'), findsOneWidget);
+    expect(find.text('Left'), findsOneWidget);
+    expect(find.text('Right'), findsOneWidget);
+
+    // A tint pick recolors the map behind the still-open sheet and
+    // persists in the index.
+    await tester.tap(find.byTooltip('Blue'));
+    await tester.pump();
+    final circles =
+        tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
+    expect(circles.every((c) => c.color == exploredAreaColor('blue')),
+        isTrue);
+    expect(model.trackTint, 'blue');
+    final reloaded = TrackStore(root);
+    await reloaded.load();
+    expect(reloaded.tint, 'blue');
+
+    // So does a slider edge switch (scrolled into view first — the sheet
+    // grew past one screen when it gained the appearance controls).
+    await tester.ensureVisible(find.text('Left'));
+    await tester.pump();
+    await tester.tap(find.text('Left'));
+    await tester.pump();
+    expect(model.zoomSliderSide, 'left');
   });
 
   testWidgets('startup fit goes through the guarded initialCameraFit',
