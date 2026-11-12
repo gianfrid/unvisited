@@ -41,12 +41,34 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     _seenImportEpoch = widget.model.importEpoch;
-    // Initialize the built-in caching provider with our cache directory
-    BuiltInMapCachingProvider.getOrCreateInstance(
-      cacheDirectory: widget.cacheDir.path,
-      maxCacheSize: 500 * 1024 * 1024, // 500 MB cache limit
-    );
+    // Probe-and-create the cache directory up front. The caching provider
+    // sets itself up in a fire-and-forget block: if directory creation
+    // fails there, its initializer never completes and every tile read
+    // awaits it forever - tiles hang with no error and the map stays
+    // grey (fresh install included). When the directory cannot be
+    // created, disable caching so tiles still load, network-only.
+    _cacheUsable = _probeCacheDirectory(widget.cacheDir);
+    if (_cacheUsable) {
+      BuiltInMapCachingProvider.getOrCreateInstance(
+        cacheDirectory: widget.cacheDir.path,
+        maxCacheSize: 500 * 1024 * 1024, // 500 MB cache limit
+      );
+    }
     widget.model.addListener(_onModelChanged);
+  }
+
+  late final bool _cacheUsable;
+
+  /// Creates the provider's `fm_cache` subdirectory synchronously; fails
+  /// fast when the location is unwritable.
+  static bool _probeCacheDirectory(Directory cacheDir) {
+    try {
+      Directory('${cacheDir.path}${Platform.pathSeparator}fm_cache')
+          .createSync(recursive: true);
+      return true;
+    } on FileSystemException {
+      return false;
+    }
   }
 
   @override
@@ -236,6 +258,11 @@ class _MapPageState extends State<MapPage> {
                   // requests also populate the offline tile cache, which is
                   // this app's point - so we let them finish.
                   abortObsoleteRequests: false,
+                  // Network-only tiles when the cache directory is unusable;
+                  // null keeps the built-in caching provider.
+                  cachingProvider: _cacheUsable
+                      ? null
+                      : const DisabledMapCachingProvider(),
                 ),
               ),
               PolylineLayer(

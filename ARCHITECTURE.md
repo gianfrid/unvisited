@@ -63,6 +63,7 @@ source bytes                       parse                     persist            
 | | Android | Desktop Linux |
 |---|---|---|
 | Storage root | host channel's `filesDir` | `$XDG_DATA_HOME/unvisited` (default `~/.local/share/unvisited`) |
+| Tile cache root | host channel's `cacheDir` (wired to the built-in caching provider; an unwritable directory disables caching in favour of network-only tiles) | `$XDG_CACHE_HOME/unvisited` (default `~/.cache/unvisited`) |
 | File import | file picker + share intents + SAF | `file_picker` (file and directory) via platform portals |
 | Folder import | SAF: `unvisited/host` `pickDirectory` + `listTrackFiles` | `file_picker` `getDirectoryPath`, listed with `dart:io` |
 

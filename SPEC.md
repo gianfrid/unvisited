@@ -66,9 +66,10 @@ Desktop Linux (no phone needed):
 Android:
 
 1. `flutter run -d <device>` (or install the debug APK).
-2. Share a KMZ/GPX from OpenTracks via the share sheet; verify it imports.
-3. Pick a folder via SAF (e.g. a watch mounted over USB-OTG); verify every supported file below it imports.
-4. Repeat the dedup and persistence checks.
+2. Fresh install first: before importing anything, verify the OSM map tiles render on the start view (no grey map).
+3. Share a KMZ/GPX from OpenTracks via the share sheet; verify it imports.
+4. Pick a folder via SAF (e.g. a watch mounted over USB-OTG); verify every supported file below it imports.
+5. Repeat the dedup and persistence checks.
 
 ## Acceptance criteria
 

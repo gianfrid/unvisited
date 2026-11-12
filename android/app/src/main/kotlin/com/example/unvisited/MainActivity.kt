@@ -283,6 +283,11 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getFilesDir" -> result.success(filesDir.absolutePath)
+                    // Dart resolves a writable cache root for the map tile
+                    // cache; without this method it falls back to a relative
+                    // path that is unwritable on Android, which stalls every
+                    // tile load.
+                    "getCacheDir" -> result.success(cacheDir.absolutePath)
                     "pickDirectory" -> pickSafDirectory(result)
                     "listTrackFiles" ->
                         listSafTrackFiles(call.arguments?.toString() ?: "", result)

@@ -45,6 +45,51 @@ void main() {
     // constructor inserts a default User-Agent into it and throws.
     expect(tester.takeException(), isNull);
     expect(find.byType(FlutterMap), findsOneWidget);
+    // Writable cache dir: the built-in caching provider stays in charge.
+    final provider =
+        (tester.widget<TileLayer>(find.byType(TileLayer)).tileProvider
+                as NetworkTileProvider)
+            .cachingProvider;
+    expect(provider, isNull);
+  });
+
+  testWidgets('unusable cache dir disables caching instead of stalling tiles',
+      (tester) async {
+    final root = createRoot();
+    // A path whose parent chain runs through a plain file is not creatable
+    // - deterministic on every filesystem, no permission tricks needed.
+    final blocker = File(
+        '${Directory.systemTemp.createTempSync('unvisited-blocker').path}'
+        '${Platform.pathSeparator}blocker')
+      ..createSync();
+    addTearDown(() {
+      try {
+        blocker.parent.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: Directory('${blocker.path}${Platform.pathSeparator}cache'),
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    // Tiles must degrade to network-only, not to a provider whose tile
+    // reads can never complete.
+    final provider =
+        (tester.widget<TileLayer>(find.byType(TileLayer)).tileProvider
+                as NetworkTileProvider)
+            .cachingProvider;
+    expect(provider, isA<DisabledMapCachingProvider>());
   });
 
   testWidgets('drawer select/deselect all button toggles every track',
