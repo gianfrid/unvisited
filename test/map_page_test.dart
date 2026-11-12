@@ -116,4 +116,22 @@ void main() {
     expect(model.tracks, isEmpty);
     expect(tracksDir.listSync(), isEmpty);
   });
+
+  testWidgets('track drawer footer shows the build version', (tester) async {
+    final root = createRoot();
+    final model = AppModel(TrackStore(root));
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        endDrawer: TrackDrawer(
+          model: model,
+          versionFuture: Future.value('abc1234'),
+        ),
+      ),
+    ));
+    tester.state<ScaffoldState>(find.byType(Scaffold)).openEndDrawer();
+    await tester.pumpAndSettle();
+
+    expect(find.text('version abc1234'), findsOneWidget);
+  });
 }

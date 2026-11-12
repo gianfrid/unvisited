@@ -68,4 +68,6 @@ flutter test       # all parsing/storage logic is pure Dart, covered by unit tes
 flutter analyze
 ```
 
+- Desktop dev runs resolve the build version (shown at the bottom of the track drawer) from the git checkout automatically. To bake it into an APK build: `flutter build apk --dart-define=GIT_COMMIT=$(git rev-parse --short HEAD)`.
+
 Details on the testing strategy, conventions and the rules that govern changes are in [SPEC.md](SPEC.md); how the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).

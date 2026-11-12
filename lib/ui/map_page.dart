@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../storage/track_store.dart';
 import '../tile_source.dart';
+import '../build_version.dart';
 import 'app_model.dart';
 
 class MapPage extends StatefulWidget {
@@ -316,9 +317,13 @@ class _BadgeIcon extends StatelessWidget {
 }
 
 class TrackDrawer extends StatelessWidget {
-  const TrackDrawer({super.key, required this.model});
+  const TrackDrawer({super.key, required this.model, this.versionFuture});
 
   final AppModel model;
+
+  /// Build version to show in the footer; tests inject a fixed value so
+  /// no git process is spawned from a widget test.
+  final Future<String>? versionFuture;
 
   @override
   Widget build(BuildContext context) {
@@ -369,6 +374,20 @@ class TrackDrawer extends StatelessWidget {
                         );
                       },
                     ),
+            ),
+            const Divider(height: 1),
+            FutureBuilder<String>(
+              future: versionFuture ?? AppVersion.resolve(),
+              builder: (context, snapshot) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'version ${snapshot.data ?? '...'}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: Theme.of(context).hintColor),
+                ),
+              ),
             ),
           ],
         ),
