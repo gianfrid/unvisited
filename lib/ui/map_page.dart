@@ -340,6 +340,18 @@ class TrackDrawer extends StatelessWidget {
                     '${model.tracks.length}',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  IconButton(
+                    tooltip: model.allTracksVisible
+                        ? 'Deselect all tracks'
+                        : 'Select all tracks',
+                    icon: Icon(model.allTracksVisible
+                        ? Icons.deselect
+                        : Icons.done_all),
+                    onPressed: model.tracks.isEmpty
+                        ? null
+                        : () =>
+                            model.setAllVisible(!model.allTracksVisible),
+                  ),
                 ],
               ),
             ),

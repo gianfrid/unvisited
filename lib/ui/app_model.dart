@@ -268,6 +268,15 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True when every track is visible (an empty catalog counts as true).
+  bool get allTracksVisible => store.tracks.every((t) => t.visible);
+
+  /// Selects or deselects every track at once.
+  Future<void> setAllVisible(bool visible) async {
+    await store.setAllVisible(visible);
+    notifyListeners();
+  }
+
   Future<void> delete(StoredTrack t) async {
     await store.remove(t);
     _pointCache.remove(t.id);

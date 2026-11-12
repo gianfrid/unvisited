@@ -98,6 +98,44 @@ void main() {
     expect(model.mergeTracks, true);
   });
 
+  group('bulk visibility', () {
+    test('allTracksVisible is true for an empty catalog', () {
+      expect(model.allTracksVisible, isTrue);
+    });
+
+    test('setAllVisible(false) hides every track and persists', () async {
+      await model.importFromDirectory(stageDir().path);
+      expect(model.tracks.length, 2);
+      expect(model.allTracksVisible, isTrue);
+
+      var notifications = 0;
+      model.addListener(() => notifications++);
+      await model.setAllVisible(false);
+
+      expect(notifications, greaterThan(0));
+      expect(model.allTracksVisible, isFalse);
+      expect(model.visibleTracks, isEmpty);
+      expect(model.mergedPoints, isEmpty);
+
+      // Must survive a store reload (visibility lives in index.json).
+      final reloaded = TrackStore(root);
+      await reloaded.load();
+      expect(reloaded.tracks.length, 2);
+      expect(reloaded.tracks.every((t) => !t.visible), isTrue);
+    });
+
+    test('setAllVisible(true) re-shows only the hidden tracks', () async {
+      await model.importFromDirectory(stageDir().path);
+      await model.toggleVisible(model.tracks.first);
+
+      await model.setAllVisible(true);
+
+      expect(model.allTracksVisible, isTrue);
+      expect(model.visibleTracks.length, 2);
+      expect(model.mergedPoints, isNotEmpty);
+    });
+  });
+
   test('mergedPoints returns deduplicated points from all visible tracks',
       () async {
     await model.importFromDirectory(stageDir().path);

@@ -7,10 +7,11 @@ import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/map_page.dart';
 
+import 'helpers.dart';
+
 void main() {
-  testWidgets('MapPage builds its tile layer without crashing', (tester) async {
+  Directory createRoot() {
     final root = Directory.systemTemp.createTempSync('unvisited-store');
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
     addTearDown(() {
       try {
         root.deleteSync(recursive: true);
@@ -18,6 +19,14 @@ void main() {
         // Best-effort cleanup; a failure to delete temp dirs must not
         // fail the test.
       }
+    });
+    return root;
+  }
+
+  testWidgets('MapPage builds its tile layer without crashing', (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
       try {
         cache.deleteSync(recursive: true);
       } on Exception {
@@ -36,5 +45,43 @@ void main() {
     // constructor inserts a default User-Agent into it and throws.
     expect(tester.takeException(), isNull);
     expect(find.byType(FlutterMap), findsOneWidget);
+  });
+
+  testWidgets('drawer select/deselect all button toggles every track',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // See above.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    // Imports go through the synchronous store path: directory scanning is
+    // real async I/O, which a widget test's fake async zone never completes.
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    model.store.importBytes(fixture('eiffel_ride.tcx'));
+    expect(model.tracks.length, 2);
+
+    await tester.pumpWidget(
+      MaterialApp(home: MapPage(model: model, cacheDir: cache)),
+    );
+    await tester.tap(find.byTooltip('Tracks'));
+    // Fixed pumps, not pumpAndSettle: the tile-backed map keeps scheduling
+    // frames, so the tree never settles inside the test environment.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(model.allTracksVisible, isTrue);
+    await tester.tap(find.byTooltip('Deselect all tracks'));
+    await tester.pump();
+    expect(model.allTracksVisible, isFalse);
+    expect(find.byTooltip('Select all tracks'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Select all tracks'));
+    await tester.pump();
+    expect(model.allTracksVisible, isTrue);
   });
 }

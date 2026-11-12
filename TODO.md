@@ -1,5 +1,5 @@
 - [ ] application should start with the current position, or the last saved before getting an updated one from the system. manage permissions for different systems and add a button to center on current position
-- add select/deselect all tracks button
+- [x] add select/deselect all tracks button — drawer header button toggles every track's visibility in one action (persists via index.json); covered by model and widget tests
 - add button to toggle all tracks to the same color (to clearly see what has been visited or not)
 - find and set app icon for both Linux and Android
 - import button could be unified

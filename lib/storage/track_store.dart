@@ -178,6 +178,14 @@ class TrackStore {
     _saveIndex();
   }
 
+  /// Sets visibility for every cataloged track in one index write.
+  Future<void> setAllVisible(bool visible) async {
+    for (final t in _tracks) {
+      t.visible = visible;
+    }
+    _saveIndex();
+  }
+
   /// Loads and parses the stored file for [track] (for map drawing).
   TrackData? loadPoints(StoredTrack track) {
     final f = File(_pathFor(track));
