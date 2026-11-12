@@ -6,6 +6,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../storage/track_store.dart';
+import '../tile_source.dart';
 import 'app_model.dart';
 
 class MapPage extends StatefulWidget {
@@ -208,13 +209,21 @@ class _MapPageState extends State<MapPage> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'dev.unvisited.app',
+                urlTemplate: tileUrlTemplate,
+                userAgentPackageName: tileUserAgent,
                 tileProvider: NetworkTileProvider(
                   // Not const: TileLayer's constructor inserts a default
                   // User-Agent into the provider's headers when absent, and
                   // that mutation throws on a const (unmodifiable) map.
-                  headers: {'User-Agent': 'dev.unvisited.app'},
+                  headers: {HttpHeaders.userAgentHeader: tileUserAgent},
+                  // flutter_map aborts in-flight requests for tiles that
+                  // leave the visible range (the startup camera refit and
+                  // panning prune tiles constantly). With aborts on, every
+                  // request kept dying before the first byte arrived and the
+                  // map stayed gray although the server was fine. Completed
+                  // requests also populate the offline tile cache, which is
+                  // this app's point - so we let them finish.
+                  abortObsoleteRequests: false,
                 ),
               ),
               PolylineLayer(
