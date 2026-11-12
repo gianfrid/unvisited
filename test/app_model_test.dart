@@ -126,6 +126,33 @@ void main() {
     expect(reloaded.tracks, isEmpty);
   });
 
+  test('saved position persists in the index and survives a reload',
+      () async {
+    expect(model.savedPosition, isNull, reason: 'never obtained a fix yet');
+
+    // Saving happens inside currentPosition(); a fix is injected by
+    // writing through the store directly (the plugin is absent in tests).
+    await model.store.savePosition(48.8584, 2.2945);
+    expect(model.savedPosition!.latitude, closeTo(48.8584, 1e-9));
+    expect(model.savedPosition!.longitude, closeTo(2.2945, 1e-9));
+
+    final reloaded = AppModel(TrackStore(root));
+    await reloaded.load();
+    expect(reloaded.savedPosition!.latitude, closeTo(48.8584, 1e-9));
+
+    // The position is the user's location, not track data: clearing the
+    // catalog must keep it.
+    await reloaded.deleteAll();
+    expect(reloaded.savedPosition, isNotNull);
+  });
+
+  test('currentPosition degrades to null without prompting', () async {
+    // No geolocator host implementation exists in the test environment:
+    // the silent (startup) path must simply yield no position.
+    expect(await model.currentPosition(prompt: false), isNull);
+    expect(await model.currentPosition(prompt: true), isNull);
+  });
+
   group('bulk visibility', () {
     test('allTracksVisible is true for an empty catalog', () {
       expect(model.allTracksVisible, isTrue);

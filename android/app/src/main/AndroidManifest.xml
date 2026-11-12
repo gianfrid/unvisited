@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- OSM map tiles are the app's only network use. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Device location: only used after the user taps the locate button
+         (the runtime prompt); the map also silently refines to a live fix
+         when permission is already granted. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="unvisited"
         android:name="${applicationName}"

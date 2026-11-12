@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../host_channel.dart';
@@ -293,6 +294,46 @@ class AppModel extends ChangeNotifier {
     _pointCache.clear();
     _mergedPointsCache = null;
     notifyListeners();
+  }
+
+  /// The map's start center: the position saved by the previous run, or
+  /// null when the app has never obtained a fix.
+  LatLng? get savedPosition => store.lastPositionLat == null
+      ? null
+      : LatLng(store.lastPositionLat!, store.lastPositionLon!);
+
+  /// The device's current position, or null when it cannot be obtained
+  /// (permission denied, location services off, or no plugin — desktop
+  /// Linux has no geolocator implementation).
+  ///
+  /// [prompt] decides whether the user may be asked for permission. The
+  /// startup path must never prompt; the locate button prompts freely.
+  Future<LatLng?> currentPosition({required bool prompt}) async {
+    LocationPermission permission;
+    try {
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        if (!prompt) return null;
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return null;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.best),
+      );
+      final pos = LatLng(position.latitude, position.longitude);
+      await store.savePosition(pos.latitude, pos.longitude);
+      notifyListeners();
+      return pos;
+    } catch (_) {
+      // No host implementation (desktop/test runs), a broken plugin
+      // setup, or a decode error: degrade to "no location". Error and
+      // Exception alike — the platform channel surfaces both.
+      return null;
+    }
   }
 
   /// All points of all visible tracks, for fitting the camera.

@@ -39,6 +39,7 @@ dependencies:
   file_picker: ^13.3.3
   xml: ^7.1.0
   archive: ^4.6.0
+  geolocator: ^14.0.1
 
 dev_dependencies:
   flutter_test:

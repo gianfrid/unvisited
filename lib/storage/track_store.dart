@@ -110,13 +110,34 @@ class TrackStore {
   /// All cataloged tracks, insertion ordered.
   List<StoredTrack> get tracks => List.unmodifiable(_tracks);
 
+  /// Last known device position (map start center), restored from the index.
+  /// Null when the app has never obtained a fix.
+  double? _lastPositionLat;
+  double? _lastPositionLon;
+  double? get lastPositionLat => _lastPositionLat;
+  double? get lastPositionLon => _lastPositionLon;
+
+  /// Saves the device position as the map start center for next launch.
+  /// This survives [clearAll]: it is the user's location, not track data.
+  Future<void> savePosition(double lat, double lon) async {
+    _lastPositionLat = lat;
+    _lastPositionLon = lon;
+    _saveIndex();
+  }
+
   Future<void> load() async {
     _tracks.clear();
     final f = indexFile;
     if (!f.existsSync()) return;
     try {
       final decoded = jsonDecode(f.readAsStringSync());
-      final list = (decoded as Map)['tracks'] as List;
+      final map = decoded as Map;
+      final pos = map['lastPosition'];
+      if (pos is Map) {
+        _lastPositionLat = (pos['lat'] as num?)?.toDouble();
+        _lastPositionLon = (pos['lon'] as num?)?.toDouble();
+      }
+      final list = map['tracks'] as List;
       for (final raw in list) {
         try {
           final t = StoredTrack.fromMap(Map<String, dynamic>.from(raw as Map));
@@ -214,6 +235,8 @@ class TrackStore {
     final map = {
       'version': 1,
       'tracks': _tracks.map((t) => t.toMap()).toList(),
+      if (_lastPositionLat != null && _lastPositionLon != null)
+        'lastPosition': {'lat': _lastPositionLat, 'lon': _lastPositionLon},
     };
     root.createSync(recursive: true);
     indexFile.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(map),

@@ -33,7 +33,7 @@ class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   int _seenImportEpoch = 0;
 
-  static const _startCenter = LatLng(52.5200, 13.4050); // Berlin
+  static const _berlinCenter = LatLng(52.5200, 13.4050);
   static const _startZoom = 13.0;
   static const _fitPadding = EdgeInsets.all(64);
 
@@ -55,6 +55,11 @@ class _MapPageState extends State<MapPage> {
       );
     }
     widget.model.addListener(_onModelChanged);
+    // Start silently with the last saved position (never prompting) and
+    // let a live fix override it once it arrives. With no location
+    // permission granted yet this is a no-op — only the locate button
+    // asks.
+    _silentPositionUpdate();
   }
 
   late final bool _cacheUsable;
@@ -137,6 +142,31 @@ class _MapPageState extends State<MapPage> {
     } on PlatformException catch (e) {
       _toast('Folder import failed: ${e.message ?? e.code}');
     }
+  }
+
+  /// Centers the map on the last saved position while waiting for a live
+  /// fix (and moves onto the fix once it arrives). Never asks for
+  /// permission; when none is granted or the platform has no location
+  /// support (desktop Linux) this leaves the camera where it was.
+  Future<void> _silentPositionUpdate() async {
+    final pos = await widget.model.currentPosition(prompt: false);
+    if (!mounted || pos == null) return;
+    // Saved tracks fit the whole catalog; only the empty map follows the
+    // position so imports and track fits are never fought over.
+    if (widget.model.visibleTracks.isNotEmpty) return;
+    _mapController.move(pos, _mapController.camera.zoom);
+  }
+
+  /// Locate button: prompts for permission when none has been granted
+  /// and centers the map on the current position.
+  Future<void> _locate() async {
+    final pos = await widget.model.currentPosition(prompt: true);
+    if (!mounted) return;
+    if (pos == null) {
+      _toast('Location unavailable — permission denied or no fix');
+      return;
+    }
+    _mapController.move(pos, _mapController.camera.zoom);
   }
 
   /// One entry point for imports: single files and folder scans flow
@@ -288,6 +318,11 @@ class _MapPageState extends State<MapPage> {
             icon: const Icon(Icons.zoom_out_map),
             onPressed: mapTracks.isEmpty ? null : _fitTracks,
           ),
+          IconButton(
+            tooltip: 'Center on current position',
+            icon: const Icon(Icons.my_location),
+            onPressed: _locate,
+          ),
           Builder(
             builder: (context) => IconButton(
               tooltip: 'Tracks',
@@ -311,7 +346,9 @@ class _MapPageState extends State<MapPage> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _startCenter,
+              // Start at the last saved position (Berlin as the very first
+              // run fallback); a live fix refines this after startup.
+              initialCenter: widget.model.savedPosition ?? _berlinCenter,
               initialZoom: _startZoom,
               // Startup fit for saved tracks goes through the engine path:
               // flutter_map applies it only once the camera has a real

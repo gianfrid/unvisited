@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/storage/track_store.dart';
@@ -273,6 +274,94 @@ void main() {
 
     expect(find.text('Track files'), findsOneWidget);
     expect(find.text('A folder'), findsOneWidget);
+  });
+
+  testWidgets('map starts at the last saved position when there are no tracks',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.store.savePosition(-33.8688, 151.2093);
+    await model.load();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final center = tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .options
+        .initialCenter;
+    expect(center.latitude, closeTo(-33.8688, 1e-9));
+    expect(center.longitude, closeTo(151.2093, 1e-9));
+  });
+
+  testWidgets('locate button reports when no position is available',
+      (tester) async {
+    // The header now packs many actions; give the bar enough width that
+    // the locate button is actually tappable.
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    // The real geolocator channel has no host implementation in the test
+    // environment (it would hang the fake async zone); mock a permanent
+    // permission denial instead.
+    const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
+    TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(geolocatorChannel, (call) async {
+      switch (call.method) {
+        case 'checkPermission':
+        case 'requestPermission':
+          return 1; // LocationPermission.deniedForever
+      }
+      fail('unexpected geolocator method ${call.method}');
+    });
+    addTearDown(() {
+      TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(geolocatorChannel, null);
+    });
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The test host has no location plugin: the graceful toast, not a
+    // crash.
+    expect(find.textContaining('Location unavailable'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('startup fit goes through the guarded initialCameraFit',
