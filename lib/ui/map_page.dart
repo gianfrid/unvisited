@@ -18,7 +18,8 @@ class MapPage extends StatefulWidget {
       {super.key,
       required this.model,
       required this.cacheDir,
-      this.versionFuture});
+      this.versionFuture,
+      this.locationSupported = false});
 
   final AppModel model;
   final Directory cacheDir;
@@ -26,6 +27,11 @@ class MapPage extends StatefulWidget {
   /// Build time shown in the drawer footer; tests inject a fixed value so
   /// no git process is spawned from a widget test.
   final Future<String>? versionFuture;
+
+  /// Whether the platform has a location plugin. When false (desktop
+  /// Linux) the Locate action is not offered at all — it could only ever
+  /// fail there.
+  final bool locationSupported;
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -44,6 +50,10 @@ class _MapPageState extends State<MapPage> {
   static const _berlinCenter = LatLng(52.5200, 13.4050);
   static const _startZoom = 13.0;
   static const _fitPadding = EdgeInsets.all(64);
+
+  /// Zoom the locate action settles on: close enough to see the streets
+  /// around the user, far enough to keep their bearings.
+  static const _locateZoom = 16.0;
 
   @override
   void initState() {
@@ -180,16 +190,38 @@ class _MapPageState extends State<MapPage> {
     _mapController.move(pos, _mapController.camera.zoom);
   }
 
-  /// Locate button: prompts for permission when none has been granted
-  /// and centers the map on the current position.
+  /// Locate button: prompts for permission when none has been granted,
+  /// then centers the map on the current position and zooms in. When no
+  /// position can be had, says why — a silent no-op reads as a broken
+  /// button.
   Future<void> _locate() async {
-    final pos = await widget.model.currentPosition(prompt: true);
+    final result = await widget.model.locate(prompt: true);
     if (!mounted) return;
+    final pos = result.position;
     if (pos == null) {
-      _toast('Location unavailable — permission denied or no fix');
+      _toast(_locateFailureMessage(result.failure));
       return;
     }
-    _mapController.move(pos, _mapController.camera.zoom);
+    // Never zoom out: a user already closer than the locate zoom keeps
+    // their detail level.
+    final zoom = _mapController.camera.zoom < _locateZoom
+        ? _locateZoom
+        : _mapController.camera.zoom;
+    _mapController.move(pos, zoom);
+  }
+
+  static String _locateFailureMessage(LocationFailure? failure) {
+    switch (failure) {
+      case LocationFailure.serviceDisabled:
+        return 'Location services are off — turn them on to locate';
+      case LocationFailure.permissionDenied:
+        return 'No location permission — Locate needs it to center the map';
+      case LocationFailure.permissionBlocked:
+        return 'Location permission is blocked — allow it in system settings';
+      case LocationFailure.unavailable:
+      case null:
+        return 'Location unavailable — permission denied or no fix';
+    }
   }
 
   /// One entry point for imports: single files and folder scans flow
@@ -427,12 +459,16 @@ class _MapPageState extends State<MapPage> {
                     tooltip: 'Fit tracks',
                     onTap: mapTracks.isEmpty ? null : _fitTracks,
                   ),
-                  _HeaderAction(
-                    icon: const Icon(Icons.my_location),
-                    label: 'Locate',
-                    tooltip: 'Center on current position',
-                    onTap: _locate,
-                  ),
+                  // Omitted entirely where the platform cannot deliver a
+                  // position (desktop Linux): a button that always fails
+                  // is worse than none.
+                  if (widget.locationSupported)
+                    _HeaderAction(
+                      icon: const Icon(Icons.my_location),
+                      label: 'Locate',
+                      tooltip: 'Center on current position',
+                      onTap: _locate,
+                    ),
                   Builder(
                     builder: (context) => _HeaderAction(
                       icon: const _BadgeIcon(),

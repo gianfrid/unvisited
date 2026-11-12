@@ -185,6 +185,7 @@ void main() {
         model: model,
         cacheDir: cache,
         versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
       ),
     ));
 
@@ -386,29 +387,57 @@ void main() {
     expect(center.longitude, closeTo(151.2093, 1e-9));
   });
 
-  testWidgets('locate button reports when no position is available',
-      (tester) async {
-    // The header now packs many actions; give the bar enough width that
-    // the locate button is actually tappable.
-    await tester.binding.setSurfaceSize(const Size(1200, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    // The real geolocator channel has no host implementation in the test
-    // environment (it would hang the fake async zone); mock a permanent
-    // permission denial instead.
+  /// Mocks the geolocator host channel. [permission] is the int the plugin
+  /// uses for a LocationPermission; [position] is returned by
+  /// getCurrentPosition (null means the fix times out).
+  void mockGeolocator(
+    WidgetTester tester, {
+    required int permission,
+    bool serviceEnabled = true,
+    Map<String, double>? position,
+  }) {
     const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
-    TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(geolocatorChannel, (call) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        geolocatorChannel, (call) async {
       switch (call.method) {
+        case 'isLocationServiceEnabled':
+          return serviceEnabled;
         case 'checkPermission':
         case 'requestPermission':
-          return 1; // LocationPermission.deniedForever
+          return permission;
+        case 'getCurrentPosition':
+          if (position == null) {
+            throw PlatformException(code: 'TIMEOUT', message: 'no fix');
+          }
+          return <String, dynamic>{
+            'latitude': position['lat'],
+            'longitude': position['lon'],
+            'timestamp': 0,
+            'accuracy': 5.0,
+            'altitude': 0.0,
+            'altitudeAccuracy': 0.0,
+            'heading': 0.0,
+            'speed': 0.0,
+            'speedAccuracy': 0.0,
+            'floor': null,
+            'isMocked': false,
+          };
       }
       fail('unexpected geolocator method ${call.method}');
     });
     addTearDown(() {
-      TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+      tester.binding.defaultBinaryMessenger
           .setMockMethodCallHandler(geolocatorChannel, null);
     });
+  }
+
+  /// Pumps a MapPage wide enough that every header action is tappable.
+  Future<AppModel> pumpMap(
+    WidgetTester tester, {
+    bool locationSupported = true,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final root = createRoot();
     final cache = Directory.systemTemp.createTempSync('unvisited-cache');
     addTearDown(() {
@@ -421,21 +450,88 @@ void main() {
     });
     final model = AppModel(TrackStore(root));
     await model.load();
-
     await tester.pumpWidget(MaterialApp(
       home: MapPage(
         model: model,
         cacheDir: cache,
         versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: locationSupported,
       ),
     ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    return model;
+  }
+
+  testWidgets('locate is not offered where the platform has no location '
+      'plugin', (tester) async {
+    // Desktop Linux: geolocator has no implementation, so the action could
+    // only ever fail.
+    await pumpMap(tester, locationSupported: false);
+
+    expect(find.text('Locate'), findsNothing);
+    expect(find.byTooltip('Center on current position'), findsNothing);
+    // The rest of the toolbar is untouched.
+    expect(find.text('Import'), findsOneWidget);
+    expect(find.text('Fit'), findsOneWidget);
+  });
+
+  testWidgets('locate centers on the fix and zooms in', (tester) async {
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 48.8584,
+      'lon': 2.2945,
+    });
+    final model = await pumpMap(tester);
 
     await tester.tap(find.byTooltip('Center on current position'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // The test host has no location plugin: the graceful toast, not a
-    // crash.
+    final camera = tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .mapController!
+        .camera;
+    expect(camera.center.latitude, closeTo(48.8584, 1e-6));
+    expect(camera.center.longitude, closeTo(2.2945, 1e-6));
+    // Start zoom is 13; locating settles closer in.
+    expect(camera.zoom, greaterThan(13.0));
+    // The fix is saved for the next start.
+    expect(model.savedPosition!.latitude, closeTo(48.8584, 1e-6));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('locate reports a blocked permission', (tester) async {
+    mockGeolocator(tester, permission: 1); // deniedForever
+    await pumpMap(tester);
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('Location permission is blocked'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('locate reports location services being off', (tester) async {
+    mockGeolocator(tester, permission: 3, serviceEnabled: false);
+    await pumpMap(tester);
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('Location services are off'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('locate reports when no fix arrives', (tester) async {
+    mockGeolocator(tester, permission: 3); // granted, but the fix times out
+    await pumpMap(tester);
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
     expect(find.textContaining('Location unavailable'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

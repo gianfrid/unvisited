@@ -9,6 +9,32 @@ import 'package:latlong2/latlong.dart';
 import '../host_channel.dart';
 import '../storage/track_store.dart';
 
+/// Why a position could not be obtained; each maps to a message that
+/// tells the user what to do about it.
+enum LocationFailure {
+  /// No location plugin on this platform (desktop Linux, test runs).
+  unavailable,
+
+  /// Location services (GPS) are switched off system-wide.
+  serviceDisabled,
+
+  /// The user dismissed the permission prompt.
+  permissionDenied,
+
+  /// Permission was permanently refused; only system settings can undo it.
+  permissionBlocked,
+}
+
+/// Outcome of a locate attempt: a position, or the reason there is none.
+class LocateResult {
+  const LocateResult.success(LatLng this.position) : failure = null;
+
+  const LocateResult.failure(LocationFailure this.failure) : position = null;
+
+  final LatLng? position;
+  final LocationFailure? failure;
+}
+
 /// A track prepared for drawing on the map.
 class MapTrack {
   const MapTrack({required this.meta, required this.points});
@@ -304,22 +330,39 @@ class AppModel extends ChangeNotifier {
   }
 
   /// The device's current position, or null when it cannot be obtained
-  /// (permission denied, location services off, or no plugin — desktop
-  /// Linux has no geolocator implementation).
+  /// (permission denied, location services off, or no plugin). Use
+  /// [locate] when the caller needs to tell the user *why* it failed.
   ///
   /// [prompt] decides whether the user may be asked for permission. The
   /// startup path must never prompt; the locate button prompts freely.
   Future<LatLng?> currentPosition({required bool prompt}) async {
-    LocationPermission permission;
+    final result = await locate(prompt: prompt);
+    return result.position;
+  }
+
+  /// The device's current position together with the reason it is
+  /// missing, so the UI can say what to fix instead of a generic
+  /// "unavailable".
+  ///
+  /// [prompt] decides whether the user may be asked for permission. The
+  /// startup path must never prompt; the locate button prompts freely.
+  Future<LocateResult> locate({required bool prompt}) async {
     try {
-      permission = await Geolocator.checkPermission();
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return const LocateResult.failure(LocationFailure.serviceDisabled);
+      }
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        if (!prompt) return null;
+        if (!prompt) {
+          return const LocateResult.failure(LocationFailure.permissionDenied);
+        }
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        return null;
+      if (permission == LocationPermission.deniedForever) {
+        return const LocateResult.failure(LocationFailure.permissionBlocked);
+      }
+      if (permission == LocationPermission.denied) {
+        return const LocateResult.failure(LocationFailure.permissionDenied);
       }
       final position = await Geolocator.getCurrentPosition(
         locationSettings:
@@ -328,12 +371,12 @@ class AppModel extends ChangeNotifier {
       final pos = LatLng(position.latitude, position.longitude);
       await store.savePosition(pos.latitude, pos.longitude);
       notifyListeners();
-      return pos;
+      return LocateResult.success(pos);
     } catch (_) {
       // No host implementation (desktop/test runs), a broken plugin
       // setup, or a decode error: degrade to "no location". Error and
       // Exception alike — the platform channel surfaces both.
-      return null;
+      return const LocateResult.failure(LocationFailure.unavailable);
     }
   }
 

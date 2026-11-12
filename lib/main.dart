@@ -22,8 +22,15 @@ Future<void> main() async {
     model: model,
     cacheDir: cacheDir,
     versionFuture: AppVersion.resolve(hostBuildTime: hostBuildTime),
+    locationSupported: locationSupportAvailable,
   ));
 }
+
+/// Whether this platform has a location plugin at all. geolocator ships
+/// Android/iOS/macOS/Windows/web implementations; desktop Linux has none,
+/// so a location fix can never be obtained there and the locate action is
+/// pointless. Read once at startup: the platform cannot change at runtime.
+final bool locationSupportAvailable = !Platform.isLinux;
 
 /// App-private storage. Android: the host channel's `filesDir`.
 /// Desktop (Linux dev runs): the XDG data home. Last resort: a local folder.
@@ -98,11 +105,16 @@ class UnvisitedApp extends StatelessWidget {
       {super.key,
       required this.model,
       required this.cacheDir,
-      this.versionFuture});
+      this.versionFuture,
+      this.locationSupported = false});
 
   final AppModel model;
   final Directory cacheDir;
   final Future<String>? versionFuture;
+
+  /// Whether the platform can deliver a position at all; see
+  /// [locationSupportAvailable].
+  final bool locationSupported;
 
   @override
   Widget build(BuildContext context) {
@@ -116,6 +128,7 @@ class UnvisitedApp extends StatelessWidget {
         model: model,
         cacheDir: cacheDir,
         versionFuture: versionFuture,
+        locationSupported: locationSupported,
       ),
     );
   }
