@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="115" fill="#1E2A3A"/>
+
+  <!-- Map panel -->
+  <rect x="56" y="56" width="400" height="400" rx="40" fill="#2E3F55"/>
+
+  <!-- === "U" — amber dotted road === -->
+  <!-- Underline track -->
+  <path d="M 148 148 L 148 300
+           C 148 360, 200 392, 256 392
+           C 312 392, 364 360, 364 300
+           L 364 148"
+        fill="none" stroke="#3D5470" stroke-width="20" stroke-linecap="round"/>
+  <!-- Dotted road -->
+  <path d="M 148 148 L 148 300
+           C 148 360, 200 392, 256 392
+           C 312 392, 364 360, 364 300
+           L 364 148"
+        fill="none" stroke="#F2B441" stroke-width="7"
+        stroke-linecap="round" stroke-dasharray="0.1 18"/>
+  <!-- Endpoint markers -->
+  <circle cx="148" cy="148" r="8" fill="#F2B441"/>
+  <circle cx="364" cy="148" r="8" fill="#F2B441"/>
+
+  <!-- === "V" — teal dotted road === -->
+  <!-- Underline track -->
+  <path d="M 168 200 L 256 372 L 344 200"
+        fill="none" stroke="#3D5470" stroke-width="20" stroke-linecap="round"/>
+  <!-- Dotted road -->
+  <path d="M 168 200 L 256 372 L 344 200"
+        fill="none" stroke="#3FC1B0" stroke-width="7"
+        stroke-linecap="round" stroke-dasharray="0.1 18"/>
+  <!-- Endpoint markers -->
+  <circle cx="168" cy="200" r="8" fill="#3FC1B0"/>
+  <circle cx="344" cy="200" r="8" fill="#3FC1B0"/>
+  <circle cx="256" cy="372" r="8" fill="#3FC1B0"/>
+</svg>

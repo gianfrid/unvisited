@@ -28,5 +28,5 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md).
 2. Keep changes minimal and vertical: one slice, with its tests, per change.
 3. Always commit successful changes once a slice is verified (analyze clean, tests pass). Do not leave completed work sitting uncommitted; leave the working tree clean at the end of a task.
 4. Before finishing a slice, run `flutter analyze` (must be clean) and `flutter test`.
-5. When a binary fixture must change, regenerate it with `dart tool/make_fixtures.dart` and commit it — never hand-edit binary fixtures.
+5. When a binary fixture must change, regenerate it with `dart tool/make_fixtures.dart` and commit it — never hand-edit binary fixtures. The same goes for app icons: edit `assets/icon/icon.svg`, then run `dart tool/make_icons.dart`.
 6. Preserve the separation of concerns in these docs when updating them: user-facing info in README.md, design in ARCHITECTURE.md, rules and conventions in SPEC.md.

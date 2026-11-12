@@ -121,6 +121,13 @@ install(CODE "
 install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}" COMPONENT Runtime)
 
+# Window/taskbar icon: the runner loads it from data/icons/ next to the
+# bundle (see my_application.cc). Generated from assets/icon/icon.svg by
+# `dart tool/make_icons.dart`.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/icons/"
+  DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/icons"
+  COMPONENT Runtime)
+
 # Install the AOT library on non-Debug builds only.
 if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

@@ -30,7 +30,9 @@ lib/
 ├── storage/track_store.dart # app-private track files + index.json catalog
 └── ui/                      # app_model, map_page, track_colors
 test/                        # unit tests, fixtures in test/fixtures/
+assets/icon/icon.svg         # the app icon (source of truth)
 tool/make_fixtures.dart      # regenerates binary FIT/KMZ fixtures
+tool/make_icons.dart         # regenerates every platform icon from the SVG
 ```
 
 ## Quick test on desktop Linux (no phone needed)

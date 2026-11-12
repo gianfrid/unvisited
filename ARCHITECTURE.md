@@ -47,6 +47,16 @@ Location comes from the `geolocator` plugin via `AppModel.locate`, which reports
 
 The startup camera fit for saved tracks goes through `MapOptions.initialCameraFit`, which flutter_map applies only once the camera has a real size. At launch the window surface may not be ready — the first layouts can have zero-sized constraints — and a manual `MapController.fitCamera` against them degenerates the camera, leaving the tile layer rendering nothing until the user pans (grey map at startup). The manual fits that remain (import refits, the fit button) wait for a non-zero camera size before applying.
 
+### App icons
+
+`assets/icon/icon.svg` is the single source of truth; `tool/make_icons.dart` rasterizes it into every platform's icons and the generated files are committed:
+
+- **Android** — legacy `ic_launcher.png` per density, plus an adaptive icon (`mipmap-anydpi-v26/ic_launcher.xml`) whose foreground is the artwork inset into the 72 dp safe zone of the 108 dp canvas, over a flat background color (`values/colors.xml`). The foreground drops the SVG's own background rects, otherwise the launcher mask would show a small rounded card inside it.
+- **Linux** — `linux/icons/<size>.png` for the hicolor theme; `linux/CMakeLists.txt` copies them into the bundle and `my_application.cc` sets the GTK window icon from there.
+- **Windows / web** — `app_icon.ico` (PNG-compressed entries) and the template's favicon/Icon files.
+
+SVG rasterization is delegated to an external renderer (resvg) rather than a Dart package: it is a one-off authoring step, and a rasterizer in the app's dependency set would be weight nobody ships. PNG encoding (zlib via `dart:io`) and ICO packing are done in the tool, so it needs nothing but the renderer.
+
 ## Import sources
 
 - **OpenTracks** (first-class) — its data lives in an app-private directory; exports arrive as KMZ/KML/GPX written to a user-chosen directory or via the share sheet. Import via SAF folder access or share intent only.

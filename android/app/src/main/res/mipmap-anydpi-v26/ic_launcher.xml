@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive launcher icon (Android 8+): a flat background layer plus the
+     artwork as the foreground. Both are generated from
+     assets/icon/icon.svg by `dart tool/make_icons.dart`; the background
+     color is the SVG's outer rect. The foreground PNG already keeps the
+     artwork inside the 72 dp safe zone, so no launcher mask clips it. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>
