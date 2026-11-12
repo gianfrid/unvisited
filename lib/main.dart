@@ -3,14 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'host_channel.dart';
 import 'storage/track_store.dart';
 import 'ui/app_model.dart';
 import 'ui/map_page.dart';
-
-/// Channel to the Android host: storage root + incoming share intents.
-const _hostChannel = MethodChannel('unvisited/host');
-/// Fires as soon as the Dart side is listening for shared tracks.
-const _sharedChannel = MethodChannel('unvisited/shared');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +23,7 @@ Future<void> main() async {
 /// Desktop (Linux dev runs): the XDG data home. Last resort: a local folder.
 Future<Directory> _resolveStorageRoot() async {
   try {
-    final path = await _hostChannel.invokeMethod<String>('getFilesDir');
+    final path = await hostChannel.invokeMethod<String>('getFilesDir');
     if (path != null && path.isNotEmpty) {
       return Directory(path);
     }
@@ -48,7 +44,7 @@ Future<Directory> _resolveStorageRoot() async {
 /// Desktop (Linux dev runs): uses XDG cache home. Last resort: a local folder.
 Future<Directory> _resolveCacheRoot() async {
   try {
-    final path = await _hostChannel.invokeMethod<String>('getCacheDir');
+    final path = await hostChannel.invokeMethod<String>('getCacheDir');
     if (path != null && path.isNotEmpty) {
       return Directory(path);
     }
@@ -65,7 +61,7 @@ Future<Directory> _resolveCacheRoot() async {
 }
 
 void _listenForSharedTracks(AppModel model) {
-  _sharedChannel.setMethodCallHandler((call) async {
+  sharedChannel.setMethodCallHandler((call) async {
     if (call.method == 'sharedTrack') {
       final args = Map<String, dynamic>.from(call.arguments as Map);
       final path = args['path'] as String?;
@@ -75,7 +71,7 @@ void _listenForSharedTracks(AppModel model) {
   });
   // The channel only has a native side on Android; on desktop there is
   // nothing to listen for share intents, so a missing handler is expected.
-  _sharedChannel.invokeMethod('ready').catchError((_) {});
+  sharedChannel.invokeMethod('ready').catchError((_) {});
 }
 
 class UnvisitedApp extends StatelessWidget {

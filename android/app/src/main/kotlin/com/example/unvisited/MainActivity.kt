@@ -1,9 +1,14 @@
 package com.example.unvisited
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Parcelable
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -14,6 +19,14 @@ class MainActivity : FlutterActivity() {
         private const val HOST_CHANNEL = "unvisited/host"
         private const val SHARED_CHANNEL = "unvisited/shared"
         private const val SEND_ACTION = "android.intent.action.SEND"
+        private const val PICK_DIR_REQUEST = 4941
+
+        /** Track file extensions accepted by the unified import pipeline.
+         *  Matched case-insensitively, mirroring the Dart-side folder scan. */
+        private val TRACK_EXTENSIONS = setOf("gpx", "fit", "kmz", "kml", "tcx")
+
+        /** Guard against pathological (or cyclic) SAF trees while recursing. */
+        private const val MAX_TREE_DEPTH = 32
 
         /** Share-intent mimetypes accepted by the unified import pipeline. */
         private val SHARED_MIMES = setOf(
@@ -28,6 +41,11 @@ class MainActivity : FlutterActivity() {
 
     private var sharedChannel: MethodChannel? = null
     private var pendingSharedArgs: Map<String, Any>? = null
+
+    // Pending result of an in-flight `pickDirectory` call, delivered once the
+    // system directory picker returns.
+    private var pendingDirResult: MethodChannel.Result? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,6 +104,176 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * Lets the user pick a folder via the Storage Access Framework and returns
+     * its tree URI, or null when the pick was cancelled.
+     *
+     * SAF needs no storage permissions, unlike raw-path directory access which
+     * scoped storage has made impossible on Android 13+ (and never existed for
+     * USB-OTG providers like a Garmin watch).
+     */
+    private fun pickSafDirectory(result: MethodChannel.Result) {
+        if (pendingDirResult != null) {
+            result.error("already_active", "A directory request is already pending.", null)
+            return
+        }
+        pendingDirResult = result
+        try {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivityForResult(intent, PICK_DIR_REQUEST)
+        } catch (e: ActivityNotFoundException) {
+            pendingDirResult = null
+            result.error(
+                "explorer_not_found",
+                "Can't find a valid activity to handle the request. " +
+                    "Make sure you have a file explorer installed.",
+                null,
+            )
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != PICK_DIR_REQUEST) return
+        val result = pendingDirResult
+        pendingDirResult = null
+        result ?: return
+
+        val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
+        if (uri == null) { // user cancelled the picker
+            result.success(null)
+            return
+        }
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        } catch (e: SecurityException) {
+            // Persisting is only an optimization for re-scans; the grant held
+            // by this process works for the scan that follows immediately.
+        }
+        result.success(uri.toString())
+    }
+
+    /**
+     * Recursively scans a SAF tree on a worker thread, copies every supported
+     * track file into a cache-staging directory (content:// URIs are not
+     * directly readable from Dart) and answers with `{path, name}` maps.
+     * Failed single files are skipped; one bad export must not abort the scan.
+     */
+    private fun listSafTrackFiles(treeUriString: String, result: MethodChannel.Result) {
+        Thread {
+            val files = mutableListOf<Map<String, String>>()
+            var error: Exception? = null
+            try {
+                val treeUri = Uri.parse(treeUriString)
+                scanSafTree(
+                    treeUri,
+                    DocumentsContract.getTreeDocumentId(treeUri),
+                    0,
+                    stagingDir(),
+                    files,
+                )
+            } catch (e: Exception) {
+                error = e
+            }
+            val payload = files
+            val err = error
+            mainHandler.post {
+                try {
+                    if (err != null) {
+                        result.error("saf_error", err.message ?: "SAF scan failed", null)
+                    } else {
+                        result.success(payload)
+                    }
+                } catch (e: Exception) {
+                    // The engine went away mid-scan (activity destroyed).
+                }
+            }
+        }.start()
+    }
+
+    private fun stagingDir(): File {
+        val dir = File(cacheDir, "saf_import_${System.currentTimeMillis()}")
+        dir.mkdirs()
+        return dir
+    }
+
+    private fun scanSafTree(
+        treeUri: Uri,
+        parentDocId: String,
+        depth: Int,
+        stagingDir: File,
+        out: MutableList<Map<String, String>>,
+    ) {
+        if (depth > MAX_TREE_DEPTH) return
+        val childrenUri =
+            DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
+        val cursor = contentResolver.query(
+            childrenUri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+            ),
+            null,
+            null,
+            null,
+        ) ?: return
+        cursor.use { c ->
+            val idIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
+            val nameIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+            val mimeIdx = c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
+            while (c.moveToNext()) {
+                val docId = if (idIdx >= 0) c.getString(idIdx) else null
+                val name = if (nameIdx >= 0) c.getString(nameIdx) else null
+                val mime = if (mimeIdx >= 0) c.getString(mimeIdx) else null
+                if (docId == null || name == null) continue
+                if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                    scanSafTree(treeUri, docId, depth + 1, stagingDir, out)
+                } else if (name.substringAfterLast('.', "").lowercase() in TRACK_EXTENSIONS) {
+                    copySafDocument(treeUri, docId, name, stagingDir, out)
+                }
+            }
+        }
+    }
+
+    private fun copySafDocument(
+        treeUri: Uri,
+        docId: String,
+        name: String,
+        stagingDir: File,
+        out: MutableList<Map<String, String>>,
+    ) {
+        try {
+            val fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
+            contentResolver.openInputStream(fileUri)?.use { input ->
+                val dest = uniqueDest(stagingDir, name)
+                dest.outputStream().use { output -> input.copyTo(output) }
+                out.add(mapOf("path" to dest.absolutePath, "name" to name))
+            }
+        } catch (e: Exception) {
+            // Skip unreadable files; the rest of the folder still imports.
+        }
+    }
+
+    /** Same basename in different subfolders would collide in staging. */
+    private fun uniqueDest(dir: File, name: String): File {
+        val safe = name.replace(Regex("""[\\/:*?"<>|]"""), "_")
+        var candidate = File(dir, safe)
+        if (!candidate.exists()) return candidate
+        val dot = safe.lastIndexOf('.')
+        val base = if (dot > 0) safe.substring(0, dot) else safe
+        val ext = if (dot > 0) safe.substring(dot) else ""
+        var i = 1
+        do {
+            candidate = File(dir, "$base ($i++)$ext")
+        } while (candidate.exists())
+        return candidate
+    }
+
     override fun configureFlutterEngine(
         flutterEngine: io.flutter.embedding.engine.FlutterEngine
     ) {
@@ -95,6 +283,9 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getFilesDir" -> result.success(filesDir.absolutePath)
+                    "pickDirectory" -> pickSafDirectory(result)
+                    "listTrackFiles" ->
+                        listSafTrackFiles(call.arguments?.toString() ?: "", result)
                     else -> result.notImplemented()
                 }
             }
@@ -117,6 +308,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        pendingDirResult = null
         sharedChannel = null
         super.onDestroy()
     }

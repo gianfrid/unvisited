@@ -2,9 +2,10 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../host_channel.dart';
 import '../storage/track_store.dart';
 import 'track_colors.dart';
 
@@ -126,8 +127,17 @@ class AppModel extends ChangeNotifier {
     importEpoch++;
   }
 
+  /// Runs one candidate file through the unified pipeline, recording it in
+  /// [summary] and collecting its points for the camera refit.
+  void _importBytes(List<int> bytes, String name, ImportSummary summary,
+      List<LatLng> newPoints) {
+    final result = store.importBytes(bytes, filename: name);
+    _noteImported(newPoints, result);
+    summary.add(result);
+  }
+
   /// Recursively imports every supported track file below [directoryPath]
-  /// (SAF-picked folder mapped to a real path by the picker).
+  /// (platform-picker folder on desktop, where directories are real paths).
   Future<ImportSummary> importFromDirectory(String directoryPath) async {
     final summary = ImportSummary();
     final newPoints = <LatLng>[];
@@ -142,10 +152,7 @@ class AppModel extends ChangeNotifier {
         continue;
       }
       try {
-        final result =
-            store.importBytes(entry.readAsBytesSync(), filename: name);
-        _noteImported(newPoints, result);
-        summary.add(result);
+        _importBytes(entry.readAsBytesSync(), name, summary, newPoints);
       } on Exception {
         summary.failed++;
       }
@@ -157,11 +164,63 @@ class AppModel extends ChangeNotifier {
   }
 
   /// Opens the SAF folder picker and imports every supported file below the
-  /// chosen folder. Returns null when the user cancelled.
+  /// chosen folder (Android), or opens the platform directory picker
+  /// (desktop, where the host channel is missing and picked folders are real
+  /// paths dart:io can walk). Returns null when the user cancelled.
   Future<ImportSummary?> importViaDirectoryPicker() async {
-    final dir = await FilePicker.getDirectoryPath();
-    if (dir == null) return null;
-    return importFromDirectory(dir);
+    final String? treeUri;
+    try {
+      treeUri = await hostChannel.invokeMethod<String>('pickDirectory');
+    } on MissingPluginException {
+      // Desktop run: no host-side implementation, fall through to
+      // file_picker's platform portal directory picker.
+      final dir = await FilePicker.getDirectoryPath();
+      if (dir == null) return null;
+      return importFromDirectory(dir);
+    }
+    if (treeUri == null) return null; // user cancelled
+    return _importSafTree(treeUri);
+  }
+
+  /// Android SAF folder import. The system tree picker grants access to a
+  /// content:// tree URI — no storage permission can grant raw-path access
+  /// to it (scoped storage killed that on Android 13+, and USB-OTG providers
+  /// never had real paths). The host channel scans the tree and copies the
+  /// supported files into a staging directory; the unified pipeline consumes
+  /// those bytes and the staged copies are deleted again.
+  Future<ImportSummary> _importSafTree(String treeUri) async {
+    final summary = ImportSummary();
+    final newPoints = <LatLng>[];
+    _busy = true;
+    notifyListeners();
+    try {
+      final staged = await hostChannel.invokeListMethod<Map<Object?, Object?>>(
+              'listTrackFiles', treeUri) ??
+          const <Map<Object?, Object?>>[];
+      for (final entry in staged) {
+        final path = entry['path'] as String?;
+        final name = entry['name'] as String?;
+        if (path == null || name == null) continue;
+        final file = File(path);
+        try {
+          _importBytes(file.readAsBytesSync(), name, summary, newPoints);
+        } on Exception {
+          summary.failed++;
+        } finally {
+          try {
+            file.deleteSync();
+          } on Exception {
+            // Staging lives in the app cache dir; a leftover is harmless.
+          }
+        }
+      }
+    } finally {
+      _pointCache.clear();
+      _recordNewImports(newPoints);
+      _busy = false;
+      notifyListeners();
+    }
+    return summary;
   }
 
   /// Opens the system file picker and imports the chosen files.
@@ -176,10 +235,7 @@ class AppModel extends ChangeNotifier {
       final path = pf.path;
       if (path == null) continue;
       try {
-        final result = store.importBytes(File(path).readAsBytesSync(),
-            filename: pf.name);
-        _noteImported(newPoints, result);
-        summary.add(result);
+        _importBytes(File(path).readAsBytesSync(), pf.name, summary, newPoints);
       } on Exception {
         summary.failed++;
       }

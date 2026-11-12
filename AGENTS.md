@@ -16,6 +16,7 @@ Flutter app (Android first, with a desktop Linux target for development testing)
 
 - Storage root on desktop is the XDG data home (`$XDG_DATA_HOME/unvisited`, defaulting to `~/.local/share/unvisited`); on Android it is the host channel's `filesDir`.
 - Share intents (OpenTracks share sheet) do not exist on desktop — imports go through the file/folder pickers there.
+- SAF folder import (`unvisited/host` channel: `pickDirectory` + `listTrackFiles`) is Android-only. `file_picker`'s `getDirectoryPath` returns a raw path under the picked tree URI, which `dart:io` cannot list under scoped storage — no storage permission can grant that on Android 13+, and USB-OTG providers never had real paths. The host channel scans the tree via `DocumentsContract`, stages supported files in a cache dir, and Dart consumes the staged bytes through the unified pipeline.
 - `file_picker` implements both file and directory picking on Linux via the platform portals.
 
 ## Import sources and constraints

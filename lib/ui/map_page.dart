@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -95,8 +96,12 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _pickFolder() async {
-    final summary = await widget.model.importViaDirectoryPicker();
-    if (summary != null) _toast(summary.toString());
+    try {
+      final summary = await widget.model.importViaDirectoryPicker();
+      if (summary != null) _toast(summary.toString());
+    } on PlatformException catch (e) {
+      _toast('Folder import failed: ${e.message ?? e.code}');
+    }
   }
 
   Future<void> _pickFiles() async {
