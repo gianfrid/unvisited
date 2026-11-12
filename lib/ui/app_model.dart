@@ -8,6 +8,10 @@ import 'package:latlong2/latlong.dart';
 import '../storage/track_store.dart';
 import 'track_colors.dart';
 
+/// Distance threshold in meters for deduplicating nearby points when merging tracks.
+/// GPS accuracy is typically 3-10m for consumer devices, so 2m is a safe threshold.
+const _mergeDedupeDistanceMeters = 2.0;
+
 /// A track prepared for drawing on the map.
 class MapTrack {
   const MapTrack({required this.meta, required this.points, required this.color});
@@ -69,6 +73,29 @@ class AppModel extends ChangeNotifier {
   bool _busy = false;
   bool get busy => _busy;
 
+  /// Whether to merge all visible tracks into a single polyline for rendering.
+  /// Defaults to true for better performance and cleaner visualization.
+  bool _mergeTracks = true;
+  bool get mergeTracks => _mergeTracks;
+
+  /// All points from all visible tracks, merged and deduplicated.
+  /// Only valid when [mergeTracks] is true.
+  List<LatLng>? _mergedPointsCache;
+  int _mergedPointsEpoch = 0;
+
+  /// Points of the tracks added by the most recent import operation, so the
+  /// map can refit its camera on what was just imported. [importEpoch] is
+  /// bumped on every change; readers compare it against the epoch they last
+  /// handled.
+  List<LatLng> lastImportedPoints = const [];
+  int importEpoch = 0;
+
+  void _noteImported(List<LatLng> out, ImportResult result) {
+    final data = result.data;
+    if (!result.imported || data == null || data.isEmpty) return;
+    out.addAll(data.points.map((p) => LatLng(p.lat, p.lon)));
+  }
+
   Future<void> load() async {
     await store.load();
     notifyListeners();
@@ -76,24 +103,34 @@ class AppModel extends ChangeNotifier {
 
   /// Reads a picked file (or share-intent temp file) through the pipeline.
   Future<void> importFromFile(String path, {String? name}) async {
+    final newPoints = <LatLng>[];
     _busy = true;
     notifyListeners();
     try {
       final f = File(path);
       final result = store.importBytes(f.readAsBytesSync(),
           filename: name ?? path);
+      _noteImported(newPoints, result);
       if (result.imported) _pointCache.remove(result.track!.id);
       notifyListeners();
     } finally {
+      _recordNewImports(newPoints);
       _busy = false;
       notifyListeners();
     }
+  }
+
+  void _recordNewImports(List<LatLng> newPoints) {
+    if (newPoints.isEmpty) return;
+    lastImportedPoints = newPoints;
+    importEpoch++;
   }
 
   /// Recursively imports every supported track file below [directoryPath]
   /// (SAF-picked folder mapped to a real path by the picker).
   Future<ImportSummary> importFromDirectory(String directoryPath) async {
     final summary = ImportSummary();
+    final newPoints = <LatLng>[];
     final dir = Directory(directoryPath);
     if (!dir.existsSync()) return summary;
     await for (final entry
@@ -107,12 +144,14 @@ class AppModel extends ChangeNotifier {
       try {
         final result =
             store.importBytes(entry.readAsBytesSync(), filename: name);
+        _noteImported(newPoints, result);
         summary.add(result);
       } on Exception {
         summary.failed++;
       }
     }
     _pointCache.clear();
+    _recordNewImports(newPoints);
     notifyListeners();
     return summary;
   }
@@ -128,6 +167,7 @@ class AppModel extends ChangeNotifier {
   /// Opens the system file picker and imports the chosen files.
   Future<ImportSummary> importViaFilePicker() async {
     final summary = ImportSummary();
+    final newPoints = <LatLng>[];
     final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: const ['gpx', 'fit', 'kmz', 'kml', 'tcx'],
@@ -136,13 +176,16 @@ class AppModel extends ChangeNotifier {
       final path = pf.path;
       if (path == null) continue;
       try {
-        summary.add(store.importBytes(File(path).readAsBytesSync(),
-            filename: pf.name));
+        final result = store.importBytes(File(path).readAsBytesSync(),
+            filename: pf.name);
+        _noteImported(newPoints, result);
+        summary.add(result);
       } on Exception {
         summary.failed++;
       }
     }
     _pointCache.clear();
+    _recordNewImports(newPoints);
     notifyListeners();
     return summary;
   }
@@ -178,4 +221,81 @@ class AppModel extends ChangeNotifier {
   /// All points of all visible tracks, for fitting the camera.
   List<LatLng> get allVisiblePoints =>
       visibleTracks.expand((t) => t.points).toList();
+
+  /// Toggles between merged and individual track rendering modes.
+  void toggleMergeTracks() {
+    _mergeTracks = !_mergeTracks;
+    _mergedPointsCache = null; // Invalidate cache
+    notifyListeners();
+  }
+
+  /// Returns the merged, deduplicated points for all visible tracks.
+  /// Points within [_mergeDedupeDistanceMeters] of the last point are skipped.
+  List<LatLng> get mergedPoints {
+    // Check cache validity
+    final currentEpoch = _computeEpoch();
+    if (_mergedPointsCache != null && _mergedPointsEpoch == currentEpoch) {
+      return _mergedPointsCache!;
+    }
+
+    final allPoints = <List<LatLng>>[];
+    for (final t in store.tracks) {
+      if (!t.visible) continue;
+      var pts = _pointCache[t.id];
+      if (pts == null) {
+        final data = store.loadPoints(t);
+        if (data == null) continue;
+        pts = data.points.map((p) => LatLng(p.lat, p.lon)).toList();
+        _pointCache[t.id] = pts;
+      }
+      if (pts.isNotEmpty) {
+        allPoints.add(pts);
+      }
+    }
+
+    final merged = _mergeAndDeduplicate(allPoints);
+    _mergedPointsCache = merged;
+    _mergedPointsEpoch = currentEpoch;
+    return merged;
+  }
+
+  /// Computes a cache epoch based on visible tracks and their point caches.
+  int _computeEpoch() {
+    var epoch = 0;
+    for (final t in store.tracks) {
+      if (t.visible) {
+        epoch ^= t.id.hashCode;
+        if (_pointCache.containsKey(t.id)) {
+          epoch ^= _pointCache[t.id]!.length;
+        }
+      }
+    }
+    return epoch;
+  }
+
+  /// Merges all track points into a single list, skipping points that are
+  /// too close to the previous point (within [_mergeDedupeDistanceMeters]).
+  List<LatLng> _mergeAndDeduplicate(List<List<LatLng>> allTrackPoints) {
+    if (allTrackPoints.isEmpty) return const [];
+
+    final merged = <LatLng>[];
+    final distance = const Distance();
+
+    for (final trackPoints in allTrackPoints) {
+      for (final point in trackPoints) {
+        if (merged.isEmpty) {
+          merged.add(point);
+        } else {
+          final last = merged.last;
+          final dist = distance(last, point);
+          if (dist >= _mergeDedupeDistanceMeters) {
+            merged.add(point);
+          }
+          // else: skip this point, it's too close to the last merged point
+        }
+      }
+    }
+
+    return merged;
+  }
 }

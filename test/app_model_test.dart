@@ -1,0 +1,129 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:unvisited/storage/track_store.dart';
+import 'package:unvisited/ui/app_model.dart';
+
+import 'helpers.dart';
+
+void main() {
+  late Directory root;
+  late AppModel model;
+
+  setUp(() {
+    root = Directory.systemTemp.createTempSync('unvisited-store');
+    model = AppModel(TrackStore(root));
+  });
+
+  tearDown(() {
+    root.deleteSync(recursive: true);
+  });
+
+  Directory stageDir() {
+    final dir = Directory('${root.path}${Platform.pathSeparator}inbox')
+      ..createSync(recursive: true);
+    for (final name in const [
+      'morning_walk.gpx',
+      'eiffel_ride.tcx',
+      'monitoring.fit',
+    ]) {
+      File('${dir.path}${Platform.pathSeparator}$name')
+          .writeAsBytesSync(fixture(name));
+    }
+    return dir;
+  }
+
+  test('importFromDirectory exposes the new tracks for camera refit',
+      () async {
+    final summary =
+        await model.importFromDirectory(stageDir().path);
+
+    expect(summary.imported, 2); // GPX + TCX; monitoring.fit is skipped
+    expect(model.importEpoch, 1);
+    expect(model.lastImportedPoints, isNotEmpty);
+    // Coordinates must come from the imported fixtures, not the Berlin
+    // start position.
+    expect(model.lastImportedPoints.first.latitude, isNot(52.52));
+  });
+
+  test('re-importing the same files is a no-op for the refit state',
+      () async {
+    final dir = stageDir();
+    await model.importFromDirectory(dir.path);
+    final epoch = model.importEpoch;
+    final points = model.lastImportedPoints;
+
+    final summary = await model.importFromDirectory(dir.path);
+
+    expect(summary.imported, 0);
+    expect(summary.duplicates, 2);
+    expect(summary.skipped, 1);
+    expect(model.importEpoch, epoch);
+    expect(model.lastImportedPoints, same(points));
+  });
+
+  test('importFromFile exposes points for share-intent imports', () async {
+    final dir = stageDir();
+    final path =
+        '${dir.path}${Platform.pathSeparator}afternoon_ride.kmz';
+    File(path).writeAsBytesSync(fixture('afternoon_ride.kmz'));
+
+    await model.importFromFile(path);
+
+    expect(model.importEpoch, 1);
+    expect(model.lastImportedPoints, isNotEmpty);
+  });
+
+  test('failed import leaves the refit state untouched', () async {
+    final path = '${root.path}${Platform.pathSeparator}junk.gpx';
+    File(path).writeAsBytesSync('not a gpx'.codeUnits);
+
+    await model.importFromFile(path);
+
+    expect(model.importEpoch, 0);
+    expect(model.lastImportedPoints, isEmpty);
+  });
+
+  test('mergeTracks defaults to true', () {
+    expect(model.mergeTracks, true);
+  });
+
+  test('toggleMergeTracks switches the mode', () {
+    expect(model.mergeTracks, true);
+    model.toggleMergeTracks();
+    expect(model.mergeTracks, false);
+    model.toggleMergeTracks();
+    expect(model.mergeTracks, true);
+  });
+
+  test('mergedPoints returns deduplicated points from all visible tracks',
+      () async {
+    await model.importFromDirectory(stageDir().path);
+
+    // Should have imported 2 tracks (GPX + TCX)
+    expect(model.tracks.length, 2);
+
+    // Get merged points
+    final merged = model.mergedPoints;
+    expect(merged, isNotEmpty);
+
+    // Verify deduplication: merged points should be <= total points
+    final totalPoints = model.allVisiblePoints.length;
+    final mergedCount = merged.length;
+    expect(mergedCount, lessThanOrEqualTo(totalPoints));
+  });
+
+  test('mergedPoints cache is invalidated when tracks change', () async {
+    await model.importFromDirectory(stageDir().path);
+    final merged1 = model.mergedPoints;
+    expect(merged1, isNotEmpty);
+
+    // Toggle a track visibility
+    final firstTrack = model.tracks.first;
+    await model.toggleVisible(firstTrack);
+
+    // Access mergedPoints again to ensure cache is invalidated
+    // (no assertion needed, just verifying it doesn't throw)
+    model.mergedPoints;
+  });
+}

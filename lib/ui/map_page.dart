@@ -17,9 +17,24 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   bool _didFitTracks = false;
+  int _seenImportEpoch = 0;
 
   static const _startCenter = LatLng(52.5200, 13.4050); // Berlin
   static const _startZoom = 13.0;
+  static const _fitPadding = EdgeInsets.all(64);
+
+  @override
+  void initState() {
+    super.initState();
+    _seenImportEpoch = widget.model.importEpoch;
+    widget.model.addListener(_onModelChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.model.removeListener(_onModelChanged);
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant MapPage old) {
@@ -27,18 +42,47 @@ class _MapPageState extends State<MapPage> {
     _scheduleFit();
   }
 
+  void _onModelChanged() {
+    if (!mounted) return;
+    final epoch = widget.model.importEpoch;
+    if (epoch != _seenImportEpoch) {
+      _seenImportEpoch = epoch;
+      final pts = widget.model.lastImportedPoints;
+      if (pts.isNotEmpty) {
+        // Center on what was just imported; suppress the one-time fit-all.
+        _didFitTracks = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _mapController.fitCamera(
+              CameraFit.coordinates(coordinates: pts, padding: _fitPadding),
+            );
+          }
+        });
+      }
+    }
+    // Invalidate merged points cache when tracks change visibility
+    if (widget.model.mergeTracks) {
+      widget.model.mergedPoints; // Access to update cache
+    }
+    setState(() {});
+  }
+
   void _scheduleFit() {
-    final pts = widget.model.allVisiblePoints;
+    final pts = widget.model.mergeTracks
+        ? widget.model.mergedPoints
+        : widget.model.allVisiblePoints;
     if (_didFitTracks || pts.isEmpty) return;
     _didFitTracks = true;
     WidgetsBinding.instance.addPostFrameCallback((_) => _fitTracks());
   }
 
   void _fitTracks() {
-    final pts = widget.model.allVisiblePoints;
+    final pts = widget.model.mergeTracks
+        ? widget.model.mergedPoints
+        : widget.model.allVisiblePoints;
     if (pts.isEmpty) return;
     _mapController.fitCamera(
-      CameraFit.coordinates(coordinates: pts, padding: EdgeInsets.all(64)),
+      CameraFit.coordinates(coordinates: pts, padding: _fitPadding),
     );
   }
 
@@ -58,6 +102,34 @@ class _MapPageState extends State<MapPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  List<Polyline> _buildMergedPolyline(List<MapTrack> tracks) {
+    if (tracks.isEmpty) return [];
+    final mergedPoints = widget.model.mergedPoints;
+    if (mergedPoints.isEmpty) return [];
+    return [
+      Polyline(
+        points: mergedPoints,
+        color: Colors.blue,
+        strokeWidth: 3.5,
+        borderStrokeWidth: 1,
+        borderColor: Colors.black38,
+      ),
+    ];
+  }
+
+  List<Polyline> _buildIndividualPolylines(List<MapTrack> tracks) {
+    return [
+      for (final t in tracks)
+        Polyline(
+          points: t.points,
+          color: t.color,
+          strokeWidth: 3.5,
+          borderStrokeWidth: 1,
+          borderColor: Colors.black38,
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final mapTracks = widget.model.visibleTracks;
@@ -66,6 +138,11 @@ class _MapPageState extends State<MapPage> {
       appBar: AppBar(
         title: const Text('Unvisited'),
         actions: [
+          IconButton(
+            tooltip: 'Toggle merged/split tracks',
+            icon: Icon(widget.model.mergeTracks ? Icons.layers : Icons.layers_clear),
+            onPressed: widget.model.toggleMergeTracks,
+          ),
           IconButton(
             tooltip: 'Fit tracks',
             icon: const Icon(Icons.zoom_out_map),
@@ -97,16 +174,9 @@ class _MapPageState extends State<MapPage> {
                 userAgentPackageName: 'dev.unvisited.app',
               ),
               PolylineLayer(
-                polylines: [
-                  for (final t in mapTracks)
-                    Polyline(
-                      points: t.points,
-                      color: t.color,
-                      strokeWidth: 3.5,
-                      borderStrokeWidth: 1,
-                      borderColor: Colors.black38,
-                    ),
-                ],
+                polylines: widget.model.mergeTracks
+                    ? _buildMergedPolyline(mapTracks)
+                    : _buildIndividualPolylines(mapTracks),
               ),
               RichAttributionWidget(
                 attributions: [

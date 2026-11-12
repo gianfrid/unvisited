@@ -1,0 +1,8 @@
+- [HIGH] Fix Android folder import: research and add required Android permissions (READ_EXTERNAL_STORAGE) for file_picker directory access - currently works on Linux but not Android
+- fix zoom controls on linux, control+- and ctrl+scroll wheel should work. also consider to show buttons
+- application should start with the current position, or the last saved before getting an updated one from the system. manage permissions for different systems and add a button to center on current position
+- add select/deselect all tracks button
+- add button to toggle all tracks to the same color (to clearly see what has been visited or not)
+- find and set app icon for both Linux and Android
+- import button could be unified
+- top buttons are not enough clear of what they do
