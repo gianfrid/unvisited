@@ -206,7 +206,10 @@ class _MapPageState extends State<MapPage> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'dev.unvisited.app',
                 tileProvider: NetworkTileProvider(
-                  headers: const {'User-Agent': 'dev.unvisited.app'},
+                  // Not const: TileLayer's constructor inserts a default
+                  // User-Agent into the provider's headers when absent, and
+                  // that mutation throws on a const (unmodifiable) map.
+                  headers: {'User-Agent': 'dev.unvisited.app'},
                 ),
               ),
               PolylineLayer(
