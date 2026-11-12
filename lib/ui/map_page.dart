@@ -326,6 +326,9 @@ class _MapPageState extends State<MapPage> {
                     : _buildIndividualPolylines(mapTracks),
               ),
               RichAttributionWidget(
+                // The default flutter_map logo badge is redundant next to
+                // the OSM attribution this app already shows.
+                showFlutterMapAttribution: false,
                 attributions: [
                   TextSourceAttribution(
                     'OpenStreetMap contributors',
