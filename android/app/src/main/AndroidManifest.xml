@@ -41,6 +41,14 @@
                 <data android:mimeType="text/xml"/>
             </intent-filter>
         </activity>
+        <!-- Flutter 3.27+ defaults to the Impeller renderer; on devices where
+             its textures fail to present, the map tiles never appear (grey
+             map while vector layers paint). Skia is the battle-tested
+             path for a map-heavy app - opt out until Impeller is stable on
+             tested devices; revert by removing this meta-data. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

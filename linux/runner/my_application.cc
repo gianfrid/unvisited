@@ -55,6 +55,13 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_default_size(window, 1280, 720);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  // Flutter 3.47 made Impeller the default Linux renderer. On Mesa/Wayland
+  // (flutter/flutter#194433, #192915) its GPU textures fail to present
+  // reliably: here the map tiles stayed grey while vector layers painted,
+  // until the map was moved. Skia renders this app correctly on every
+  // display server we test on, so opt out of Impeller until the engine
+  // fixes those issues; revisit by deleting this one call.
+  fl_dart_project_set_enable_impeller(project, FALSE);
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
 
