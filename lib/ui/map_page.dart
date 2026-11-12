@@ -222,6 +222,11 @@ class _MapPageState extends State<MapPage> {
         title: const Text('Unvisited'),
         actions: [
           IconButton(
+            tooltip: 'Import tracks',
+            icon: const Icon(Icons.add),
+            onPressed: _chooseImport,
+          ),
+          IconButton(
             tooltip: 'Zoom in (Ctrl+ or Ctrl+MouseWheel)',
             icon: const Icon(Icons.zoom_in),
             onPressed: () {
@@ -340,13 +345,6 @@ class _MapPageState extends State<MapPage> {
               child: LinearProgressIndicator(),
             ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'import',
-        tooltip: 'Import tracks',
-        onPressed: _chooseImport,
-        icon: const Icon(Icons.add),
-        label: const Text('Import'),
       ),
     );
   }
