@@ -82,8 +82,21 @@ Future<void> main(List<String> args) async {
             '"${source.path}" "${out.path}"',
       ]);
       if (result.exitCode != 0 || !out.existsSync()) {
-        stderr.writeln('renderer failed for ${size}px:\n'
-            '${result.stdout}\n${result.stderr}');
+        stderr.writeln('''
+SVG renderer failed at ${size}px.
+
+  command: $renderer
+  stdout:  ${result.stdout.toString().trim()}
+  stderr:  ${result.stderr.toString().trim()}
+
+The renderer must be on PATH, or passed explicitly:
+
+  cargo install resvg                                  # Rust renderer
+  npx --yes @resvg/resvg-js-cli                        # Node alternative
+  dart tool/make_icons.dart --renderer "npx --yes @resvg/resvg-js-cli"
+
+The generated icons are committed, so this is only needed when
+assets/icon/icon.svg changes.''');
         exit(1);
       }
       final png = out.readAsBytesSync();

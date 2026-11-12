@@ -35,6 +35,19 @@ tool/make_fixtures.dart      # regenerates binary FIT/KMZ fixtures
 tool/make_icons.dart         # regenerates every platform icon from the SVG
 ```
 
+## Prerequisites
+
+Building and running the app needs only a Flutter SDK (3.47+, Dart 3.13+) and, for Android, the Android SDK — `flutter doctor` tells you what is missing. Nothing else is required: `flutter pub get && flutter run -d linux` (or `flutter run` on a device) is the whole setup, and the app's icons and test fixtures are committed.
+
+Two optional tools regenerate committed files. Neither is needed to build or run the app — only when the source they derive from changes:
+
+| Tool | Needed when | Requires |
+|---|---|---|
+| `dart tool/make_icons.dart` | `assets/icon/icon.svg` changes | An SVG renderer: `cargo install resvg`, or `npx --yes @resvg/resvg-js-cli` (passed with `--renderer`) |
+| `dart tool/make_fixtures.dart` | test fixtures change | Nothing beyond the project's own dependencies |
+
+The icon tool deliberately does not pull a rasterizer into the app's dependencies, so it shells out to one instead; without it on `PATH` it fails with the install commands to run.
+
 ## Quick test on desktop Linux (no phone needed)
 
 ```bash
