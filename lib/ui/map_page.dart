@@ -104,16 +104,18 @@ class _MapPageState extends State<MapPage> {
 
   List<Polyline> _buildMergedPolyline(List<MapTrack> tracks) {
     if (tracks.isEmpty) return [];
-    final mergedPoints = widget.model.mergedPoints;
-    if (mergedPoints.isEmpty) return [];
+    final segments = widget.model.mergedTrackSegments;
+    if (segments.isEmpty) return [];
+    
     return [
-      Polyline(
-        points: mergedPoints,
-        color: Colors.blue,
-        strokeWidth: 3.5,
-        borderStrokeWidth: 1,
-        borderColor: Colors.black38,
-      ),
+      for (final segment in segments)
+        Polyline(
+          points: segment,
+          color: Colors.blue,
+          strokeWidth: 3.5,
+          borderStrokeWidth: 1,
+          borderColor: Colors.black38,
+        ),
     ];
   }
 

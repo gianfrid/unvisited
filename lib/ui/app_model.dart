@@ -230,7 +230,8 @@ class AppModel extends ChangeNotifier {
   }
 
   /// Returns the merged, deduplicated points for all visible tracks.
-  /// Points within [_mergeDedupeDistanceMeters] of the last point are skipped.
+  /// This concatenates all track points into a single list for camera fitting.
+  /// Note: For rendering, use [mergedTrackSegments] to avoid artificial connections.
   List<LatLng> get mergedPoints {
     // Check cache validity
     final currentEpoch = _computeEpoch();
@@ -238,25 +239,14 @@ class AppModel extends ChangeNotifier {
       return _mergedPointsCache!;
     }
 
-    final allPoints = <List<LatLng>>[];
-    for (final t in store.tracks) {
-      if (!t.visible) continue;
-      var pts = _pointCache[t.id];
-      if (pts == null) {
-        final data = store.loadPoints(t);
-        if (data == null) continue;
-        pts = data.points.map((p) => LatLng(p.lat, p.lon)).toList();
-        _pointCache[t.id] = pts;
-      }
-      if (pts.isNotEmpty) {
-        allPoints.add(pts);
-      }
+    final allPoints = <LatLng>[];
+    for (final segment in mergedTrackSegments) {
+      allPoints.addAll(segment);
     }
 
-    final merged = _mergeAndDeduplicate(allPoints);
-    _mergedPointsCache = merged;
+    _mergedPointsCache = allPoints;
     _mergedPointsEpoch = currentEpoch;
-    return merged;
+    return allPoints;
   }
 
   /// Computes a cache epoch based on visible tracks and their point caches.
@@ -273,29 +263,48 @@ class AppModel extends ChangeNotifier {
     return epoch;
   }
 
-  /// Merges all track points into a single list, skipping points that are
+  /// Returns deduplicated points for a single track, skipping points that are
   /// too close to the previous point (within [_mergeDedupeDistanceMeters]).
-  List<LatLng> _mergeAndDeduplicate(List<List<LatLng>> allTrackPoints) {
-    if (allTrackPoints.isEmpty) return const [];
+  List<LatLng> _deduplicateTrack(List<LatLng> trackPoints) {
+    if (trackPoints.isEmpty) return const [];
 
-    final merged = <LatLng>[];
+    final deduplicated = <LatLng>[];
     final distance = const Distance();
 
-    for (final trackPoints in allTrackPoints) {
-      for (final point in trackPoints) {
-        if (merged.isEmpty) {
-          merged.add(point);
-        } else {
-          final last = merged.last;
-          final dist = distance(last, point);
-          if (dist >= _mergeDedupeDistanceMeters) {
-            merged.add(point);
-          }
-          // else: skip this point, it's too close to the last merged point
+    for (final point in trackPoints) {
+      if (deduplicated.isEmpty) {
+        deduplicated.add(point);
+      } else {
+        final last = deduplicated.last;
+        final dist = distance(last, point);
+        if (dist >= _mergeDedupeDistanceMeters) {
+          deduplicated.add(point);
         }
+        // else: skip this point, it's too close to the last point
       }
     }
 
-    return merged;
+    return deduplicated;
+  }
+
+  /// Returns all visible tracks with deduplicated points.
+  /// Each track is kept separate to avoid creating artificial connections
+  /// between unrelated tracks.
+  List<List<LatLng>> get mergedTrackSegments {
+    final allSegments = <List<LatLng>>[];
+    for (final t in store.tracks) {
+      if (!t.visible) continue;
+      var pts = _pointCache[t.id];
+      if (pts == null) {
+        final data = store.loadPoints(t);
+        if (data == null) continue;
+        pts = data.points.map((p) => LatLng(p.lat, p.lon)).toList();
+        _pointCache[t.id] = pts;
+      }
+      if (pts.isNotEmpty) {
+        allSegments.add(_deduplicateTrack(pts));
+      }
+    }
+    return allSegments;
   }
 }
