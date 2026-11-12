@@ -179,4 +179,53 @@ void main() {
 
     expect(find.text('2026-11-12 17:41'), findsOneWidget);
   });
+
+  testWidgets('startup fit goes through the guarded initialCameraFit',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+
+    final emptyModel = AppModel(TrackStore(root));
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: emptyModel,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    expect(
+      tester
+          .widget<FlutterMap>(find.byType(FlutterMap))
+          .options
+          .initialCameraFit,
+      isNull,
+      reason: 'no tracks: keep the plain Berlin start camera',
+    );
+
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    expect(
+      tester
+          .widget<FlutterMap>(find.byType(FlutterMap))
+          .options
+          .initialCameraFit,
+      isNotNull,
+      reason: 'saved tracks: fit at startup via the engine-guarded path',
+    );
+  });
 }

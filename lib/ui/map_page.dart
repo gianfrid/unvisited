@@ -30,7 +30,6 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
-  bool _didFitTracks = false;
   int _seenImportEpoch = 0;
 
   static const _startCenter = LatLng(52.5200, 13.4050); // Berlin
@@ -77,12 +76,6 @@ class _MapPageState extends State<MapPage> {
     super.dispose();
   }
 
-  @override
-  void didUpdateWidget(covariant MapPage old) {
-    super.didUpdateWidget(old);
-    _scheduleFit();
-  }
-
   void _onModelChanged() {
     if (!mounted) return;
     final epoch = widget.model.importEpoch;
@@ -90,15 +83,11 @@ class _MapPageState extends State<MapPage> {
       _seenImportEpoch = epoch;
       final pts = widget.model.lastImportedPoints;
       if (pts.isNotEmpty) {
-        // Center on what was just imported; suppress the one-time fit-all.
-        _didFitTracks = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _mapController.fitCamera(
-              CameraFit.coordinates(coordinates: pts, padding: _fitPadding),
-            );
-          }
-        });
+        // Center on what was just imported.
+        _fitWhenSized(CameraFit.coordinates(
+          coordinates: pts,
+          padding: _fitPadding,
+        ));
       }
     }
     // Invalidate merged points cache when tracks change visibility
@@ -108,13 +97,27 @@ class _MapPageState extends State<MapPage> {
     setState(() {});
   }
 
-  void _scheduleFit() {
-    final pts = widget.model.mergeTracks
-        ? widget.model.mergedPoints
-        : widget.model.allVisiblePoints;
-    if (_didFitTracks || pts.isEmpty) return;
-    _didFitTracks = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _fitTracks());
+  /// Fits the camera, but only once it has a real size. At launch the map
+  /// can still be laid out against zero-sized constraints (the window
+  /// surface is not ready yet on Android or Wayland); fitting against that
+  /// degenerates the camera and the tile layer renders nothing until the
+  /// user pans - the map starts grey. Retry a few frames until the surface
+  /// is sized, then fit.
+  void _fitWhenSized(CameraFit fit) {
+    var attempts = 0;
+    void attempt() {
+      if (!mounted) return;
+      final size = _mapController.camera.nonRotatedSize;
+      if (size.width <= 0 || size.height <= 0) {
+        if (attempts++ < 30) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => attempt());
+        }
+        return;
+      }
+      _mapController.fitCamera(fit);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => attempt());
   }
 
   void _fitTracks() {
@@ -122,9 +125,8 @@ class _MapPageState extends State<MapPage> {
         ? widget.model.mergedPoints
         : widget.model.allVisiblePoints;
     if (pts.isEmpty) return;
-    _mapController.fitCamera(
-      CameraFit.coordinates(coordinates: pts, padding: _fitPadding),
-    );
+    _fitWhenSized(
+        CameraFit.coordinates(coordinates: pts, padding: _fitPadding));
   }
 
   Future<void> _pickFolder() async {
@@ -180,7 +182,6 @@ class _MapPageState extends State<MapPage> {
   @override
   Widget build(BuildContext context) {
     final mapTracks = widget.model.visibleTracks;
-    _scheduleFit();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Unvisited'),
@@ -232,6 +233,20 @@ class _MapPageState extends State<MapPage> {
             options: MapOptions(
               initialCenter: _startCenter,
               initialZoom: _startZoom,
+              // Startup fit for saved tracks goes through the engine path:
+              // flutter_map applies it only once the camera has a real
+              // size, guarding against the zero-sized startup constraints
+              // of a fresh window surface. A manual post-frame fitCamera
+              // here degenerates the camera instead and the map stays
+              // grey until the first pan.
+              initialCameraFit: mapTracks.isEmpty
+                  ? null
+                  : CameraFit.coordinates(
+                      coordinates: [
+                        for (final t in mapTracks) ...t.points,
+                      ],
+                      padding: _fitPadding,
+                    ),
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all,
                 keyboardOptions: KeyboardOptions(

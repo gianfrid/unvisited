@@ -37,6 +37,8 @@ Platform channels to the Android host:
 
 `app_model.dart` (state), `map_page.dart` (map + import buttons), `track_colors.dart`, plus `tile_source.dart` for OSM tiles with built-in caching.
 
+The startup camera fit for saved tracks goes through `MapOptions.initialCameraFit`, which flutter_map applies only once the camera has a real size. At launch the window surface may not be ready — the first layouts can have zero-sized constraints — and a manual `MapController.fitCamera` against them degenerates the camera, leaving the tile layer rendering nothing until the user pans (grey map at startup). The manual fits that remain (import refits, the fit button) wait for a non-zero camera size before applying.
+
 ## Import sources
 
 - **OpenTracks** (first-class) — its data lives in an app-private directory; exports arrive as KMZ/KML/GPX written to a user-chosen directory or via the share sheet. Import via SAF folder access or share intent only.
