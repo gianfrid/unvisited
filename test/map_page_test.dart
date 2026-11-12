@@ -1,9 +1,11 @@
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/fog_of_war.dart';
@@ -195,6 +197,71 @@ void main() {
     }
     // Fit is disabled on the empty map, but still shows its label.
     expect(find.text('Fit'), findsOneWidget);
+  });
+
+  testWidgets('the UI renders in Italian when the locale is Italian',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.binding.setSurfaceSize(const Size(1200, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      // Force the locale rather than relying on the test host's; the
+      // delegate is the app's own, so this is the real resolution path.
+      locale: const Locale('it'),
+      localizationsDelegates: const [
+        _TestMaterialDelegate(),
+        _TestWidgetsDelegate(),
+        _TestCupertinoDelegate(),
+        _TestLocaleDelegate(),
+      ],
+      supportedLocales: AppStrings.supportedLocales,
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Toolbar captions.
+    for (final label in const [
+      'Importa',
+      'Inquadra',
+      'Posizione',
+      'Tracce',
+      'Impostazioni'
+    ]) {
+      expect(find.text(label), findsOneWidget,
+          reason: 'the $label action must be captioned');
+    }
+    expect(find.text('Import'), findsNothing);
+    // Empty-map hint.
+    expect(find.text('Ancora nessuna traccia'), findsOneWidget);
+
+    // Settings sheet.
+    await tester.tap(find.text('Impostazioni'));
+    await tester.pumpAndSettle();
+    expect(find.text('Colore delle tracce'), findsOneWidget);
+    expect(find.text('Cursore dello zoom'), findsOneWidget);
+    expect(find.text('Sinistra'), findsOneWidget);
+    expect(find.text('Elimina tutte le tracce'), findsOneWidget);
+    expect(find.text('Nessuna traccia archiviata'), findsOneWidget);
+    expect(find.textContaining('Data di build:'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('visited tracks plot as fog-of-war unlock circles', (tester) async {
@@ -730,4 +797,71 @@ void main() {
       reason: 'saved tracks: fit at startup via the engine-guarded path',
     );
   });
+}
+
+/// Mirrors the app's private `_AppLocaleDelegate` (main.dart): MaterialApp
+/// only needs *a* delegate that loads AppStrings for the test to exercise
+/// the real locale resolution.
+class _TestLocaleDelegate extends LocalizationsDelegate<AppStrings> {
+  const _TestLocaleDelegate();
+
+  @override
+  bool isSupported(Locale locale) =>
+      AppStrings.supported.containsKey(locale.languageCode);
+
+  @override
+  Future<AppStrings> load(Locale locale) async => AppStrings.of(locale);
+
+  @override
+  bool shouldReload(_TestLocaleDelegate old) => false;
+}
+
+/// Mirrors `_AnyLocaleMaterialDelegate` in main.dart. Without it a
+/// non-English locale has no MaterialLocalizations and Scaffold's drawer
+/// fails to build - which is exactly what the Italian test guards against.
+class _TestMaterialDelegate
+    extends LocalizationsDelegate<MaterialLocalizations> {
+  const _TestMaterialDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<MaterialLocalizations> load(Locale locale) =>
+      DefaultMaterialLocalizations.load(locale);
+
+  @override
+  bool shouldReload(_TestMaterialDelegate old) => false;
+}
+
+/// Mirrors `_AnyLocaleWidgetsDelegate` in main.dart.
+class _TestWidgetsDelegate
+    extends LocalizationsDelegate<WidgetsLocalizations> {
+  const _TestWidgetsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<WidgetsLocalizations> load(Locale locale) =>
+      DefaultWidgetsLocalizations.load(locale);
+
+  @override
+  bool shouldReload(_TestWidgetsDelegate old) => false;
+}
+
+/// Mirrors `_AnyLocaleCupertinoDelegate` in main.dart.
+class _TestCupertinoDelegate
+    extends LocalizationsDelegate<CupertinoLocalizations> {
+  const _TestCupertinoDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<CupertinoLocalizations> load(Locale locale) =>
+      DefaultCupertinoLocalizations.load(locale);
+
+  @override
+  bool shouldReload(_TestCupertinoDelegate old) => false;
 }

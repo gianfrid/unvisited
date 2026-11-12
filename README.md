@@ -4,6 +4,8 @@ A Flutter app that imports GPS tracks from multiple sources — OpenTracks expor
 
 Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
 
+The interface is available in **English** and **Italian**; it follows the system language and falls back to English for anything else.
+
 How this project is documented:
 
 - [README.md](README.md) — what the app is and how to run it (this file)
@@ -23,6 +25,7 @@ lib/
 │   ├── gpx_parser.dart / tcx_parser.dart   # XML-based formats
 │   ├── fit_parser.dart      #   pure-Dart FIT decoder
 │   └── kmz_parser.dart      #   ZIP container → KML coordinate path
+├── l10n/app_strings.dart    # every user-visible string, English + Italian
 ├── models/track.dart        # TrackData model
 ├── storage/track_store.dart # app-private track files + index.json catalog
 └── ui/                      # app_model, map_page, track_colors

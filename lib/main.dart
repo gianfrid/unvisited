@@ -1,10 +1,12 @@
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'build_version.dart';
 import 'host_channel.dart';
+import 'l10n/app_strings.dart';
 import 'storage/track_store.dart';
 import 'ui/app_model.dart';
 import 'ui/map_page.dart';
@@ -124,6 +126,21 @@ class UnvisitedApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF4363D8),
         useMaterial3: true,
       ),
+      // The app's own strings are looked up through AppStrings; the
+      // delegate only makes MaterialApp resolve and expose the locale.
+      // Material's built-in widget labels stay English (the app ships
+      // without flutter_localizations), hence the _AnyLocale delegates:
+      // Flutter's own Default* delegates only claim English, and a
+      // supported locale they reject leaves the tree without
+      // MaterialLocalizations - Scaffold's drawer and every Material
+      // widget then fail to build.
+      localizationsDelegates: const [
+        _AnyLocaleMaterialDelegate(),
+        _AnyLocaleWidgetsDelegate(),
+        _AnyLocaleCupertinoDelegate(),
+        _AppLocaleDelegate(),
+      ],
+      supportedLocales: AppStrings.supportedLocales,
       home: MapPage(
         model: model,
         cacheDir: cacheDir,
@@ -132,4 +149,82 @@ class UnvisitedApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Exposes the resolved locale to the widget tree so `Localizations.localeOf`
+/// (and therefore [AppStrings.ofContext]) returns the language the app
+/// actually speaks, not the raw system locale.
+///
+/// A custom delegate instead of `flutter_localizations`' `GlobalMaterial-
+/// Localizations`: the app's strings are its own (see AppStrings), and
+/// pulling in the localization package for Material's built-in widget
+/// labels would add a dependency for text the app never shows.
+class _AppLocaleDelegate extends LocalizationsDelegate<AppStrings> {
+  const _AppLocaleDelegate();
+
+  @override
+  bool isSupported(Locale locale) =>
+      AppStrings.supported.containsKey(locale.languageCode);
+
+  @override
+  Future<AppStrings> load(Locale locale) async => AppStrings.of(locale);
+
+  @override
+  bool shouldReload(_AppLocaleDelegate old) => false;
+}
+
+/// Material's built-in labels for *any* locale: Flutter's
+/// `DefaultMaterialLocalizations.delegate` claims English only, and a
+/// locale it rejects drops MaterialLocalizations from the tree entirely
+/// (Scaffold's drawer asserts). English labels for the framework's own
+/// widgets are the accepted trade-off for not depending on
+/// flutter_localizations; the app's text comes from [AppStrings].
+class _AnyLocaleMaterialDelegate
+    extends LocalizationsDelegate<MaterialLocalizations> {
+  const _AnyLocaleMaterialDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<MaterialLocalizations> load(Locale locale) =>
+      DefaultMaterialLocalizations.load(locale);
+
+  @override
+  bool shouldReload(_AnyLocaleMaterialDelegate old) => false;
+}
+
+/// Widgets counterpart of [_AnyLocaleMaterialDelegate].
+class _AnyLocaleWidgetsDelegate
+    extends LocalizationsDelegate<WidgetsLocalizations> {
+  const _AnyLocaleWidgetsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<WidgetsLocalizations> load(Locale locale) =>
+      DefaultWidgetsLocalizations.load(locale);
+
+  @override
+  bool shouldReload(_AnyLocaleWidgetsDelegate old) => false;
+}
+
+/// Cupertino counterpart of [_AnyLocaleMaterialDelegate]: MaterialApp
+/// appends Flutter's English-only Cupertino delegate itself, which would
+/// otherwise warn (and leave CupertinoLocalizations missing) under a
+/// non-English locale.
+class _AnyLocaleCupertinoDelegate
+    extends LocalizationsDelegate<CupertinoLocalizations> {
+  const _AnyLocaleCupertinoDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<CupertinoLocalizations> load(Locale locale) =>
+      DefaultCupertinoLocalizations.load(locale);
+
+  @override
+  bool shouldReload(_AnyLocaleCupertinoDelegate old) => false;
 }

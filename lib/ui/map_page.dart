@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../l10n/app_strings.dart';
 import '../storage/track_store.dart';
 import '../tile_source.dart';
 import '../build_version.dart';
@@ -169,11 +170,12 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _pickFolder() async {
+    final strings = AppStrings.ofContext(context);
     try {
       final summary = await widget.model.importViaDirectoryPicker();
-      if (summary != null) _toast(summary.toString());
+      if (summary != null) _toast(summary.describe(strings));
     } on PlatformException catch (e) {
-      _toast('Folder import failed: ${e.message ?? e.code}');
+      _toast('${strings.folderImportFailed}: ${e.message ?? e.code}');
     }
   }
 
@@ -195,11 +197,12 @@ class _MapPageState extends State<MapPage> {
   /// position can be had, says why — a silent no-op reads as a broken
   /// button.
   Future<void> _locate() async {
+    final strings = AppStrings.ofContext(context);
     final result = await widget.model.locate(prompt: true);
     if (!mounted) return;
     final pos = result.position;
     if (pos == null) {
-      _toast(_locateFailureMessage(result.failure));
+      _toast(_locateFailureMessage(strings, result.failure));
       return;
     }
     // Never zoom out: a user already closer than the locate zoom keeps
@@ -210,23 +213,25 @@ class _MapPageState extends State<MapPage> {
     _mapController.move(pos, zoom);
   }
 
-  static String _locateFailureMessage(LocationFailure? failure) {
+  static String _locateFailureMessage(
+      AppStrings strings, LocationFailure? failure) {
     switch (failure) {
       case LocationFailure.serviceDisabled:
-        return 'Location services are off — turn them on to locate';
+        return strings.locationServiceDisabled;
       case LocationFailure.permissionDenied:
-        return 'No location permission — Locate needs it to center the map';
+        return strings.locationPermissionDenied;
       case LocationFailure.permissionBlocked:
-        return 'Location permission is blocked — allow it in system settings';
+        return strings.locationPermissionBlocked;
       case LocationFailure.unavailable:
       case null:
-        return 'Location unavailable — permission denied or no fix';
+        return strings.locationUnavailable;
     }
   }
 
   /// One entry point for imports: single files and folder scans flow
   /// through the same unified pipeline, so one button is enough.
   Future<void> _chooseImport() async {
+    final strings = AppStrings.ofContext(context);
     final choice = await showModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
@@ -235,15 +240,14 @@ class _MapPageState extends State<MapPage> {
           children: [
             ListTile(
               leading: const Icon(Icons.description_outlined),
-              title: const Text('Track files'),
-              subtitle: const Text('GPX, FIT, KMZ or TCX — one or more'),
+              title: Text(strings.importTrackFiles),
+              subtitle: Text(strings.importTrackFilesSubtitle),
               onTap: () => Navigator.of(context).pop('files'),
             ),
             ListTile(
               leading: const Icon(Icons.folder_open),
-              title: const Text('A folder'),
-              subtitle:
-                  const Text('Every supported file below it is imported'),
+              title: Text(strings.importFolder),
+              subtitle: Text(strings.importFolderSubtitle),
               onTap: () => Navigator.of(context).pop('folder'),
             ),
           ],
@@ -259,12 +263,14 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _pickFiles() async {
+    final strings = AppStrings.ofContext(context);
     final summary = await widget.model.importViaFilePicker();
-    _toast(summary.toString());
+    _toast(summary.describe(strings));
   }
 
   /// Settings sheet: About card (build date) and the delete-all action.
   Future<void> _openSettings() async {
+    final strings = AppStrings.ofContext(context);
     final choice = await showModalBottomSheet<String>(
       context: context,
       builder: (context) => _SettingsSheet(
@@ -278,26 +284,23 @@ class _MapPageState extends State<MapPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete all tracks?'),
-        content: Text(
-          'This permanently deletes all $trackCount stored tracks. '
-          'The original files you imported them from are not touched.',
-        ),
+        title: Text(strings.deleteAllTracksQuestion),
+        content: Text(strings.deleteAllTracksBody(trackCount)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(strings.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: Text(strings.delete),
           ),
         ],
       ),
     );
     if (!mounted || confirmed != true) return;
     await widget.model.deleteAll();
-    _toast('All tracks deleted');
+    _toast(strings.allTracksDeleted);
   }
 
   void _toast(String message) {
@@ -334,6 +337,7 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.ofContext(context);
     final mapTracks = widget.model.visibleTracks;
     return Scaffold(
       // No app bar: the labeled actions live on a compact floating
@@ -449,14 +453,14 @@ class _MapPageState extends State<MapPage> {
                   children: [
                   _HeaderAction(
                     icon: const Icon(Icons.add),
-                    label: 'Import',
-                    tooltip: 'Import tracks',
+                    label: strings.importLabel,
+                    tooltip: strings.importTooltip,
                     onTap: _chooseImport,
                   ),
                   _HeaderAction(
                     icon: const Icon(Icons.zoom_out_map),
-                    label: 'Fit',
-                    tooltip: 'Fit tracks',
+                    label: strings.fitLabel,
+                    tooltip: strings.fitTooltip,
                     onTap: mapTracks.isEmpty ? null : _fitTracks,
                   ),
                   // Omitted entirely where the platform cannot deliver a
@@ -465,22 +469,22 @@ class _MapPageState extends State<MapPage> {
                   if (widget.locationSupported)
                     _HeaderAction(
                       icon: const Icon(Icons.my_location),
-                      label: 'Locate',
-                      tooltip: 'Center on current position',
+                      label: strings.locateLabel,
+                      tooltip: strings.locateTooltip,
                       onTap: _locate,
                     ),
                   Builder(
                     builder: (context) => _HeaderAction(
                       icon: const _BadgeIcon(),
-                      label: 'Tracks',
-                      tooltip: 'Tracks',
+                      label: strings.tracksLabel,
+                      tooltip: strings.tracksLabel,
                       onTap: () => Scaffold.of(context).openEndDrawer(),
                     ),
                   ),
                   _HeaderAction(
                     icon: const Icon(Icons.settings_outlined),
-                    label: 'Settings',
-                    tooltip: 'Settings',
+                    label: strings.settingsLabel,
+                    tooltip: strings.settingsLabel,
                     onTap: _openSettings,
                   ),
                   ],
@@ -489,8 +493,8 @@ class _MapPageState extends State<MapPage> {
             ),
           ),
           if (mapTracks.isEmpty)
-            const Center(
-              child: _EmptyHint(),
+            Center(
+              child: _EmptyHint(strings: strings),
             ),
           if (widget.model.busy)
             const Align(
@@ -504,7 +508,9 @@ class _MapPageState extends State<MapPage> {
 }
 
 class _EmptyHint extends StatelessWidget {
-  const _EmptyHint();
+  const _EmptyHint({required this.strings});
+
+  final AppStrings strings;
 
   @override
   Widget build(BuildContext context) {
@@ -517,15 +523,14 @@ class _EmptyHint extends StatelessWidget {
             const Icon(Icons.route, size: 40),
             const SizedBox(height: 8),
             Text(
-              'No tracks yet',
+              strings.noTracksYet,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 4),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 320),
-              child: const Text(
-                'Import GPX, FIT, KMZ or TCX files — pick a folder or '
-                'single files, or share a track from another app.',
+              child: Text(
+                strings.noTracksHint,
                 textAlign: TextAlign.center,
               ),
             ),
@@ -674,6 +679,7 @@ class _ZoomSliderState extends State<_ZoomSlider> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.ofContext(context);
     final scheme = Theme.of(context).colorScheme;
     final fraction = (_zoom - _minZoom) / (_maxZoom - _minZoom);
     return Container(
@@ -694,7 +700,7 @@ class _ZoomSliderState extends State<_ZoomSlider> {
         children: [
           _ZoomStepButton(
             icon: Icons.add,
-            tooltip: 'Zoom in',
+            tooltip: strings.zoomIn,
             onTap: () => _moveTo(_zoom + 1),
           ),
           SizedBox(
@@ -740,7 +746,7 @@ class _ZoomSliderState extends State<_ZoomSlider> {
           ),
           _ZoomStepButton(
             icon: Icons.remove,
-            tooltip: 'Zoom out',
+            tooltip: strings.zoomOut,
             onTap: () => _moveTo(_zoom - 1),
           ),
         ],
@@ -790,6 +796,7 @@ class _SettingsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.ofContext(context);
     return SafeArea(
       child: SingleChildScrollView(
         child: Column(
@@ -800,7 +807,7 @@ class _SettingsSheet extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Settings',
+                strings.settingsTitle,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
@@ -817,13 +824,12 @@ class _SettingsSheet extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 4),
-                  const Text('Local-only track viewer for GPX, FIT, KMZ '
-                      'and TCX files on OpenStreetMap.'),
+                  Text(strings.aboutDescription),
                   const SizedBox(height: 8),
                   FutureBuilder<String>(
                     future: versionFuture ?? AppVersion.resolve(),
                     builder: (context, snapshot) => Text(
-                      'Build date: ${snapshot.data ?? '...'}',
+                      strings.buildDate(snapshot.data ?? '...'),
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall
@@ -842,12 +848,12 @@ class _SettingsSheet extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const ListTile(
+                ListTile(
                   dense: true,
-                  title: Text('Track color'),
-                  subtitle: Text('Tint of the unlocked areas on the map'),
+                  title: Text(strings.trackColor),
+                  subtitle: Text(strings.trackColorSubtitle),
                   contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                 ),
                 Padding(
                   padding:
@@ -866,18 +872,19 @@ class _SettingsSheet extends StatelessWidget {
                 ),
                 ListTile(
                   dense: true,
-                  title: const Text('Zoom slider'),
-                  subtitle:
-                      const Text('Screen edge the zoom slider sits on'),
+                  title: Text(strings.zoomSlider),
+                  subtitle: Text(strings.zoomSliderSubtitle),
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'left', label: Text('Left')),
-                      ButtonSegment(value: 'right', label: Text('Right')),
+                    segments: [
+                      ButtonSegment(
+                          value: 'left', label: Text(strings.left)),
+                      ButtonSegment(
+                          value: 'right', label: Text(strings.right)),
                     ],
                     selected: {model.zoomSliderSide},
                     onSelectionChanged: (selection) =>
@@ -889,9 +896,11 @@ class _SettingsSheet extends StatelessWidget {
           ),
           ListTile(
             leading: const Icon(Icons.delete_forever_outlined),
-            title: const Text('Delete all tracks'),
+            title: Text(strings.deleteAllTracks),
             subtitle: Text(
-              trackCount == 0 ? 'No stored tracks' : '$trackCount stored',
+              trackCount == 0
+                  ? strings.noStoredTracks
+                  : strings.storedCount(trackCount),
             ),
             enabled: trackCount > 0,
             onTap: () => Navigator.of(context).pop('deleteAll'),
@@ -921,7 +930,7 @@ class _TintSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = tintKey[0].toUpperCase() + tintKey.substring(1);
+    final name = AppStrings.ofContext(context).tintName(tintKey);
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(right: 12),
@@ -967,6 +976,7 @@ class TrackDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.ofContext(context);
     return Drawer(
       width: 360,
       child: SafeArea(
@@ -977,7 +987,7 @@ class TrackDrawer extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    'Tracks',
+                    strings.tracksLabel,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const Spacer(),
@@ -987,8 +997,8 @@ class TrackDrawer extends StatelessWidget {
                   ),
                   IconButton(
                     tooltip: model.allTracksVisible
-                        ? 'Deselect all tracks'
-                        : 'Select all tracks',
+                        ? strings.deselectAllTracks
+                        : strings.selectAllTracks,
                     icon: Icon(model.allTracksVisible
                         ? Icons.deselect
                         : Icons.done_all),
@@ -1003,7 +1013,7 @@ class TrackDrawer extends StatelessWidget {
             const Divider(height: 1),
             Expanded(
               child: model.tracks.isEmpty
-                  ? const Center(child: Text('Nothing imported yet'))
+                  ? Center(child: Text(strings.nothingImportedYet))
                   : ListView.builder(
                       itemCount: model.tracks.length,
                       itemBuilder: (context, i) {
@@ -1031,6 +1041,7 @@ class _TrackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppStrings.ofContext(context);
     final distance = track.distanceMeters >= 1000
         ? '${(track.distanceMeters / 1000).toStringAsFixed(track.distanceMeters >= 10000 ? 0 : 1)} km'
         : '${track.distanceMeters.round()} m';
@@ -1052,7 +1063,8 @@ class _TrackTile extends StatelessWidget {
         onChanged: (_) => model.toggleVisible(track),
         title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
-          '${track.format} · ${track.pointCount} pts · $distance',
+          '${track.format} · ${strings.pointCount(track.pointCount)} · '
+          '$distance',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
@@ -1070,7 +1082,7 @@ class _TrackTile extends StatelessWidget {
             // Discoverable next to the swipe-to-delete on touch devices;
             // there is no swipe equivalent with a mouse on the desktop.
             IconButton(
-              tooltip: 'Delete track',
+              tooltip: strings.deleteTrack,
               icon: const Icon(Icons.delete_outline),
               visualDensity: VisualDensity.compact,
               onPressed: () => model.delete(track),

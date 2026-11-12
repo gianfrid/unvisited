@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../host_channel.dart';
+import '../l10n/app_strings.dart';
 import '../storage/track_store.dart';
 
 /// Why a position could not be obtained; each maps to a message that
@@ -72,14 +73,17 @@ class ImportSummary {
 
   bool get isEmpty => imported + duplicates + skipped + failed == 0;
 
-  @override
-  String toString() {
-    final parts = <String>[];
-    if (imported > 0) parts.add('$imported imported');
-    if (duplicates > 0) parts.add('$duplicates duplicates');
-    if (skipped > 0) parts.add('$skipped skipped');
-    if (failed > 0) parts.add('$failed failed');
-    return parts.isEmpty ? 'Nothing to import' : parts.join(', ');
+  /// The summary as one line of user-facing text. The strings come from
+  /// the caller's locale: this class is UI state, not a place to bake in
+  /// English.
+  String describe(AppStrings strings) {
+    final parts = <String>[
+      if (imported > 0) strings.importedCount(imported),
+      if (duplicates > 0) strings.duplicateCount(duplicates),
+      if (skipped > 0) strings.skippedCount(skipped),
+      if (failed > 0) strings.failedCount(failed),
+    ];
+    return parts.isEmpty ? strings.nothingToImport : parts.join(', ');
   }
 }
 
