@@ -24,6 +24,7 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md).
 
 ## Agent guidelines
 
+0. Plan before acting: for any non-trivial change, present a short implementation plan first and wait for the user's confirmation before editing or running write actions. Investigation (reading files, searching, read-only checks) needs no confirmation. TODO.md items the user explicitly queued are the exception — "keep working on TODO.md" pre-authorizes the listed slices.
 1. Read [SPEC.md](SPEC.md) before starting any change; read [ARCHITECTURE.md](ARCHITECTURE.md) before structural or cross-component changes.
 2. Keep changes minimal and vertical: one slice, with its tests, per change.
 3. Always commit successful changes once a slice is verified (analyze clean, tests pass). Do not leave completed work sitting uncommitted; leave the working tree clean at the end of a task.
