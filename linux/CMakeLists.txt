@@ -128,6 +128,26 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/icons/"
   DESTINATION "${INSTALL_BUNDLE_DATA_DIR}/icons"
   COMPONENT Runtime)
 
+# Freedesktop identity: the session resolves the running window's icon by
+# matching the application id (com.example.unvisited, see my_application.cc)
+# against a .desktop file. There is no per-window mechanism on Wayland at
+# all (GTK's backend ignores the GTK window icon there), so the entry is
+# what the dash and taskbar resolve this app by. It lands in the user's
+# XDG dirs — a dev checkout has no system install of its own — and is
+# refreshed with every bundle install so the entry tracks the bundle.
+# Opt out (CI, package builds): -DINSTALL_DESKTOP_FILES=OFF.
+option(INSTALL_DESKTOP_FILES
+  "Install the desktop entry and hicolor icon into the user's XDG data dirs" ON)
+if(INSTALL_DESKTOP_FILES AND DEFINED ENV{HOME})
+  install(CODE "
+    file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/com.example.unvisited.desktop\"
+         DESTINATION \"\$ENV{HOME}/.local/share/applications\")
+    set(_hicolor \"\$ENV{HOME}/.local/share/icons/hicolor/256x256/apps\")
+    file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/icons/256x256.png\" DESTINATION \"\${_hicolor}\")
+    file(RENAME \"\${_hicolor}/256x256.png\" \"\${_hicolor}/unvisited.png\")
+  " COMPONENT Runtime)
+endif()
+
 # Install the AOT library on non-Debug builds only.
 if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

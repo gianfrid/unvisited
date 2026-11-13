@@ -14,20 +14,30 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
-// Sets the window icon from the bundled PNG. linux/CMakeLists.txt copies
-// linux/icons/ into the bundle next to the executable, so the path is
-// resolved relative to the binary rather than to the working directory.
-// A missing file is not fatal: the window keeps the default icon.
+// Sets the window icon from the bundled PNGs, one per size. Small sizes
+// survive Mutter's window-icon cap (128px and up are dropped there); the
+// large ones keep the artwork sharp for classic X11 window managers. On
+// Wayland GTK ignores window icons entirely — linux/CMakeLists.txt installs
+// the desktop entry the dash resolves this app by.
+// linux/CMakeLists.txt copies linux/icons/ into the bundle next to the
+// executable, so the path is resolved relative to the binary rather than
+// to the working directory. A missing file is not fatal: the window keeps
+// whatever sizes loaded, or the default icon if none did.
 static void my_application_set_icon(GtkWindow* window) {
   g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
   if (exe_path == nullptr) return;  // not Linux? leave the default icon
   g_autofree gchar* exe_dir = g_path_get_dirname(exe_path);
-  g_autofree gchar* icon_path =
-      g_build_filename(exe_dir, "data", "icons", "256x256.png", nullptr);
-  g_autoptr(GError) error = nullptr;
-  if (!gtk_window_set_icon_from_file(window, icon_path, &error)) {
-    g_warning("Could not load the window icon: %s", error->message);
+  // Largest first: the first entry is the window's default icon.
+  static const char* const sizes[] = {"256x256", "48x48", "32x32", "24x24"};
+  GList* icons = nullptr;
+  for (const char* size : sizes) {
+    g_autofree gchar* icon_path =
+        g_build_filename(exe_dir, "data", "icons", size, nullptr);
+    g_autoptr(GdkPixbuf) icon = gdk_pixbuf_new_from_file(icon_path, nullptr);
+    if (icon != nullptr) icons = g_list_append(icons, g_object_ref(icon));
   }
+  gtk_window_set_icon_list(window, icons);
+  g_list_free_full(icons, g_object_unref);
 }
 
 // Called when first Flutter frame received.
