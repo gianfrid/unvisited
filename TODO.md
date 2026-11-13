@@ -25,7 +25,8 @@ unlock state persists as way ids + matched-length ratio in `index.json`.
 Recording + ride/walk dashboard — decided architecture (research report:
 docs/active-recording-for-unvisited-research-report.md; owner direction
 2026-11-13: recording is in scope, Android first, the app stops being
-specified as view-only): geolocator's Android foreground service (no new
+specified as view-only; the tilted/3D map view is excluded for now and
+parks in the backlog): geolocator's Android foreground service (no new
 packages) → pure-Dart RecordingSession behind a PositionSource interface →
 1 s best-accuracy intake with filters (>50 m accuracy dropped, stale via
 maxUpdateAge, pause/fix-loss = new trkseg) → staging GPX under
@@ -56,17 +57,14 @@ staged file as a partial track on next start. Desktop recording is backlog
   un-finalized GPX), battery-optimization exemption advisory in Settings
   (soft, no blocking dialogs), GPX writer↔reader round-trip fixture via
   the fixture tool.
-- [] slice 5 — tilt (blocked upstream, re-verify API when it lands): adopt
-  flutter_map pitch (`MapOptions.maxPitch`, gestures, follow-camera under
-  pitch — fog circles/corridors are ground layers) when the pitch-support
-  branch releases; owner call whether to track the unreleased branch
-  earlier or wait. Fallbacks (maplibre_gl rewrite, mapigrade) are
-  documented in the report but rejected meanwhile.
-- [] backlog — desktop recording (needs a Linux location source), resume
-  of a killed session, auto-pause-when-stationary, interval setting,
+- [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
+  (owner decision 2026-11-13), revisit when flutter_map's pitch support
+  releases (`MapOptions.maxPitch` — fog circles/corridors are ground
+  layers and would tilt for free, so adoption stays cheap; fallbacks
+  and the maplibre_gl/mapigrade comparison live in the research report),
+  desktop recording (needs a Linux location source), resume of a killed
+  session, auto-pause-when-stationary, interval setting,
   vector-tiles/3D-building look (needs a new map-data decision).
 - [] open decisions (report §Open questions): confirmed defaults — 1 s
   interval, soft battery advisory, mute-FGS when notifications denied,
-  manual pause only, salvage-as-import. Still owner-side: pinch/early
-  adoption of the flutter_map pitch branch (needs package-version
-  sign-off).
+  manual pause only, salvage-as-import.
