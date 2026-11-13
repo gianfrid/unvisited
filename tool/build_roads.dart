@@ -9,21 +9,19 @@
 //            "points": [[52.52, 13.405], [52.52, 13.41]]}]}
 // ```
 //
-// Today this input is hand-written (the synthetic test fixture). In the
-// slice after next the same tool grows a PBF reader (dev-only deps:
-// protobuf + dart_osmpbf) to consume an osmium-filtered Geifabrik extract:
+// Today this input is hand-written (the synthetic test fixture). A later
+// slice grows the same tool a PBF reader (dev-only deps: protobuf +
+// dart_osmpbf) to consume an osmium-filtered Geofabrik extract:
 //
 //   osmium tags-filter region.osm.pbf w/highway -o roads.osm.pbf
 //
-// OUTPUT FORMAT (lib/road/road_format.dart is the spec): magic "UNVROADS",
-// one version byte (1), a uint32 little-endian JSON payload length, then the
-// JSON payload — ways with polyline5-encoded geometry and a z12 bucket index
-// mapping "x_y" tile keys to way indices.
+// Output format: see lib/road/road_format.dart (version 2 — a JSON bucket
+// directory followed by one payload blob per z12 bucket, so the app opens a
+// region file in milliseconds and parses only the buckets a track touches).
 
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:unvisited/road/road_format.dart';
 
@@ -38,45 +36,43 @@ void main(List<String> args) {
     print('error: no ways in ${args[0]}');
     exit(1);
   }
+  buildRoadFile(ways, args[1]);
+}
 
-  final wayEntries = <Map<String, dynamic>>[];
-  final buckets = <String, List<int>>{};
-  for (var i = 0; i < ways.length; i++) {
-    final w = ways[i];
+/// Encodes [ways] (id/class/name/points maps as in the JSON source) into
+/// the road file at [outPath]. Also the entry point for other tools (the
+/// benchmark builds its synthetic city through this) and, in a later
+/// slice, for the PBF reader.
+void buildRoadFile(List<Map> ways, String outPath) {
+  final buckets = <String, List<Map<String, dynamic>>>{};
+  var skipped = 0;
+  for (final w in ways) {
     final points = [
       for (final p in (w['points'] as List).cast<List>())
         ((p[0] as num).toDouble(), (p[1] as num).toDouble()),
     ];
     if (points.length < 2) {
-      print('warning: way ${w['id']} has fewer than 2 points, skipped');
+      skipped++;
       continue;
     }
-    for (final key in _tilesForWay(points)) {
-      buckets.putIfAbsent(key, () => []).add(wayEntries.length);
-    }
-    wayEntries.add({
-      'id': w['id'],
+    final entry = {
+      'id': '${w['id']}',
       'class': w['class'] ?? '',
       'name': w['name'] ?? '',
       'pts': encodePolyline5(points),
-    });
+    };
+    // A way registers in every bucket its bbox touches (the same
+    // conservative rule the matcher's own index uses).
+    for (final key in _tilesForWay(points)) {
+      buckets.putIfAbsent(key, () => []).add(entry);
+    }
   }
-
-  final payload = jsonEncode({'ways': wayEntries, 'buckets': buckets});
-  final payloadBytes = utf8.encode(payload);
-  final out = BytesBuilder()
-    ..add(roadMagic)
-    ..addByte(roadFormatVersion)
-    ..add([
-      payloadBytes.length & 0xFF,
-      (payloadBytes.length >> 8) & 0xFF,
-      (payloadBytes.length >> 16) & 0xFF,
-      (payloadBytes.length >> 24) & 0xFF,
-    ])
-    ..add(payloadBytes);
-  final bytes = out.takeBytes();
-  File(args[1]).writeAsBytesSync(bytes, flush: true);
-  print('${args[1]} written: ${wayEntries.length} ways, '
+  if (skipped > 0) {
+    print('warning: skipped $skipped ways with fewer than 2 points');
+  }
+  final bytes = encodeRoadFile(buckets);
+  File(outPath).writeAsBytesSync(bytes, flush: true);
+  print('$outPath written: ${ways.length - skipped} ways, '
       '${buckets.length} buckets, ${bytes.length} bytes');
 }
 
@@ -89,12 +85,11 @@ Set<String> _tilesForWay(List<(double, double)> points) {
   final maxLat = lats.reduce(math.max);
   final minLon = lons.reduce(math.min);
   final maxLon = lons.reduce(math.max);
-  final keys = <String>{
+  return <String>{
     roadBucketKeyFor(minLat, minLon),
     roadBucketKeyFor(minLat, maxLon),
     roadBucketKeyFor(maxLat, minLon),
     roadBucketKeyFor(maxLat, maxLon),
     roadBucketKeyFor((minLat + maxLat) / 2, (minLon + maxLon) / 2),
   };
-  return keys;
 }

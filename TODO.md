@@ -17,6 +17,12 @@ matched-length ratio in `index.json`.
   covered by the existing OSM notice); ARCHITECTURE.md gains a "Road
   matching" section (data flow, format, interface, persistence) replacing the
   "deferred" note; no code.
+- [] profiling follow-ups (after slice 5 measures real files): the JSON
+  bucket payloads dominate open/parse cost at region scale; if a real
+  Germany-sized file proves too slow on mid-range Android, switch the bucket
+  payload to a binary layout (varint lengths instead of JSON) — the directory
+  and lazy-loading design stays. Also re-run `tool/bench_roads.dart` on a
+  device profile build before deciding on the Rust core (slice 7).
 - [] slice 5 — build CLI over real data (`tool/build_roads.dart`):
   dev_dependencies `protobuf` + `dart_osmpbf` (or hand-written reader if
   the lib proves unstable) to read an osmium-filtered `roads.osm.pbf`

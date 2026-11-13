@@ -97,6 +97,18 @@ void main() {
     expect(result.ratioFor('1002'), greaterThan(0));
   });
 
+  test('matching parses only the buckets the track touches', () {
+    // The fixture is a single bucket, so this asserts the lazy contract on
+    // the store the matcher uses: a match reads buckets, never the file.
+    final store = RoadStore.parse(fixture('test_roads.unvisited-roads'));
+    final matcher = GeometricRoadMatcher(store);
+    matcher.match(const [LatLng(52.5200, 13.4075)]);
+    expect(store.parsedBucketCount, 1,
+        reason: 'one bucket, parsed once, then cached');
+    matcher.match(const [LatLng(52.5200, 13.4075)]);
+    expect(store.parsedBucketCount, 1, reason: 'repeat match hits the cache');
+  });
+
   test('no unlock centers → no unlocked ways', () {
     final result = matcher.match(const []);
     expect(result.matchedMeters, isEmpty);

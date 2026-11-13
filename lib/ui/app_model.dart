@@ -110,6 +110,9 @@ class AppModel extends ChangeNotifier {
   /// Activates a side-loaded road file for matching (null deactivates).
   /// Imports compute unlock state for new tracks while it is active.
   void setRoadFile(String? path) {
+    // Release the previous file handle before swapping (the store reads
+    // bucket slices from disk on demand).
+    _roadStore?.close();
     if (path == null) {
       _roadStore = null;
       _roadMatcher = null;

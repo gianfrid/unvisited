@@ -1,29 +1,36 @@
-/// The offline road-data format: a binary container holding a JSON payload
-/// of ways (polyline-encoded geometry) and a spatial bucket index.
+/// The offline road-data format: a binary container with a small JSON
+/// directory and one JSON payload per spatial bucket.
 ///
 /// Nothing road-related is fetched at runtime (SPEC): a desktop build CLI
 /// (`tool/build_roads.dart`) preprocesses an osmium-filtered Geofabrik
-/// extract into one file the user side-loads. The container stays simple —
-/// magic + version, a length-prefixed JSON payload, nothing else — so the
-/// reader is pure Dart, unit-testable, and a future Rust core can reimplement
-/// it from this comment alone.
+/// extract into one file the user side-loads. The reader is pure Dart,
+/// unit-testable, and a future Rust core can reimplement it from this
+/// comment alone.
 ///
-/// JSON payload shape:
-/// ```json
-/// {
-///   "ways": [
-///     {"id": "2345678", "class": "residential", "name": "Hauptstraße",
-///      "pts": "_p~iF~ps|U_ulLnnqB"}          // polyline5, delta + zigzag
-///   ],
-///   "buckets": {"12023_7319": [0, 2], ...}   // z12 tile "x_y" → way indices
-/// }
+/// LAYOUT (version 2)
+/// ```
+/// "UNVROADS"           8 bytes, magic
+/// uint8                format version (2)
+/// uint32 LE            directory length N
+/// N bytes              directory JSON: {"<x>_<y>": [offset, length], ...}
+/// payload blobs        one JSON object per bucket, at its directory offset
 /// ```
 ///
-/// Geometry uses the Google/Mapbox polyline algorithm at 5 decimal digits
-/// (~1.1 m at the equator — finer than consumer GPS and than the fog-cell
-/// grid; see https://developers.google.com/maps/documentation/utilities/
-/// polylinealgorithm). Way ids are OSM way ids, stable across edits, so
-/// unlock state recorded against them survives a re-extract.
+/// A bucket payload is `{"ways": [{"id", "class", "name", "pts"}, ...]}`,
+/// where `pts` is the way's geometry as a polyline5 string (Google/Mapbox
+/// algorithm at 5 decimal digits, ~1.1 m at the equator — finer than
+/// consumer GPS and than the fog-cell grid; see
+/// https://developers.google.com/maps/documentation/utilities/
+/// polylinealgorithm).
+///
+/// The directory is the only thing read at open: a region-sized file (hundreds
+/// of MB, millions of ways) opens in milliseconds and only the buckets a track
+/// actually touches are ever parsed — the "bucket-loaded, bounded memory"
+/// promise. A way spanning several buckets is duplicated into each (OSM ways
+/// are short relative to a z12 tile, so the overhead is small).
+///
+/// Way ids are OSM way ids, stable across edits, so unlock state recorded
+/// against them survives a re-extract.
 library;
 
 import 'dart:convert';
@@ -33,7 +40,7 @@ import 'dart:math' as math;
 final List<int> roadMagic = utf8.encode('UNVROADS');
 
 /// Format version; readers reject files whose version byte differs.
-const int roadFormatVersion = 1;
+const int roadFormatVersion = 2;
 
 class RoadFormatException implements Exception {
   RoadFormatException(this.message);
@@ -117,4 +124,46 @@ String roadBucketKeyFor(double lat, double lon, {int zoom = 12}) {
       n)
       .floor();
   return '${x}_$y';
+}
+
+/// The z12 tile key of the tile adjacent to (lat, lon) by [dx], [dy] tiles.
+String roadBucketKeyOffset(double lat, double lon, int dx, int dy) {
+  final key = roadBucketKeyFor(lat, lon);
+  final parts = key.split('_');
+  final x = int.parse(parts[0]) + dx;
+  final y = int.parse(parts[1]) + dy;
+  return '${x}_$y';
+}
+
+/// Serializes the container: a directory plus one payload blob per bucket.
+///
+/// [buckets] maps bucket key → the ways whose geometry belongs in it (a way
+/// spanning buckets appears in each). Blobs are written in key order, so
+/// output is deterministic for a given input.
+List<int> encodeRoadFile(Map<String, List<Map<String, dynamic>>> buckets) {
+  final keys = buckets.keys.toList()..sort();
+  final directory = <String, List<int>>{};
+  final blobs = <List<int>>[];
+  var offset = 0;
+  for (final key in keys) {
+    final payload = utf8.encode(jsonEncode({'ways': buckets[key]}));
+    // Offsets are relative to the first blob (the reader adds the header
+    // length it just parsed).
+    directory[key] = [offset, payload.length];
+    blobs.add(payload);
+    offset += payload.length;
+  }
+  final directoryBytes = utf8.encode(jsonEncode(directory));
+  final header = <int>[
+    ...roadMagic,
+    roadFormatVersion,
+    directoryBytes.length & 0xFF,
+    (directoryBytes.length >> 8) & 0xFF,
+    (directoryBytes.length >> 16) & 0xFF,
+    (directoryBytes.length >> 24) & 0xFF,
+    ...directoryBytes,
+  ];
+  // Blob offsets are relative to the end of the header; the reader computes
+  // the base from the header length it just read.
+  return [...header, for (final blob in blobs) ...blob];
 }
