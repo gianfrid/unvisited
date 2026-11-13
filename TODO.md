@@ -17,18 +17,6 @@ matched-length ratio in `index.json`.
   covered by the existing OSM notice); ARCHITECTURE.md gains a "Road
   matching" section (data flow, format, interface, persistence) replacing the
   "deferred" note; no code.
-- [] slice 2 — geometric matcher (`lib/road/road_matcher.dart`):
-  `RoadMatcher` interface (points → visited way ids with per-way matched
-  length ratio; byte-oriented inputs so a Rust core can slot in later) +
-  geometric implementation: for each unlock candidate (the same
-  `unlockCenters` cell coalescing the circles use), find ways in the
-  bucket(s) whose segments are within ~15 m (point-to-segment distance,
-  bbox prefilter), accumulate matched sub-lengths per way. Ways ≥90%
-  matched are "complete". Tests against the synthetic fixture: a walk
-  along a street unlocks that way (partially, ratio asserted) and not a
-  parallel service road 25 m away; a loop around a block unlocks the
-  corner segments of all four ways; empty/no road file → empty result,
-  never an error.
 - [] slice 3 — persistence + model wiring: `index.json` gains per-track
   `unlockedWays: {wayId: matchedLength}` (survives delete-all of *other*
   tracks; deleting a track deletes its entry), computed at import time
