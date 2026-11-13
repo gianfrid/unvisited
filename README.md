@@ -64,7 +64,7 @@ The import pipeline, track store and map render identically to Android, so this 
 
 Import tracks with the **Import** button: it offers **Track files** (the file picker, supports multiple files) and **A folder** (imports recursively, e.g. a `GARMIN/Activity/` folder). Tracks and the catalog are stored under `$XDG_DATA_HOME/unvisited` (default `~/.local/share/unvisited`) and survive restarts. Deleting that directory resets the app state.
 
-The current build installs a user-local desktop entry plus the 256px hicolor icon (skip with `-DINSTALL_DESKTOP_FILES=OFF`): on GNOME the dash icon is resolved by matching the app id against that entry, since GTK's Wayland backend cannot set the window icon at all.
+The current build installs a user-local desktop entry plus the 256px hicolor icon (skip with `-DINSTALL_DESKTOP_FILES=OFF`): on GNOME the dash icon is resolved by matching the app id against that entry, since GTK's Wayland backend cannot set the window icon at all. The same entry is manageable by hand: `linux/desktop-entry.sh install` points `Exec` at a built bundle, so the app launches from the overview grid too (`uninstall` reverses it; a rebuild resets the entry back to its committed `Exec`).
 
 Re-importing a byte-identical file does not create a duplicate — tracks are deduplicated by content hash.
 
