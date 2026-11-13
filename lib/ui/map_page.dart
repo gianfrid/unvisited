@@ -453,9 +453,14 @@ class _MapPageState extends State<MapPage> {
             ),
             children: [
               TileLayer(
-                urlTemplate: tileUrlTemplate,
+                urlTemplate: tileUrlTemplateFor(widget.model.tileLayer),
+                // CyclOSM host-rotates with {s}; the standard OSM template
+                // has no {s}, so its subdomains value is unused.
+                subdomains: widget.model.tileLayer == 'cycle'
+                    ? cycleTileSubdomains
+                    : const <String>['abc'],
                 userAgentPackageName: tileUserAgent,
-                // Dark mode: OSM standard tiles are light-only, so a dark
+                // Dark mode: both tile styles are light-only, so a dark
                 // UI would leave a bright map. Darken client-side with
                 // flutter_map's built-in inverted-matrix builder — no new
                 // tile endpoint (SPEC forbids one); the result is a dimmed
@@ -514,7 +519,7 @@ class _MapPageState extends State<MapPage> {
                 showFlutterMapAttribution: false,
                 attributions: [
                   TextSourceAttribution(
-                    'OpenStreetMap contributors',
+                    tileAttribution(widget.model.tileLayer),
                     onTap: () {},
                   ),
                 ],
@@ -996,6 +1001,28 @@ class _SettingsSheet extends StatelessWidget {
                     selected: {model.zoomSliderSide},
                     onSelectionChanged: (selection) =>
                         model.setZoomSliderSide(selection.first),
+                  ),
+                ),
+                ListTile(
+                  dense: true,
+                  title: Text(strings.mapLayer),
+                  subtitle: Text(strings.mapLayerSubtitle),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SegmentedButton<String>(
+                    segments: [
+                      ButtonSegment(
+                          value: 'standard',
+                          label: Text(strings.standardLayer)),
+                      ButtonSegment(
+                          value: 'cycle', label: Text(strings.cycleLayer)),
+                    ],
+                    selected: {model.tileLayer},
+                    onSelectionChanged: (selection) =>
+                        model.setTileLayer(selection.first),
                   ),
                 ),
                 ListTile(

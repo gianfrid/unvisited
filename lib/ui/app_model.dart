@@ -495,6 +495,9 @@ class AppModel extends ChangeNotifier {
   /// Theme mode: 'system', 'light', or 'dark'.
   String get themeMode => store.themeMode;
 
+  /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
+  String get tileLayer => store.tileLayer;
+
   /// Saves the exploration overlay tint; the map repaints via the usual
   /// notification.
   Future<void> setTrackTint(String key) async {
@@ -510,6 +513,13 @@ class AppModel extends ChangeNotifier {
   /// Saves the theme mode; the app rebuilds via the usual notification.
   Future<void> setThemeMode(String mode) async {
     await store.saveThemeMode(mode);
+    notifyListeners();
+  }
+
+  /// Saves the base tile style; the map refetches tiles via the usual
+  /// notification.
+  Future<void> setTileLayer(String layer) async {
+    await store.saveTileLayer(layer);
     notifyListeners();
   }
 

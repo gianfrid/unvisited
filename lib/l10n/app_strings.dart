@@ -83,6 +83,13 @@ abstract class AppStrings {
   String get trackColorSubtitle;
   String get zoomSlider;
   String get zoomSliderSubtitle;
+
+  // Base tile style (standard OSM raster or CyclOSM cycle tiles).
+  String get mapLayer;
+  String get mapLayerSubtitle;
+  String get standardLayer;
+  String get cycleLayer;
+
   String get language;
   String get languageSubtitle;
 
@@ -219,6 +226,14 @@ class EnglishStrings extends AppStrings {
   String get zoomSlider => 'Zoom slider';
   @override
   String get zoomSliderSubtitle => 'Screen edge the zoom slider sits on';
+  @override
+  String get mapLayer => 'Map layer';
+  @override
+  String get mapLayerSubtitle => 'Tiles of the base map';
+  @override
+  String get standardLayer => 'Standard';
+  @override
+  String get cycleLayer => 'Cycle (CyclOSM)';
   @override
   String get language => 'Language';
   @override
@@ -394,6 +409,14 @@ class ItalianStrings extends AppStrings {
   String get zoomSlider => 'Cursore dello zoom';
   @override
   String get zoomSliderSubtitle => 'Lato dello schermo su cui si trova';
+  @override
+  String get mapLayer => 'Livello mappa';
+  @override
+  String get mapLayerSubtitle => 'Tile della mappa base';
+  @override
+  String get standardLayer => 'Standard';
+  @override
+  String get cycleLayer => 'Ciclo (CyclOSM)';
   @override
   String get language => 'Lingua';
   @override

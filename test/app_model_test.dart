@@ -656,8 +656,7 @@ void main() {
     });
   });
 
-  group('theme mode', () {
-    test('defaults to system', () {
+  group('theme mode', () {    test('defaults to system', () {
       expect(model.themeMode, 'system');
       expect(model.themeModeValue, ThemeMode.system);
     });
@@ -680,6 +679,25 @@ void main() {
       // We can't change model.themeMode directly, but we can test the mapping
       // through a temporary model with different stored values
       // This is tested more thoroughly in the persistence test above
+    });
+  });
+
+  group('tile layer', () {
+    test('defaults to the standard OSM raster', () {
+      expect(model.tileLayer, 'standard');
+    });
+
+    test('switching to the cycle layer persists and restores', () async {
+      await model.setTileLayer('cycle');
+      expect(model.tileLayer, 'cycle');
+
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.tileLayer, 'cycle');
+
+      // Switching back persists too.
+      await reloaded.setTileLayer('standard');
+      expect(reloaded.tileLayer, 'standard');
     });
   });
 }

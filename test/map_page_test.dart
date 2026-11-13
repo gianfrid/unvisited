@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/storage/track_store.dart';
+import 'package:unvisited/tile_source.dart';
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/fog_of_war.dart';
 import 'package:unvisited/ui/map_page.dart';
@@ -57,6 +58,39 @@ void main() {
                 as NetworkTileProvider)
             .cachingProvider;
     expect(provider, isNull);
+  });
+
+  testWidgets('switching to the cycle layer swaps the tile source',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // See above.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.pumpWidget(
+      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    );
+    await tester.pump();
+
+    expect(
+      tester.widget<TileLayer>(find.byType(TileLayer)).urlTemplate,
+      tileUrlTemplate,
+    );
+
+    await model.setTileLayer('cycle');
+    await tester.pump();
+
+    // The rebuild must swap both the URL template and its host rotation.
+    final layer = tester.widget<TileLayer>(find.byType(TileLayer));
+    expect(layer.urlTemplate, cycleTileUrlTemplate);
+    expect(layer.subdomains, cycleTileSubdomains);
   });
 
   testWidgets('dark theme darkens the tiles client-side, light leaves them',

@@ -93,4 +93,30 @@ void main() {
           'nor Expires; the offline cache could not invalidate tiles',
     );
   });
+
+  Future<(HttpClientResponse, Uint8List)> fetchCycle(int tx, int ty) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
+    try {
+      final request = await client
+          .getUrl(Uri.parse(cycleTileUrl(z, tx, ty)))
+          ..headers.set(HttpHeaders.userAgentHeader, tileUserAgent);
+      final response =
+          await request.close().timeout(const Duration(seconds: 20));
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in response) {
+        bytes.add(chunk);
+      }
+      return (response, bytes.toBytes());
+    } finally {
+      client.close();
+    }
+  }
+
+  test('the CyclOSM cycle layer serves tiles for our User-Agent', () async {
+    // The optional cycle tile style comes from OpenStreetMap France's
+    // CyclOSM servers: same identifying User-Agent, same politeness rules.
+    final (response, bytes) = await fetchCycle(x, y);
+    expectPngTile(response, bytes);
+  });
 }

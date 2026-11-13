@@ -7,7 +7,7 @@ The rules: scope, invariants, testing, conventions and acceptance criteria. How 
 1. Import tracks from local files via Storage Access Framework (SAF) folder access and share intents (Android) or file/folder pickers (desktop). No per-service integrations, no cloud, no backend, no accounts.
 2. Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX (plain KML is handled alongside KMZ — OpenTracks exports both). All sources flow through one unified import pipeline.
 3. Persist imported tracks locally as files under an app-private storage root; catalog metadata lives in a JSON index (`index.json`) next to a `tracks/` directory. No database package.
-4. Show every imported track together on a single map using OpenStreetMap tiles.
+4. Show every imported track together on a single map using OpenStreetMap-based tiles, with a selectable base style in Settings: standard OSM raster (default) or CyclOSM. Both are ODbL data; attribution rides with the tiles (the standard notice, plus OpenStreetMap France for CyclOSM) and is shown on the map.
 5. The map shows an exploration overlay in fog-of-war style: every track point unlocks the area around it (15 m radius circles drawn translucently over the tiles, which stay a fully legible map), and a section of an OSM road/trail that runs close to unlocked points is matched and unlocked with it. Road matching is offline and decided (research: `docs/offline-road-matching-for-unvisited-research-report.md`): road data comes from a Geofabrik extract filtered to `highway=*` ways, preprocessed on the desktop into a flattened, spatially bucketed file (varint polylines + JSON sidecar) that the user side-loads into the app — nothing road-related is bundled or fetched at runtime. Matching is geometric (point-to-segment within the ~15 m unlock radius against the same cell coalescing the circles use), per-segment: only the sub-length of a way actually walked unlocks, a way is flagged complete at ≥90% matched length. No Overpass, no routing graph, no HMM — a parallel service road over-unlocking is cosmetic and already true of the circles. ODbL attribution is covered by the existing OSM notice.
 6. Active recording (Android, decided — research: `docs/active-recording-for-unvisited-research-report.md`): a Record action starts a foreground-service GPS session (geolocator's, with its notification and optional wake lock — no new packages), feeds a pure-Dart `RecordingSession` behind a `PositionSource` interface, tracks it in the UI as a dashboard (live speed, distance, duration/moving time; follow-camera with a course-up marker), and stages points as they arrive into a GPX file under the app root. Stopping finalizes that file through the same unified import pipeline as any other source — recorded tracks are ordinary catalog tracks: same dedup, same fog overlay, same road-corridor matching. The session tolerates process death (short flush cadence; an un-finalized file salvages as a partial track at next start) and deliberately reads only while-in-use location: it never starts from the background, so `ACCESS_BACKGROUND_LOCATION` stays out. Desktop Linux cannot record (no location plugin there — geolocator ships none for Linux); the Record action is hidden where location support is absent, and desktop recording is backlog. The dashboard renders 2D (follow-camera with a course-up marker); the OsmAnd-style tilted map view is excluded for now and parked in the backlog pending upstream flutter_map pitch support. Raster OSM tiles stay the only map source under any future tilt work; a vector/3D-building look would be a new decision and is out of scope.
 
@@ -18,7 +18,7 @@ Out of scope: route planning, turn-by-turn navigation, per-service integrations,
 ### Privacy and network
 
 - Data is local only. No cloud sync, no server component, no analytics.
-- Never add network calls beyond fetching OSM map tiles.
+- Never add network calls beyond fetching base map tiles (OSM standard raster or CyclOSM).
 
 ### Storage
 
@@ -90,4 +90,4 @@ Android:
 - Every supported source (OpenTracks, Garmin FIT, Strava GPX/FIT) flows through the unified pipeline and renders on the single OSM map.
 - FIT activity files import; FIT monitoring files are skipped without error; truncated FIT files still import.
 - `flutter analyze` is clean and `flutter test` passes.
-- No network traffic beyond OSM map tiles; no data leaves the device.
+- No network traffic beyond base map tiles (OSM standard, CyclOSM); no data leaves the device.

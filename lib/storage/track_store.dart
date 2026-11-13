@@ -184,6 +184,11 @@ class TrackStore {
   String _themeMode = 'system';
   String get themeMode => _themeMode;
 
+  /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
+  /// Persisted like other preferences.
+  String _tileLayer = 'standard';
+  String get tileLayer => _tileLayer;
+
   /// The side-loaded road region file's *name* (relative to `roads/` under
   /// the root), or null when none is set. The picked file is copied into
   /// the store root on activation — a picked path's access can be revoked
@@ -262,6 +267,13 @@ class TrackStore {
     _saveIndex();
   }
 
+  /// Saves the base tile style ('standard' or 'cycle'). A preference like
+  /// the theme: it survives [clearAll].
+  Future<void> saveTileLayer(String layer) async {
+    _tileLayer = layer;
+    _saveIndex();
+  }
+
   Future<void> load() async {
     _tracks.clear();
     final f = indexFile;
@@ -281,6 +293,7 @@ class TrackStore {
             (settings['zoomSliderSide'] as String?) ?? _zoomSliderSide;
         _language = (settings['language'] as String?) ?? _language;
         _themeMode = (settings['themeMode'] as String?) ?? _themeMode;
+        _tileLayer = (settings['tileLayer'] as String?) ?? _tileLayer;
         _roadsFile = settings['roadsFile'] as String?;
       }
       final list = map['tracks'] as List;
@@ -445,6 +458,7 @@ class TrackStore {
         'zoomSliderSide': _zoomSliderSide,
         'language': _language,
         'themeMode': _themeMode,
+        'tileLayer': _tileLayer,
         if (_roadsFile != null) 'roadsFile': _roadsFile,
       },
     };
