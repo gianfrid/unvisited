@@ -184,6 +184,51 @@ class TrackStore {
   String _themeMode = 'system';
   String get themeMode => _themeMode;
 
+  /// The side-loaded road region file's *name* (relative to `roads/` under
+  /// the root), or null when none is set. The picked file is copied into
+  /// the store root on activation — a picked path's access can be revoked
+  /// or its file deleted later, so the app owns its copy instead.
+  String? _roadsFile;
+  String? get roadsFile => _roadsFile;
+
+  Directory get _roadsDir =>
+      Directory('${root.path}${Platform.pathSeparator}roads')
+        ..createSync(recursive: true);
+
+  /// The store's own copy of the region file named [name].
+  File roadFileFor(String name) =>
+      File('${_roadsDir.path}${Platform.pathSeparator}$name');
+
+  /// Copies a picked `.unvisited-roads` file into the app root (replacing
+  /// a previous region's copy) and records its name in the index. Returns
+  /// the stored copy's path.
+  String adoptRoadFile(String sourcePath) {
+    final name = File(sourcePath).uri.pathSegments.last;
+    final old = _roadsFile;
+    final stored = roadFileFor(name);
+    if (old != null && old != name) {
+      final previous = roadFileFor(old);
+      if (previous.existsSync()) previous.deleteSync();
+    }
+    File(sourcePath).copySync(stored.path);
+    _roadsFile = name;
+    _saveIndex();
+    return stored.path;
+  }
+
+  /// Forgets the road region and deletes its stored copy. Unlock state
+  /// already recorded on tracks survives: it is exploration data (the
+  /// matched corridors are materialized polylines), not cache.
+  Future<void> clearRoadsFile() async {
+    final old = _roadsFile;
+    _roadsFile = null;
+    if (old != null) {
+      final previous = roadFileFor(old);
+      if (previous.existsSync()) previous.deleteSync();
+    }
+    _saveIndex();
+  }
+
   /// Saves the device position as the map start center for next launch.
   /// This survives [clearAll]: it is the user's location, not track data.
   Future<void> savePosition(double lat, double lon) async {
@@ -236,6 +281,7 @@ class TrackStore {
             (settings['zoomSliderSide'] as String?) ?? _zoomSliderSide;
         _language = (settings['language'] as String?) ?? _language;
         _themeMode = (settings['themeMode'] as String?) ?? _themeMode;
+        _roadsFile = settings['roadsFile'] as String?;
       }
       final list = map['tracks'] as List;
       for (final raw in list) {
@@ -399,6 +445,7 @@ class TrackStore {
         'zoomSliderSide': _zoomSliderSide,
         'language': _language,
         'themeMode': _themeMode,
+        if (_roadsFile != null) 'roadsFile': _roadsFile,
       },
     };
     root.createSync(recursive: true);

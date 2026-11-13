@@ -84,7 +84,7 @@ flutter build apk --debug     # build/app/outputs/flutter-apk/app-debug.apk
 
 ## Road data files (optional)
 
-Road matching works on one side-loaded region file (extension `.unvisited-roads`); nothing road-related is bundled with the app or fetched at runtime. Build one from any Geofabrik extract on the desktop:
+Road matching works on one side-loaded region file; nothing road-related is bundled with the app or fetched at runtime. Build one from any Geofabrik extract on the desktop:
 
 ```bash
 osmium tags-filter region.osm.pbf w/highway -o roads.osm.pbf   # optional pre-filter
@@ -92,6 +92,8 @@ dart run tool/build_roads.dart roads.osm.pbf region.unvisited-roads
 ```
 
 The build CLI also accepts the unfiltered extract directly (its own reader drops everything without a `highway` tag); the osmium filter only makes the build faster and the intermediate file smaller. All `highway=*` classes are in scope. ODbL attribution is covered by the app's existing OSM notice.
+
+Load the built file via Settings → Road data: it is copied into the app's private storage and stays active there (swapping regions re-runs matching for the stored tracks, and removing the file never erases unlocked corridors — the overlay reads its data from the catalog, not the region file).
 
 ## Tests
 

@@ -1,5 +1,17 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart'
+    show
+        AndroidOptions,
+        DarwinOptions,
+        FilePickerPlatform,
+        FilePickerStatus,
+        FileType,
+        LinuxOptions,
+        MethodChannelFilePicker,
+        PlatformFile,
+        WebOptions,
+        WindowsOptions;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +21,50 @@ import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/track_colors.dart';
 
+import '../tool/build_roads.dart' show buildRoadFile;
 import 'helpers.dart';
+
+/// A stand-in for a file the system picker would hand out. Real picked
+/// files come from the federated platform packages; the fake subclasses
+/// the abstract PlatformFile and carries name + path only (all the model
+/// reads). `base` propagates the base class's rules, and noSuchMethod
+/// keeps every other member unimplemented.
+base class FakePickedFile extends PlatformFile {
+  FakePickedFile(this.name, String path) : uri = Uri.file(path);
+
+  @override
+  final String name;
+
+  @override
+  final Uri uri;
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+/// A FilePickerPlatform whose file picker always "picks" [picked]
+/// (null = the user cancelled).
+class FakeFilePicker extends FilePickerPlatform {
+  FakeFilePicker(this.picked);
+
+  final PlatformFile? picked;
+
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async =>
+      picked;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -425,6 +480,179 @@ void main() {
       final reloaded = TrackStore(root);
       await reloaded.load();
       expect(reloaded.tracks.single.unlockedWays, isEmpty);
+    });
+  });
+
+  group('road data settings', () {
+    void installPicker(PlatformFile? picked) {
+      FilePickerPlatform.instance = FakeFilePicker(picked);
+      addTearDown(() {
+        FilePickerPlatform.instance = MethodChannelFilePicker();
+      });
+    }
+
+    /// Builds a `.unvisited-roads` region file from way maps shaped like
+    /// the build CLI's JSON input.
+    String buildRegion(String fileName, List<Map> ways) {
+      final dir = Directory.systemTemp.createTempSync('unvisited-region');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final path = '${dir.path}${Platform.pathSeparator}$fileName';
+      buildRoadFile(ways, path);
+      return path;
+    }
+
+    /// Main Street as in the fixture walk (the corridor the synthetic
+    /// test data unlocks), plus a parallel lane the walk never touches.
+    final regionA = <Map>[
+      {
+        'id': '1001',
+        'class': 'residential',
+        'name': 'Main Street',
+        'points': [
+          [52.5200, 13.4040],
+          [52.5200, 13.4110],
+        ],
+      },
+    ];
+
+    /// A second region matching the same walk on a *different* way — the
+    /// cross street it crosses at 13.4060.
+    final regionB = <Map>[
+      {
+        'id': '2002',
+        'class': 'residential',
+        'name': 'Cross Street',
+        'points': [
+          [52.5199, 13.4060],
+          [52.5202, 13.4060],
+        ],
+      },
+    ];
+
+    Future<StoredTrack> importWalk() async {
+      final dir = Directory('${root.path}${Platform.pathSeparator}inbox')
+        ..createSync(recursive: true);
+      File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
+          .writeAsBytesSync(fixture('main_street_walk.gpx'));
+      await model.importFromDirectory(dir.path);
+      return model.tracks.singleWhere((t) => t.name == 'Main Street walk');
+    }
+
+    test('a picked region file is stored under the app root, activated '
+        'and unlock state is computed for existing tracks', () async {
+      final region = buildRegion('berlin.unvisited-roads', regionA);
+      installPicker(FakePickedFile('berlin.unvisited-roads', region));
+      final walk = await importWalk(); // imported without roads
+      expect(walk.unlockedWays, isEmpty);
+
+      final failure = await model.pickRoadFile();
+
+      expect(failure, isNull);
+      expect(model.roadsName, 'berlin.unvisited-roads');
+      expect(model.roadStore, isNotNull);
+      final stored = File('${root.path}${Platform.pathSeparator}roads'
+          '${Platform.pathSeparator}berlin.unvisited-roads');
+      expect(stored.existsSync(), isTrue);
+      // The recompute-on-activation inline import: the walk now unlocks
+      // Main Street without a new import.
+      expect(walk.unlockedWays.keys.single, '1001');
+
+      // The choice survives a restart: it lives in the index.
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.roadsName, 'berlin.unvisited-roads');
+      expect(reloaded.roadStore, isNotNull);
+    });
+
+    test('a cancelled pick changes nothing', () async {
+      installPicker(null);
+      final failure = await model.pickRoadFile();
+      expect(failure, isNull);
+      expect(model.roadsName, isNull);
+      expect(model.roadStore, isNull);
+    });
+
+    test('a file that is not a roads file is rejected', () async {
+      final dir = Directory.systemTemp.createTempSync('unvisited-region');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final junk = File('${dir.path}${Platform.pathSeparator}junk.dat')
+        ..writeAsBytesSync('not a roads file'.codeUnits);
+      installPicker(FakePickedFile('junk.dat', junk.path));
+      final walk = await importWalk();
+
+      final failure = await model.pickRoadFile();
+
+      expect(failure, RoadFileFailure.corrupt);
+      expect(model.roadsName, isNull);
+      expect(model.roadStore, isNull);
+      expect(walk.unlockedWays, isEmpty);
+    });
+
+    test('swapping regions re-matches every track and keeps corridors '
+        'matched under an earlier region', () async {
+      final walk = await importWalk();
+
+      expect(await model.activateRoadFile(buildRegion('a.unvisited-roads', regionA)), isNull);
+      expect(walk.unlockedWays.keys, ['1001']);
+
+      expect(await model.activateRoadFile(buildRegion('b.unvisited-roads', regionB)), isNull);
+
+      // Region B's way matched the walk (recompute ran), and region A's
+      // way was NOT wiped away: the corridors are materialized
+      // exploration data and way ids coalesce across overlapping regions.
+      expect(walk.unlockedWays.keys.toSet(), {'1001', '2002'});
+      // Previous region's stored copy is replaced on disk.
+      final oldRegion = File(
+          '${root.path}${Platform.pathSeparator}roads'
+          '${Platform.pathSeparator}a.unvisited-roads');
+      expect(oldRegion.existsSync(), isFalse);
+      expect(model.roadsName, 'b.unvisited-roads');
+
+      // Re-activating the same region never duplicates corridors.
+      expect(await model.activateRoadFile(buildRegion('b2.unvisited-roads', regionB)), isNull);
+      expect(walk.unlockedWays.keys.toSet(), {'1001', '2002'});
+    });
+
+    test('removing the road data forgets the file but keeps the unlock '
+        'state', () async {
+      final walk = await importWalk();
+      await model.activateRoadFile(buildRegion('a.unvisited-roads', regionA));
+      final before = Map.of(walk.unlockedWays);
+      expect(before, isNotEmpty);
+
+      await model.removeRoadFile();
+
+      expect(model.roadsName, isNull);
+      expect(model.roadStore, isNull);
+      expect(walk.unlockedWays, before); // exploration data survives
+      // Only the stored copy is deleted; the (now empty) directory stays.
+      expect(
+          File('${root.path}${Platform.pathSeparator}roads'
+                  '${Platform.pathSeparator}a.unvisited-roads')
+              .existsSync(),
+          isFalse);
+    });
+
+    test('a road file gone from disk falls back to circles-only and '
+        'clears the stale reference', () async {
+      await importWalk();
+      await model.activateRoadFile(buildRegion('a.unvisited-roads', regionA));
+      expect(model.roadStore, isNotNull);
+      final stored =
+          File('${root.path}${Platform.pathSeparator}roads'
+              '${Platform.pathSeparator}a.unvisited-roads');
+      stored.deleteSync(); // vanished between runs (external deletion)
+
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+
+      expect(reloaded.roadsName, isNull);
+      expect(reloaded.roadStore, isNull);
+      // The unlock state recorded earlier keeps rendering (circles-only
+      // fallback affects *new* matching, not recorded corridors).
+      final restored = reloaded.tracks
+          .singleWhere((t) => t.name == 'Main Street walk');
+      expect(restored.unlockedWays.keys.single, '1001');
     });
   });
 

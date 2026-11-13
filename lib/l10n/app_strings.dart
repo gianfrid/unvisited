@@ -102,6 +102,15 @@ abstract class AppStrings {
   String get systemTheme;
   String get lightTheme;
   String get darkTheme;
+
+  // Road data (side-loaded .unvisited-roads region file).
+  String get roadData;
+  String get roadDataSubtitle;
+  String get roadDataNone;
+  String get roadDataChoose;
+  String get roadDataRemove;
+  String get roadDataInvalid;
+
   String get deleteAllTracks;
   String storedCount(int count);
   String get noStoredTracks;
@@ -216,10 +225,10 @@ class EnglishStrings extends AppStrings {
   String get languageSubtitle => 'Language of the app';
   @override
   String languageName(String code) => switch (code) {
-        'en' => 'English',
-        'it' => 'Italiano',
-        _ => code,
-      };
+    'en' => 'English',
+    'it' => 'Italiano',
+    _ => code,
+  };
   @override
   String get systemLanguage => 'System language';
   @override
@@ -236,6 +245,21 @@ class EnglishStrings extends AppStrings {
   String get lightTheme => 'Light';
   @override
   String get darkTheme => 'Dark';
+
+  @override
+  String get roadData => 'Road data';
+  @override
+  String get roadDataSubtitle =>
+      'Roads file that unlocks the explored corridors';
+  @override
+  String get roadDataNone => 'None set';
+  @override
+  String get roadDataChoose => 'Choose a roads file…';
+  @override
+  String get roadDataRemove => 'Remove road data';
+  @override
+  String get roadDataInvalid => 'That file is not an Unvisited roads file';
+
   @override
   String get deleteAllTracks => 'Delete all tracks';
   @override
@@ -269,12 +293,12 @@ class EnglishStrings extends AppStrings {
 
   @override
   String tintName(String key) => switch (key) {
-        'green' => 'Green',
-        'blue' => 'Blue',
-        'orange' => 'Orange',
-        'purple' => 'Purple',
-        _ => key,
-      };
+    'green' => 'Green',
+    'blue' => 'Blue',
+    'orange' => 'Orange',
+    'purple' => 'Purple',
+    _ => key,
+  };
 }
 
 class ItalianStrings extends AppStrings {
@@ -302,7 +326,8 @@ class ItalianStrings extends AppStrings {
   @override
   String get importTrackFiles => 'File di traccia';
   @override
-  String get importTrackFilesSubtitle => 'GPX, FIT, KMZ o TCX — anche più di uno';
+  String get importTrackFilesSubtitle =>
+      'GPX, FIT, KMZ o TCX — anche più di uno';
   @override
   String get importFolder => 'Una cartella';
   @override
@@ -320,8 +345,7 @@ class ItalianStrings extends AppStrings {
   String duplicateCount(int count) =>
       count == 1 ? '1 duplicata' : '$count duplicate';
   @override
-  String skippedCount(int count) =>
-      count == 1 ? '1 saltata' : '$count saltate';
+  String skippedCount(int count) => count == 1 ? '1 saltata' : '$count saltate';
   @override
   String failedCount(int count) =>
       count == 1 ? '1 non riuscita' : '$count non riuscite';
@@ -376,10 +400,10 @@ class ItalianStrings extends AppStrings {
   String get languageSubtitle => "Lingua dell'app";
   @override
   String languageName(String code) => switch (code) {
-        'en' => 'English',
-        'it' => 'Italiano',
-        _ => code,
-      };
+    'en' => 'English',
+    'it' => 'Italiano',
+    _ => code,
+  };
   @override
   String get systemLanguage => 'Lingua di sistema';
   @override
@@ -396,6 +420,21 @@ class ItalianStrings extends AppStrings {
   String get lightTheme => 'Chiaro';
   @override
   String get darkTheme => 'Scuro';
+
+  @override
+  String get roadData => 'Dati stradali';
+  @override
+  String get roadDataSubtitle => 'File di strade che sblocca i corridoi';
+  @override
+  String get roadDataNone => 'Nessuno impostato';
+  @override
+  String get roadDataChoose => 'Scegli un file di strade…';
+  @override
+  String get roadDataRemove => 'Rimuovi i dati stradali';
+  @override
+  String get roadDataInvalid =>
+      'Questo file non è un file di strade di Unvisited';
+
   @override
   String get deleteAllTracks => 'Elimina tutte le tracce';
   @override
@@ -430,10 +469,10 @@ class ItalianStrings extends AppStrings {
 
   @override
   String tintName(String key) => switch (key) {
-        'green' => 'Verde',
-        'blue' => 'Blu',
-        'orange' => 'Arancione',
-        'purple' => 'Viola',
-        _ => key,
-      };
+    'green' => 'Verde',
+    'blue' => 'Blu',
+    'orange' => 'Arancione',
+    'purple' => 'Viola',
+    _ => key,
+  };
 }

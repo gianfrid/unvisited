@@ -10,6 +10,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../host_channel.dart';
 import '../l10n/app_strings.dart';
+import '../models/track.dart' show TrackData;
+import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_matcher.dart';
 import '../road/road_store.dart';
 import '../storage/track_store.dart';
@@ -49,12 +51,19 @@ class MapTrack {
   final List<LatLng> points;
 }
 
+/// Why activating a picked road region file failed. The UI maps each to
+/// a message in the caller's language.
+enum RoadFileFailure {
+  /// The file is not a road file at all (wrong magic, version or a
+  /// corrupt directory).
+  corrupt,
+
+  /// The picked path is gone or unreadable by the time it is opened.
+  missing,
+}
+
 class ImportSummary {
-  ImportSummary()
-      : imported = 0,
-        duplicates = 0,
-        skipped = 0,
-        failed = 0;
+  ImportSummary() : imported = 0, duplicates = 0, skipped = 0, failed = 0;
 
   int imported;
   int duplicates;
@@ -124,6 +133,10 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The region file's display name as the settings sheet shows it, or
+  /// null when none is set.
+  String? get roadsName => store.roadsFile;
+
   List<StoredTrack> get tracks => store.tracks;
 
   bool _busy = false;
@@ -144,7 +157,29 @@ class AppModel extends ChangeNotifier {
 
   Future<void> load() async {
     await store.load();
+    _restoreRoadFile();
     notifyListeners();
+  }
+
+  /// Restores the road region recorded in the index. A file that is gone
+  /// (or no longer a valid road file) falls back to circles-only: the
+  /// setting is cleared so the app self-heals instead of failing every
+  /// start, and previously recorded unlock state keeps rendering (it is
+  /// stored in the catalog, not re-derived from the region file).
+  void _restoreRoadFile() {
+    final name = store.roadsFile;
+    if (name == null) return;
+    final path = store.roadFileFor(name);
+    try {
+      setRoadFile(path.path);
+      return;
+    } on RoadFormatException {
+      // fall through: clear the stale reference below
+    } on FileSystemException {
+      // file deleted externally: fall through
+    }
+    setRoadFile(null);
+    store.clearRoadsFile();
   }
 
   /// Reads a picked file (or share-intent temp file) through the pipeline.
@@ -154,8 +189,10 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
     try {
       final f = File(path);
-      final result = store.importBytes(f.readAsBytesSync(),
-          filename: name ?? path);
+      final result = store.importBytes(
+        f.readAsBytesSync(),
+        filename: name ?? path,
+      );
       _noteImported(newPoints, result);
       _matchRoads(result);
       if (result.imported) _pointCache.remove(result.track!.id);
@@ -182,18 +219,104 @@ class AppModel extends ChangeNotifier {
     final matcher = _roadMatcher;
     final data = result.data;
     if (!result.imported || matcher == null || data == null) return;
-    final match = matcher.match(unlockCenters(
-      data.points.map((p) => LatLng(p.lat, p.lon)),
-    ));
+    _matchTrack(result.track!, data);
+  }
+
+  /// Computes and persists one track's unlock state under the active
+  /// matcher (the caller guarantees one is set).
+  void _matchTrack(StoredTrack track, TrackData data) {
+    final match = _roadMatcher!.match(
+      unlockCenters(data.points.map((p) => LatLng(p.lat, p.lon))),
+    );
     if (match.corridors.isNotEmpty) {
-      store.saveUnlockedWays(result.track!, match.corridors);
+      store.saveUnlockedWays(track, match.corridors);
+    }
+  }
+
+  /// Opens the system file picker to choose a road region file (any file —
+  /// the format, like track imports, is decided by content, never by
+  /// extension) and activates it: the file is copied under the app root,
+  /// the matcher swaps to it and every stored track is re-matched.
+  /// Returns [RoadFileFailure] with the reason, or null on success or
+  /// cancelled pick.
+  Future<RoadFileFailure?> pickRoadFile() async {
+    final picked = await FilePicker.pickFile();
+    final path = picked?.path;
+    if (path == null) return null; // cancelled
+    return activateRoadFile(path);
+  }
+
+  /// Activates [pickedPath] as the road region (see [pickRoadFile]).
+  Future<RoadFileFailure?> activateRoadFile(String pickedPath) async {
+    // Validate before adopting: opening parses the header and the bucket
+    // directory and rejects wrong magic, version and a corrupt directory.
+    try {
+      RoadStore.open(pickedPath).close();
+    } on RoadFormatException {
+      return RoadFileFailure.corrupt;
+    } on FileSystemException {
+      return RoadFileFailure.missing;
+    }
+    final storedPath = store.adoptRoadFile(pickedPath);
+    _busy = true;
+    notifyListeners();
+    try {
+      setRoadFile(storedPath);
+      await _rematchAllTracks();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+    return null;
+  }
+
+  /// Deactivates the road region and forgets its stored copy. Unlock
+  /// state recorded on tracks survives: the corridors are materialized
+  /// polylines in the catalog — exploration data, not cache.
+  Future<void> removeRoadFile() async {
+    await store.clearRoadsFile();
+    setRoadFile(null);
+  }
+
+  /// Re-runs road matching for every stored track under the active region
+  /// and merges the result into the persisted unlock state. Corridors are
+  /// merged by OSM way id, never overwritten: a way an earlier region
+  /// matched keeps its corridors (overlapping region files coalesce on
+  /// the same way), so re-activating a region never duplicates and a swap
+  /// adds what the stored tracks unlock under the new one.
+  Future<void> _rematchAllTracks() async {
+    final matcher = _roadMatcher;
+    if (matcher == null) return;
+    for (final t in store.tracks) {
+      final data = store.loadPoints(t);
+      if (data != null && data.points.isNotEmpty) {
+        final match = matcher.match(
+          unlockCenters(data.points.map((p) => LatLng(p.lat, p.lon))),
+        );
+        final merged = Map.of(t.unlockedWays);
+        var changed = false;
+        for (final entry in match.corridors.entries) {
+          if (merged.containsKey(entry.key)) continue;
+          merged[entry.key] = entry.value;
+          changed = true;
+        }
+        if (changed) store.saveUnlockedWays(t, merged);
+      }
+      _pointCache.remove(t.id);
+      // Yield between tracks so a slow recompute repaints the busy
+      // indicator instead of freezing the UI for the whole catalog.
+      await Future<void>.delayed(Duration.zero);
     }
   }
 
   /// Runs one candidate file through the unified pipeline, recording it in
   /// [summary] and collecting its points for the camera refit.
-  void _importBytes(List<int> bytes, String name, ImportSummary summary,
-      List<LatLng> newPoints) {
+  void _importBytes(
+    List<int> bytes,
+    String name,
+    ImportSummary summary,
+    List<LatLng> newPoints,
+  ) {
     final result = store.importBytes(bytes, filename: name);
     _noteImported(newPoints, result);
     _matchRoads(result);
@@ -207,8 +330,7 @@ class AppModel extends ChangeNotifier {
     final newPoints = <LatLng>[];
     final dir = Directory(directoryPath);
     if (!dir.existsSync()) return summary;
-    await for (final entry
-        in dir.list(recursive: true, followLinks: false)) {
+    await for (final entry in dir.list(recursive: true, followLinks: false)) {
       if (entry is! File) continue;
       final name = entry.uri.pathSegments.last;
       final ext = name.toLowerCase().split('.').last;
@@ -258,8 +380,11 @@ class AppModel extends ChangeNotifier {
     _busy = true;
     notifyListeners();
     try {
-      final staged = await hostChannel.invokeListMethod<Map<Object?, Object?>>(
-              'listTrackFiles', treeUri) ??
+      final staged =
+          await hostChannel.invokeListMethod<Map<Object?, Object?>>(
+            'listTrackFiles',
+            treeUri,
+          ) ??
           const <Map<Object?, Object?>>[];
       for (final entry in staged) {
         final path = entry['path'] as String?;
@@ -322,10 +447,7 @@ class AppModel extends ChangeNotifier {
         _pointCache[t.id] = pts;
       }
       if (pts.isEmpty) continue;
-      out.add(MapTrack(
-        meta: t,
-        points: pts,
-      ));
+      out.add(MapTrack(meta: t, points: pts));
     }
     return out;
   }
@@ -408,10 +530,10 @@ class AppModel extends ChangeNotifier {
   /// The ThemeMode the app should use. 'system' maps to ThemeMode.system,
   /// 'light' to ThemeMode.light, 'dark' to ThemeMode.dark.
   ThemeMode get themeModeValue => switch (themeMode) {
-        'light' => ThemeMode.light,
-        'dark' => ThemeMode.dark,
-        _ => ThemeMode.system,
-      };
+    'light' => ThemeMode.light,
+    'dark' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
 
   Future<void> setLanguage(String code) async {
     await store.saveLanguage(code);

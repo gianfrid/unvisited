@@ -18,12 +18,6 @@ unlock state persists as way ids + matched-length ratio in `index.json`.
   payload to a binary layout (varint lengths instead of JSON) — the directory
   and lazy-loading design stays. Also re-run `tool/bench_roads.dart` on a
   device profile build before deciding on the Rust core (hybrid scoring).
-- [] slice 6 — region file UX: Settings gains "Road data" (pick a
-  `.unvisited-roads` file via file_picker, store under the app root,
-  swap active region; strings en+it + coverage test). Recompute unlock
-  state for all tracks on region swap (progress feedback if slow).
-  Tests: picker flow, region swap recomputes, missing-file fallback to
-  circles-only.
 - [] slice 7 — hybrid scoring (optional, only if quality demands):
   candidate preference for the previously active way to stop hopping
   between parallel roads; fixture with a service road beside a main road.

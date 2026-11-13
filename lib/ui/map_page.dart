@@ -1026,6 +1026,18 @@ class _SettingsSheet extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                   onTap: () => _pickTheme(context, model),
                 ),
+                ListTile(
+                  dense: true,
+                  title: Text(strings.roadData),
+                  subtitle: Text(strings.roadDataSubtitle),
+                  trailing: Text(
+                    model.roadsName ?? strings.roadDataNone,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                  onTap: () => _pickRoadData(context, model),
+                ),
               ],
             ),
           ),
@@ -1122,6 +1134,46 @@ Future<void> _pickTheme(BuildContext context, AppModel model) async {
     },
   );
   if (choice != null) await model.setThemeMode(choice);
+}
+
+/// Road-data picker: choose a side-loaded `.unvisited-roads` region file
+/// or remove the current one. "Choose" opens the system file picker; the
+/// region format, like track formats, is decided by content, so no
+/// extension filter. Activation (and the unlock-state recompute a swap
+/// triggers) runs on the model; the usual busy flag covers the wait.
+Future<void> _pickRoadData(BuildContext context, AppModel model) async {
+  final choice = await showDialog<String>(
+    context: context,
+    builder: (context) {
+      final strings = AppStrings.ofContext(context);
+      return SimpleDialog(
+        title: Text(strings.roadData),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('choose'),
+            child: Text(strings.roadDataChoose),
+          ),
+          if (model.roadsName != null)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('remove'),
+              child: Text(strings.roadDataRemove),
+            ),
+        ],
+      );
+    },
+  );
+  if (choice == null || !context.mounted) return;
+  if (choice == 'remove') {
+    await model.removeRoadFile();
+    return;
+  }
+  final failure = await model.pickRoadFile();
+  if (failure != null && context.mounted) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppStrings.ofContext(context).roadDataInvalid)),
+    );
+  }
 }
 
 /// One selectable tint swatch for the exploration overlay, labeled by
