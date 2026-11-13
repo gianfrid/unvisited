@@ -8,8 +8,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Parcelable
+import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -298,6 +300,26 @@ class MainActivity : FlutterActivity() {
                     "pickDirectory" -> pickSafDirectory(result)
                     "listTrackFiles" ->
                         listSafTrackFiles(call.arguments?.toString() ?: "", result)
+                    // Battery-optimization state for the recording advisory
+                    // in Settings: the state read and the soft tap-through
+                    // to the system settings screen. Deliberately not the
+                    // direct REQUEST_IGNORE_BATTERY_OPTIMIZATIONS intent —
+                    // that is the aggressive flow Play flags (research
+                    // report), and the advisory stays non-blocking.
+                    "batteryOptimizationExcluded" -> {
+                        val pm = getSystemService(POWER_SERVICE) as PowerManager
+                        result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                    }
+                    "openBatteryOptimizationSettings" -> {
+                        try {
+                            startActivity(
+                                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            )
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("unavailable", "No battery settings screen", null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="unvisited" xmlns="http://www.topografix.com/GPX/1/1">
+<trk><name>Evening walk</name>
+<trkseg>
+<trkpt lat="52.520000" lon="13.405000">
+<ele>42.00</ele>
+<time>2024-05-01T18:00:00.000Z</time>
+</trkpt>
+<trkpt lat="52.520100" lon="13.405000">
+<ele>42.70</ele>
+<time>2024-05-01T18:00:02.000Z</time>
+</trkpt>
+<trkpt lat="52.520200" lon="13.405000">
+<ele>43.30</ele>
+<time>2024-05-01T18:00:04.000Z</time>
+</trkpt>
+</trkseg>
+<trkseg>
+<trkpt lat="52.520300" lon="13.405000">
+<ele>44.00</ele>
+<time>2024-05-01T18:00:06.000Z</time>
+</trkpt>
+<trkpt lat="52.520400" lon="13.405000">
+<ele>44.50</ele>
+<time>2024-05-01T18:00:08.000Z</time>
+</trkpt>
+</trkseg>
+</trk>
+</gpx>

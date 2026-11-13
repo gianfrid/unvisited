@@ -122,6 +122,21 @@ class _MapPageState extends State<MapPage> {
     // permission granted yet this is a no-op — only the locate button
     // asks.
     _silentPositionUpdate();
+    _announceSalvagedRecordings();
+  }
+
+  /// The startup salvage notice: a killed session's staged recording was
+  /// imported during [AppModel.load]; one toast says so. Read once at
+  /// initState — the names are cleared by nothing, the toast is not
+  /// re-shown on later rebuilds.
+  void _announceSalvagedRecordings() {
+    final names = widget.model.salvagedRecordingNames;
+    if (names.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _toast(AppStrings.ofContext(context)
+          .salvagedRecording(names.join(', ')));
+    });
   }
 
   late final bool _cacheUsable;
@@ -1254,6 +1269,25 @@ class _SettingsSheet extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                   onTap: () => _pickRoadData(context, model),
                 ),
+                // Battery optimization: Android-only, and soft — the row
+                // only reports the state and its tap opens the system
+                // page; nothing blocks, nothing is requested for the app.
+                // (Available only on Android because that is the only
+                // platform the host channel answers on.)
+                if (Platform.isAndroid)
+                  FutureBuilder<bool?>(
+                    future: model.batteryOptimizationExcluded(),
+                    builder: (context, snapshot) => ListTile(
+                      dense: true,
+                      title: Text(strings.batteryOptimization),
+                      subtitle: Text(snapshot.data == true
+                          ? strings.batteryExcluded
+                          : strings.batteryAdvisory),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 0),
+                      onTap: () => model.openBatteryOptimizationSettings(),
+                    ),
+                  ),
               ],
             ),
           ),

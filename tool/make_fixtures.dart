@@ -14,6 +14,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:unvisited/recording/staging_gpx.dart';
 
 const fitEpoch = 631065600; // 1989-12-31T00:00:00Z
 
@@ -485,6 +486,38 @@ Uint8List townOsmPbf() {
   return Uint8List.fromList([for (final f in frames) ...f]);
 }
 
+// ---- recording GPX round-trip: written by the app's own stage writer
+//      (two segments — a pause breaks them), re-imported by
+//      test/recording_session_test.dart through the unified pipeline
+Uint8List recordedRideGpx() {
+  final sink = MemoryStageSink();
+  final writer = GpxStageWriter(sink, name: 'Evening walk');
+  final base = DateTime.parse('2024-05-01T18:00:00Z');
+  var second = 0;
+  void point(double lat, double ele) {
+    writer.appendPoint(
+      lat: lat,
+      lon: 13.4050,
+      time: base.add(Duration(seconds: second)),
+      ele: ele,
+    );
+    second += 2;
+  }
+
+  // Walking north along the Greenwich meridian (~11.1 m per step), then a
+  // pause splits the recorded ride into two `<trkseg>`s.
+  point(52.5200, 42.0);
+  point(52.5201, 42.7);
+  point(52.5202, 43.3);
+  writer.breakSegment();
+  point(52.5203, 44.0);
+  point(52.5204, 44.5);
+  // MemoryStageSink's close is synchronous, so the unclosed buffer below
+  // never actually happens — the fixture is a complete GPX file.
+  writer.finalize();
+  return Uint8List.fromList(sink.buffer.toString().codeUnits);
+}
+
 void main() {
   final dir = Directory('test/fixtures');
   if (!dir.existsSync()) dir.createSync(recursive: true);
@@ -493,6 +526,7 @@ void main() {
   _write('test/fixtures/monitoring.fit', monitoringFile());
   _write('test/fixtures/afternoon_ride.kmz', opentracksKmz());
   _write('test/fixtures/town.osm.pbf', townOsmPbf());
+  _write('test/fixtures/recorded_ride.gpx', recordedRideGpx());
   print('fixtures written');
 }
 

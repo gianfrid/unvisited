@@ -38,10 +38,6 @@ course-up marker). Background location is deliberately never requested
 staged file as a partial track on next start. Desktop recording is backlog
 (no Linux location plugin).
 
-- [] slice 4 — robustness: startup salvage flow (notice + import of
-  un-finalized GPX), battery-optimization exemption advisory in Settings
-  (soft, no blocking dialogs), GPX writer↔reader round-trip fixture via
-  the fixture tool.
 - [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
   (owner decision 2026-11-13), revisit when flutter_map's pitch support
   releases (`MapOptions.maxPitch` — fog circles/corridors are ground

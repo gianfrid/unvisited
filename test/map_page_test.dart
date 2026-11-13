@@ -147,6 +147,53 @@ void main() {
     expect(model.recording, isNotNull);
   });
 
+  testWidgets('a salvaged staged recording announces itself at startup',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // See above.
+      }
+    });
+    // The kill-mid-session leftover under the app root: complete points,
+    // an open segment, no closers (what the stage writer guarantees).
+    final dir = Directory('${root.path}${Platform.pathSeparator}recording')
+      ..createSync(recursive: true);
+    final sink = StringBuffer();
+    sink.write('<?xml version="1.0" encoding="UTF-8"?>\n');
+    sink.write('<gpx version="1.1" creator="unvisited" '
+        'xmlns="http://www.topografix.com/GPX/1/1">\n');
+    sink.write('<trk><name>Recovered walk</name>\n<trkseg>\n');
+    for (final i in [0, 1]) {
+      final t = DateTime.utc(2026, 11, 13, 12, 0, i);
+      sink.write('<trkpt lat="52.520${i}00" lon="13.405000">\n'
+          '<ele>42.00</ele>\n<time>${t.toIso8601String()}</time>\n</trkpt>\n');
+    }
+    File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
+        .writeAsStringSync(sink.toString());
+
+    final model = AppModel(TrackStore(root));
+    // The salvage read is real dart:io IO — it never settles inside the
+    // fake-async test zone, so the load runs in runAsync.
+    await tester.runAsync(() => model.load());
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byType(SnackBar), findsOneWidget);
+    expect(find.textContaining('Recovered walk'), findsOneWidget);
+  });
+
   testWidgets('the dashboard expands into the stats panel with live numbers',
       (tester) async {
     final root = createRoot();

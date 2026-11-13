@@ -140,6 +140,14 @@ abstract class AppStrings {
   String get roadDataRemove;
   String get roadDataInvalid;
 
+  // Battery optimization (Android-only, soft advisory for recording).
+  String get batteryOptimization;
+  String get batteryExcluded;
+  String get batteryAdvisory;
+
+  // Startup salvage: a killed session's staged recording was imported.
+  String salvagedRecording(String name);
+
   String get deleteAllTracks;
   String storedCount(int count);
   String get noStoredTracks;
@@ -314,6 +322,18 @@ class EnglishStrings extends AppStrings {
   String get roadDataRemove => 'Remove road data';
   @override
   String get roadDataInvalid => 'That file is not an Unvisited roads file';
+
+  @override
+  String get batteryOptimization => 'Battery optimization';
+  @override
+  String get batteryExcluded =>
+      'Recording is exempt from the battery manager';
+  @override
+  String get batteryAdvisory =>
+      'Battery saving can interrupt recording — tap to manage';
+  @override
+  String salvagedRecording(String name) =>
+      'Recovered unfinished recording: $name';
 
   @override
   String get deleteAllTracks => 'Delete all tracks';
@@ -515,6 +535,19 @@ class ItalianStrings extends AppStrings {
   @override
   String get roadDataInvalid =>
       'Questo file non è un file di strade di Unvisited';
+
+  @override
+  String get batteryOptimization => 'Ottimizzazione batteria';
+  @override
+  String get batteryExcluded =>
+      'La registrazione è esente dal gestione batteria';
+  @override
+  String get batteryAdvisory =>
+      'Il risparmio batteria può interrompere la registrazione — '
+      'tocca per gestire';
+  @override
+  String salvagedRecording(String name) =>
+      'Recuperata una registrazione non terminata: $name';
 
   @override
   String get deleteAllTracks => 'Elimina tutte le tracce';

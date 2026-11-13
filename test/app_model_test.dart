@@ -21,6 +21,8 @@ import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/recording/position_source.dart'
     show PositionFix, PositionSource;
+import 'package:unvisited/recording/staging_gpx.dart'
+    show GpxStageWriter, MemoryStageSink;
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/track_colors.dart';
 
@@ -734,6 +736,103 @@ void main() {
       // The staged file is deleted; the catalog owns the copy.
       final dir = Directory('${root.path}${Platform.pathSeparator}recording');
       expect(dir.existsSync(), isTrue);
+      expect(dir.listSync(), isEmpty);
+    });
+
+    test('a stopped session also matches road corridors', () async {
+      // The fake walk starts on Main Street (the roads fixture's way 1001
+      // at 52.5200, 13.4050) and walks north.
+      final roadFile = File(
+          '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads');
+      roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
+      model.setRoadFile(roadFile.path);
+
+      final source = FakePositionSource();
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
+      await Future<void>.delayed(Duration.zero);
+      await model.stopRecording();
+      await Future<void>.delayed(Duration.zero);
+
+      final stored = model.tracks.single;
+      expect(stored.unlockedWays.keys, contains('1001'),
+          reason: 'a recorded track is an ordinary catalog track: the '
+              'corridor matching applies');
+    });
+  });
+
+  group('recording salvage', () {
+    final base = DateTime.utc(2026, 11, 13, 12);
+
+    /// A killed session's staged file: complete points, an open segment,
+    /// no closing tags (the writer cut at the last flushed newline).
+    List<int> killedGpxBytes(String trackName) {
+      final sink = MemoryStageSink();
+      final writer = GpxStageWriter(sink, name: trackName);
+      writer.appendPoint(lat: 52.5200, lon: 13.4050, time: base, ele: 42.0);
+      writer.appendPoint(
+          lat: 52.5201, lon: 13.4050, time: base.add(const Duration(seconds: 1)));
+      final text = sink.buffer.toString();
+      return (text.substring(0, text.length - 1)).codeUnits;
+    }
+
+    Directory recordingDir() =>
+        Directory('${root.path}${Platform.pathSeparator}recording')
+            ..createSync(recursive: true);
+
+    test('a killed session s staged file imports at startup, with a notice',
+        () async {
+      final dir = recordingDir();
+      File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
+          .writeAsBytesSync(killedGpxBytes('Killed ride'));
+
+      await model.load();
+
+      expect(model.salvagedRecordingNames, ['Killed ride']);
+      final stored = model.tracks.single;
+      expect(stored.name, 'Killed ride');
+      expect(stored.pointCount, 2);
+      // The staged copy is spent; the catalog owns its file.
+      expect(dir.listSync(), isEmpty);
+    });
+
+    test('a complete staged file (kill between finalize and import) '
+        'imports as-is', () async {
+      final dir = recordingDir();
+      final sink = MemoryStageSink();
+      final writer = GpxStageWriter(sink, name: 'Finalized ride');
+      writer.appendPoint(lat: 52.5200, lon: 13.4050, time: base, ele: 42.0);
+      writer.appendPoint(
+          lat: 52.5201, lon: 13.4050, time: base.add(const Duration(seconds: 1)));
+      writer.finalize();
+      expect(sink.buffer.toString(), contains('</gpx>'));
+      File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
+          .writeAsBytesSync(sink.buffer.toString().codeUnits);
+
+      await model.load();
+
+      expect(model.salvagedRecordingNames, ['Finalized ride']);
+      final stored = model.tracks.single;
+      expect(stored.pointCount, 2,
+          reason: 'nothing was cut from a complete file');
+      expect(dir.listSync(), isEmpty);
+    });
+
+    test('a staged file with nothing recorded is junk and is removed',
+        () async {
+      final dir = recordingDir();
+      // Killed before the first flushed point: header only.
+      File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
+          .writeAsBytesSync(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<gpx version="1.1" creator="unvisited"><trk>'.codeUnits,
+      );
+
+      await model.load();
+
+      expect(model.salvagedRecordingNames, isEmpty);
+      expect(model.tracks, isEmpty);
       expect(dir.listSync(), isEmpty);
     });
   });

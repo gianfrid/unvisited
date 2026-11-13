@@ -8,6 +8,8 @@ import 'package:unvisited/recording/recording_session.dart';
 import 'package:unvisited/recording/staging_gpx.dart';
 import 'package:unvisited/storage/track_store.dart';
 
+import 'helpers.dart';
+
 /// Synthetic-stream tests for the recording engine (slice 1): filters,
 /// segmenting, statistics and the GPX staging round-trip — including the
 /// kill-mid-session salvage case. No emulator: fixes are fed by hand.
@@ -275,6 +277,26 @@ void main() {
     expect(sink.buffer.toString(), isEmpty,
         reason: 'a session with no fix writes no file at all');
     expect(session.elapsed, Duration.zero);
+  });
+
+  test('the checked-in writer fixture re-imports (writer to reader)', () {
+    // The fixture is produced by the stage writer itself
+    // (tool/make_fixtures.dart): an app-shaped recording must satisfy the
+    // unified pipeline's reader for as long as the writer exists.
+    final data = TrackImporter().import(
+      fixture('recorded_ride.gpx'),
+      filename: 'recorded_ride.gpx',
+    );
+    expect(data.format, 'GPX');
+    expect(data.name, 'Evening walk');
+    expect(data.points, hasLength(5));
+    // The catalog track's distance spans all 4 steps joined — unlike the
+    // recording engine, which does not count distance across a trkseg
+    // break (the pause), the importer joins the segments (4 × 11.1 m).
+    expect(data.distanceMeters, closeTo(44.5, 0.3));
+    expect(data.points.first.ele, closeTo(42.0, 0.01));
+    expect(data.points.first.time, DateTime.parse('2024-05-01T18:00:00Z'));
+    expect(data.points.last.ele, closeTo(44.5, 0.01));
   });
 
   test('the staged file lands under the requested path and re-imports',

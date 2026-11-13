@@ -20,7 +20,7 @@ import '../recording/android_position_source.dart'
     show AndroidPositionSource;
 import '../recording/recording_session.dart';
 import '../recording/staging_gpx.dart'
-    show FileStageSink, GpxStageWriter;
+    show FileStageSink, GpxStageWriter, salvageGpx;
 import 'fog_of_war.dart' show unlockCenters;
 
 /// Why a position could not be obtained; each maps to a message that
@@ -164,6 +164,9 @@ class AppModel extends ChangeNotifier {
   Future<void> load() async {
     await store.load();
     _restoreRoadFile();
+    // After the road file (if any) is active, so a salvaged recording
+    // matches its corridors in the same pass.
+    await _salvageRecordings();
     notifyListeners();
   }
 
@@ -559,7 +562,7 @@ class AppModel extends ChangeNotifier {
   /// behave identically for a recorded track), and the staged file is
   /// deleted — the catalog owns the copy under `tracks/`. A killed
   /// process never gets here: its un-finalized file stays behind, and
-  /// the startup salvage (slice 4) imports the partial track.
+  /// the startup salvage imports the partial track.
   Future<void> stopRecording() async {
     final session = _recording;
     final file = _recordingFile;
@@ -570,10 +573,91 @@ class AppModel extends ChangeNotifier {
     await session.stop();
     final bytes = await file.readAsBytes();
     if (bytes.isNotEmpty) {
-      store.importBytes(bytes, filename: session.stage.trackName);
+      _importRecordingBytes(bytes, session.stage.trackName);
     }
     // The staged file is spent; the catalog's copy is the one that stays.
     if (file.existsSync()) file.deleteSync();
+  }
+
+  /// Un-finalized (or un-imported) recordings found and imported at
+  /// startup — the staged files of killed sessions. The UI announces
+  /// these once; the names are the catalog names the GPX carries, so
+  /// sentence-building stays with the strings.
+  final List<String> salvagedRecordingNames = [];
+
+  /// Imports every staged recording left over under `recording/`: a
+  /// kill between finalize and the catalog import leaves a complete
+  /// file, which imports as-is; a kill mid-session leaves one missing
+  /// the closers, which salvage repairs first; a kill before the first
+  /// flushed point leaves nothing usable, which is junk and is removed.
+  /// Unreadable files stay put — unknown bytes are not destroyed on a
+  /// guess, they surface again next start.
+  Future<void> _salvageRecordings() async {
+    final dir = Directory(
+        '${store.root.path}${Platform.pathSeparator}recording');
+    if (!dir.existsSync()) return;
+    for (final entry in dir.listSync()) {
+      if (entry is! File || !entry.path.endsWith('.gpx')) continue;
+      String text;
+      try {
+        text = await entry.readAsString();
+      } on Exception {
+        continue; // unreadable: leave it for a later run
+      }
+      final gpx = text.contains('</gpx>') ? text : salvageGpx(text);
+      if (gpx == null) {
+        // Nothing was ever staged (header only): junk, removed.
+        entry.deleteSync();
+        continue;
+      }
+      final result =
+          _importRecordingBytes(gpx.codeUnits, entry.uri.pathSegments.last);
+      entry.deleteSync();
+      if (result.imported) {
+        salvagedRecordingNames.add(result.track!.name);
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Imports finalized recording bytes (a deliberate stop, or a salvage)
+  /// through the unified pipeline: a recorded track is an ordinary
+  /// catalog track — dedup, fog and road corridors all apply — and the
+  /// point cache is invalidated so the overlay picks the points up.
+  ImportResult _importRecordingBytes(List<int> bytes, String filename) {
+    final result = store.importBytes(bytes, filename: filename);
+    if (result.imported) _pointCache.remove(result.track!.id);
+    _matchRoads(result);
+    notifyListeners();
+    return result;
+  }
+
+  /// Whether Android's battery manager exempts the app — the risk the
+  /// recording robustness note in Settings is about (OEM battery managers
+  /// kill foreground services regardless of the OS's own). Null when the
+  /// platform cannot say (no host plugin; desktop runs, tests).
+  Future<bool?> batteryOptimizationExcluded() async {
+    try {
+      return await hostChannel
+          .invokeMethod<bool>('batteryOptimizationExcluded');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  /// Opens Android's battery-optimization settings screen: the advisory's
+  /// soft tap-through. Never an automated exemption request (the intent
+  /// Play flags; see the recording research report).
+  Future<void> openBatteryOptimizationSettings() async {
+    try {
+      await hostChannel.invokeMethod('openBatteryOptimizationSettings');
+    } on MissingPluginException {
+      // No host plugin: nothing to open.
+    } on PlatformException {
+      // The settings screen is unavailable: nothing to open.
+    }
   }
 
   /// A staged track's name inside the GPX: the UTC start's numerals, so a

@@ -84,6 +84,16 @@ Map<String, String> allStrings(AppStrings s) => {
       'tintName(blue)': s.tintName('blue'),
       'tintName(orange)': s.tintName('orange'),
       'tintName(purple)': s.tintName('purple'),
+      'roadData': s.roadData,
+      'roadDataSubtitle': s.roadDataSubtitle,
+      'roadDataNone': s.roadDataNone,
+      'roadDataChoose': s.roadDataChoose,
+      'roadDataRemove': s.roadDataRemove,
+      'roadDataInvalid': s.roadDataInvalid,
+      'batteryOptimization': s.batteryOptimization,
+      'batteryExcluded': s.batteryExcluded,
+      'batteryAdvisory': s.batteryAdvisory,
+      'salvagedRecording': s.salvagedRecording('Morning walk'),
     };
 
 void main() {
