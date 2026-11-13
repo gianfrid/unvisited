@@ -182,8 +182,8 @@ class AppModel extends ChangeNotifier {
     final match = matcher.match(unlockCenters(
       data.points.map((p) => LatLng(p.lat, p.lon)),
     ));
-    if (match.matchedMeters.isNotEmpty) {
-      store.saveUnlockedWays(result.track!, match.matchedMeters);
+    if (match.corridors.isNotEmpty) {
+      store.saveUnlockedWays(result.track!, match.corridors);
     }
   }
 

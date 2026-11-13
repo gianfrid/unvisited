@@ -1003,6 +1003,74 @@ void main() {
     expect(brightness, Brightness.dark);
   });
 
+  testWidgets('unlocked road corridors render as translucent polylines',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    // Activate the synthetic road file and import the Main Street walk so
+    // the track carries corridor unlock state.
+    final roadFile = File(
+        '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads');
+    roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
+    model.setRoadFile(roadFile.path);
+    final walk = File(
+        '${root.path}${Platform.pathSeparator}main_street_walk.gpx');
+    walk.writeAsBytesSync(fixture('main_street_walk.gpx'));
+    await model.importFromFile(walk.path);
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    // The corridor layer exists and its polylines run along Main Street.
+    final layer = tester.widget<PolylineLayer>(find.byType(PolylineLayer));
+    expect(layer.polylines, isNotEmpty);
+    for (final polyline in layer.polylines) {
+      for (final p in polyline.points) {
+        expect(p.latitude, closeTo(52.5200, 1e-3));
+      }
+    }
+  });
+
+  testWidgets('a catalog without corridor state renders no polyline layer',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byType(PolylineLayer), findsNothing);
+  });
+
   testWidgets('startup fit goes through the guarded initialCameraFit',
       (tester) async {
     final root = createRoot();

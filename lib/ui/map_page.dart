@@ -376,10 +376,38 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
+  /// Unlocked road corridors: the matched sub-polylines persisted on each
+  /// visible track, drawn fat and translucent in the same tint family so
+  /// corridors and circles read as one overlay. A way unlocked by several
+  /// tracks draws once (the corridors usually coincide; double-drawing
+  /// would double-darken the shared stretch). flutter_map culls off-screen
+  /// polylines and simplifies them per zoom; LOD variants are deferred
+  /// until catalog scale demands them.
+  List<Polyline> _buildCorridors(List<MapTrack> tracks) {
+    final tint = exploredAreaColor(widget.model.trackTint);
+    final seen = <String>{};
+    final out = <Polyline>[];
+    for (final t in tracks) {
+      t.meta.unlockedWays.forEach((wayId, corridors) {
+        if (!seen.add(wayId)) return;
+        for (final corridor in corridors) {
+          if (corridor.length < 2) continue;
+          out.add(Polyline(
+            points: corridor,
+            strokeWidth: 6,
+            color: tint,
+          ));
+        }
+      });
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
     final mapTracks = widget.model.visibleTracks;
+    final corridors = _buildCorridors(mapTracks);
     return Scaffold(
       // No app bar: the labeled actions live on a compact floating
       // toolbar that hugs its content at the top-right corner, so the
@@ -459,6 +487,9 @@ class _MapPageState extends State<MapPage> {
               CircleLayer(
                 circles: _buildFogCircles(mapTracks),
               ),
+              // Unlocked road corridors (fog-of-war for streets), above
+              // the circles so the corridor reads on top of the blobs.
+              if (corridors.isNotEmpty) PolylineLayer(polylines: corridors),
               // "You are here" marker for the last located fix; absent
               // until a fix exists and dropped when the user pans away.
               if (_locatedPosition != null)

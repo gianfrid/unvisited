@@ -17,12 +17,6 @@ matched-length ratio in `index.json`.
   covered by the existing OSM notice); ARCHITECTURE.md gains a "Road
   matching" section (data flow, format, interface, persistence) replacing the
   "deferred" note; no code.
-- [] slice 4 — rendering: unlocked corridors as translucent polylines
-  (same tint family as the circles) in a `PolylineLayer` above the tiles,
-  merged visually with the circle overlay; culling/simplification left to
-  flutter_map initially, LOD variants deferred. Widget tests: fixture
-  walk renders polylines for the unlocked ways only; zoom-out band keeps
-  the layer cheap.
 - [] slice 5 — build CLI over real data (`tool/build_roads.dart`):
   dev_dependencies `protobuf` + `dart_osmpbf` (or hand-written reader if
   the lib proves unstable) to read an osmium-filtered `roads.osm.pbf`

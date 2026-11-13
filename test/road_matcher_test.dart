@@ -34,6 +34,35 @@ void main() {
     expect(result.ratioFor('1001'), greaterThan(0.99));
   });
 
+  test('corridors carry the walked geometry, cut out of the way', () {
+    final result = matcher.match(
+        line(const LatLng(52.5200, 13.4050), const LatLng(52.5200, 13.4100)));
+    final corridors = result.corridors['1001']!;
+    // The corridor is the walked stretch of the way, end to end.
+    final pts = corridors.expand((c) => c).toList();
+    expect(pts.first.latitude, closeTo(52.5200, 1e-4));
+    expect(pts.first.longitude, closeTo(13.4050, 1e-3));
+    expect(pts.last.longitude, closeTo(13.4100, 1e-3));
+  });
+
+  test('two disjoint visits to one way yield two corridors', () {
+    // Touch Cross Avenue far north, then far south: two separate lit
+    // stretches, not one corridor spanning the unvisited gap between.
+    final result = matcher.match(const [
+      LatLng(52.5218, 13.4075),
+      LatLng(52.5182, 13.4075),
+    ]);
+    expect(result.corridors['1002']!.length, 2);
+    // The gap between the two corridors is unlit (no points spanning it).
+    for (final corridor in result.corridors['1002']!) {
+      for (final p in corridor) {
+        expect(
+            (p.latitude - 52.5200).abs(), greaterThan(0.001),
+            reason: 'the unvisited middle must not be in any corridor');
+      }
+    }
+  });
+
   test('crossing a street unlocks part of it, not all', () {
     // The Main Street walk crosses Cross Avenue (lon 13.4075) once.
     final result = matcher.match(

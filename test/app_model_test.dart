@@ -360,15 +360,26 @@ void main() {
 
       final walk = model.tracks.singleWhere((t) => t.name == 'Main Street walk');
       expect(walk.unlockedWays.keys, contains('1001')); // Main Street
-      expect(walk.unlockedWays['1001']!, greaterThan(300)); // ~340 m walked
+      // The corridor runs along Main Street's latitude and spans the walk.
+      final corridor =
+          walk.unlockedWays['1001']!.expand((pts) => pts).toList();
+      expect(corridor.length, greaterThanOrEqualTo(2));
+      for (final p in corridor) {
+        expect(p.latitude, closeTo(52.5200, 1e-4));
+      }
+      expect(corridor.first.longitude, closeTo(13.4050, 1e-3));
+      expect(corridor.last.longitude, closeTo(13.4100, 1e-3));
       // The walk never comes near Parallel Lane (44 m north).
       expect(walk.unlockedWays.containsKey('1003'), isFalse);
 
       // The state survives a restart (round-trips through index.json).
       final reloaded = TrackStore(root);
       await reloaded.load();
-      expect(reloaded.tracks.singleWhere((t) => t.name == 'Main Street walk')
-          .unlockedWays['1001'], greaterThan(300));
+      final restored = reloaded.tracks
+          .singleWhere((t) => t.name == 'Main Street walk')
+          .unlockedWays['1001']!;
+      expect(restored.expand((pts) => pts).last.longitude,
+          closeTo(13.4100, 1e-3));
     });
 
     test('an import without a road file leaves unlock state empty',

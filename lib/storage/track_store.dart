@@ -1,12 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:latlong2/latlong.dart';
+
 import '../import/fit_parser.dart';
 import '../import/gpx_parser.dart';
 import '../import/kmz_parser.dart';
 import '../import/tcx_parser.dart';
 import '../import/track_importer.dart';
 import '../models/track.dart';
+import '../road/road_format.dart';
 
 /// Catalog entry for a stored track. The original track file lives as
 /// `tracks/<contentHash>.<ext>`; this record holds everything the UI needs
@@ -32,11 +35,12 @@ class StoredTrack {
   final DateTime? startTimeUtc;
   bool visible;
 
-  /// Road unlock state: OSM way id → matched length in meters (see
-  /// `lib/road/road_matcher.dart`). Computed at import time when a road
-  /// file is active; empty when no road data is present. Lives on the
-  /// track, so deleting the track deletes its unlock state with it.
-  Map<String, double> unlockedWays = {};
+  /// Road unlock state: OSM way id → the matched corridor sub-polylines
+  /// (see `lib/road/road_matcher.dart`). Persisted as polyline5 strings;
+  /// computed at import time when a road file is active; empty when no
+  /// road data is present. Lives on the track, so deleting the track
+  /// deletes its unlock state with it.
+  Map<String, List<List<LatLng>>> unlockedWays = {};
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -49,7 +53,15 @@ class StoredTrack {
         'visible': visible,
         // Written only when non-empty: indexes from before road matching
         // (and tracks imported without road data) stay unchanged.
-        if (unlockedWays.isNotEmpty) 'unlockedWays': unlockedWays,
+        if (unlockedWays.isNotEmpty)
+          'unlockedWays': {
+            for (final entry in unlockedWays.entries)
+              entry.key: [
+                for (final corridor in entry.value)
+                  encodePolyline5(
+                      [for (final p in corridor) (p.latitude, p.longitude)]),
+              ],
+          },
       };
 
   static StoredTrack fromMap(Map<String, dynamic> m) => StoredTrack(
@@ -68,13 +80,26 @@ class StoredTrack {
 
   /// Tolerates a missing or malformed field: an old index (or a hand-edited
   /// one) must never break startup.
-  static Map<String, double> _unlockedWaysFrom(dynamic raw) {
+  static Map<String, List<List<LatLng>>> _unlockedWaysFrom(dynamic raw) {
     if (raw is! Map) return {};
-    return {
-      for (final entry in raw.entries)
-        if (entry.key is String && entry.value is num)
-          entry.key as String: (entry.value as num).toDouble(),
-    };
+    final out = <String, List<List<LatLng>>>{};
+    for (final entry in raw.entries) {
+      if (entry.key is! String || entry.value is! List) continue;
+      final corridors = <List<LatLng>>[];
+      for (final encoded in entry.value as List) {
+        if (encoded is! String) continue;
+        try {
+          corridors.add([
+            for (final (lat, lon) in decodePolyline5(encoded))
+              LatLng(lat, lon),
+          ]);
+        } on RoadFormatException {
+          // A corrupt corridor is dropped, not fatal.
+        }
+      }
+      if (corridors.isNotEmpty) out[entry.key as String] = corridors;
+    }
+    return out;
   }
 }
 
@@ -337,12 +362,16 @@ class TrackStore {
     _saveIndex();
   }
 
-  /// Persists a track's road unlock state (way id → matched meters),
-  /// computed by the model's matcher at import time. A preference-adjacent
-  /// catalog field: it survives like the rest of the track entry and is
-  /// deleted with the track.
-  void saveUnlockedWays(StoredTrack track, Map<String, double> matched) {
-    track.unlockedWays = Map.of(matched);
+  /// Persists a track's road unlock state (way id → matched corridor
+  /// sub-polylines), computed by the model's matcher at import time. A
+  /// preference-adjacent catalog field: it survives like the rest of the
+  /// track entry and is deleted with the track.
+  void saveUnlockedWays(
+      StoredTrack track, Map<String, List<List<LatLng>>> corridors) {
+    track.unlockedWays = {
+      for (final entry in corridors.entries)
+        entry.key: List.of(entry.value),
+    };
     _saveIndex();
   }
 
