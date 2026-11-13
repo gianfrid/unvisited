@@ -38,11 +38,6 @@ course-up marker). Background location is deliberately never requested
 staged file as a partial track on next start. Desktop recording is backlog
 (no Linux location plugin).
 
-- [] slice 1 — recording engine, pure Dart: `RecordingSession` + filters +
-  stats (distance/duration/moving speed) + incremental GPX 1.1 writer
-  (trkseg discipline, flush cadence) behind a `PositionSource` interface.
-  Tests: synthetic streams (jitter, stale fixes, accuracy rejects,
-  pause/resume, kill mid-session → salvage file re-imports).
 - [] slice 2 — Android session: manifest gains FOREGROUND_SERVICE,
   FOREGROUND_SERVICE_LOCATION, POST_NOTIFICATIONS (verify geolocator's
   merged service declaration at target API 34+); geolocator stream with

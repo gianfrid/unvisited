@@ -1,0 +1,310 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:unvisited/import/track_importer.dart';
+import 'package:unvisited/recording/position_source.dart';
+import 'package:unvisited/recording/recording_session.dart';
+import 'package:unvisited/recording/staging_gpx.dart';
+import 'package:unvisited/storage/track_store.dart';
+
+/// Synthetic-stream tests for the recording engine (slice 1): filters,
+/// segmenting, statistics and the GPX staging round-trip — including the
+/// kill-mid-session salvage case. No emulator: fixes are fed by hand.
+
+/// A fix stream the tests push through at will.
+class FakeSource implements PositionSource {
+  final controller = StreamController<PositionFix>();
+  @override
+  Stream<PositionFix> get stream => controller.stream;
+}
+
+void main() {
+  final base = DateTime.utc(2026, 11, 13, 12);
+
+  /// Walking north along the Greenwich meridian, ~11.1 m per 0.0001 deg
+  /// of latitude (the re-import compares against TrackData's haversine).
+  PositionFix fix(
+    int second, {
+    double lat = 52.5200,
+    double lon = 13.4050,
+    double? acc = 5,
+    double? speed,
+    double? ele,
+  }) =>
+      PositionFix(
+        lat: lat,
+        lon: lon,
+        time: base.add(Duration(seconds: second)),
+        accuracy: acc,
+        speed: speed,
+        ele: ele,
+      );
+
+  RecordingSession newSession(String name) {
+    final sink = MemoryStageSink();
+    return RecordingSession(stage: GpxStageWriter(sink, name: name));
+  }
+
+  test('session moves through its state machine', () {
+    final session = newSession('Test ride')..start(FakeSource());
+    expect(session.state, RecordingState.recording);
+    session.pause();
+    expect(session.state, RecordingState.paused);
+    session.resume();
+    expect(session.state, RecordingState.recording);
+    session.stop();
+    expect(session.state, RecordingState.stopped);
+    expect(() => session.pause(), throwsA(isA<StateError>()),
+        reason: 'stop() must end the session for good');
+  });
+
+  test('accuracy rejections drop the fix entirely', () {
+    final session = newSession('Accuracy')..start(FakeSource());
+    expect(session.processFix(fix(0)), FixDisposition.accepted);
+    expect(session.processFix(fix(1, acc: 49.9)), FixDisposition.accepted);
+    expect(
+        session.processFix(fix(3, acc: 50.1)), FixDisposition.rejectedAccuracy);
+    expect(session.pointCount, 2);
+    // A rejected fix must not advance the clock: had the session remembered
+    // the bad fix's timestamp, this accurate one at t=2 (older than t=3,
+    // newer than the last *accepted* fix at t=1) would be dropped as stale.
+    expect(session.processFix(fix(2, lat: 52.52005)), FixDisposition.accepted);
+    expect(session.pointCount, 3);
+  });
+
+  test('stale and out-of-order fixes are dropped', () {
+    final session = newSession('Stale')..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(5));
+    expect(session.processFix(fix(5)), FixDisposition.rejectedStale,
+        reason: 'a duplicate timestamp is not a new fix');
+    expect(session.processFix(fix(3)), FixDisposition.rejectedStale,
+        reason: 'a rewind is not a new fix');
+    expect(session.pointCount, 2);
+  });
+
+  test('jitter between close fixes accumulates as real distance', () {
+    final session = newSession('Jitter')..start(FakeSource());
+    // 0.0001 deg of latitude ~ 11.1 m in 1 s steps, i.e. ~11.1 m/s — the
+    // fused haversine fallback, exercised with fix.speed absent.
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201));
+    session.processFix(fix(2, lat: 52.5202, acc: 4));
+    expect(session.pointCount, 3);
+    expect(session.distanceMeters, closeTo(22.2, 0.2));
+    expect(session.elapsed, const Duration(seconds: 2));
+    expect(session.currentSpeed, closeTo(11.1, 0.2),
+        reason: 'fused fallback: displacement over time');
+    expect(session.movingTime, const Duration(seconds: 2));
+  });
+
+  test('fix.speed is preferred when reported and sane', () {
+    final session = newSession('Speed')..start(FakeSource());
+    // 5.5 m in 1 s would be 5.5 m/s by displacement, but the fix says 0.4;
+    // the fused value keeps the fix's own report when it is sane.
+    session.processFix(fix(0, speed: 0.4));
+    session.processFix(fix(1, lat: 52.52005, speed: 0.4));
+    expect(session.currentSpeed, 0.4);
+    // Below the moving threshold -> time does not count as moving.
+    expect(session.movingTime, Duration.zero);
+    expect(session.distanceMeters, closeTo(5.5, 0.2),
+        reason: 'distance itself stays the haversine sum');
+  });
+
+  test('pause/resume breaks the track into two segments', () {
+    final sink = MemoryStageSink();
+    final session = RecordingSession(
+      stage: GpxStageWriter(sink, name: 'Test ride'),
+    )..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201));
+    session.pause();
+    expect(sink.buffer.toString(), contains('</trkseg>'),
+        reason: 'pause closes the segment');
+    final distanceAtPause = session.distanceMeters;
+    // Fixes while paused: silently ignored, not rejected.
+    session.processFix(fix(30));
+    expect(session.pointCount, 2, reason: 'paused fixes record nothing');
+    session.resume();
+    // The resumed point joins the pre-pause last point (a pause is only a
+    // segment break, as GPX consumers expect).
+    session.processFix(fix(31, lat: 52.5202));
+    session.processFix(fix(32, lat: 52.5203));
+    expect(session.distanceMeters, closeTo(distanceAtPause + 22.2, 0.5));
+    session.stop();
+    final gpx = sink.buffer.toString();
+    expect('<trkseg>'.allMatches(gpx).length, 2);
+    expect('</trkseg>'.allMatches(gpx).length, 2,
+        reason: 'stop finalizes the open one');
+  });
+
+  test('a fix-loss gap closes the segment automatically', () {
+    final sink = MemoryStageSink();
+    final session = RecordingSession(
+      stage: GpxStageWriter(sink, name: 'Gap ride'),
+      segmentGap: const Duration(seconds: 30),
+    )..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1));
+    session.processFix(fix(100, lat: 52.5201)); // 99 s gap
+    session.stop();
+    final gpx = sink.buffer.toString();
+    expect('<trkseg>'.allMatches(gpx).length, 2,
+        reason: 'the gap broke the two fixes into a second segment');
+    expect('</trkseg>'.allMatches(gpx).length, 2);
+    expect(session.distanceMeters, closeTo(11.1, 0.2),
+        reason: 'distance does not bridge the gap');
+  });
+
+  test('a full session finalizes valid GPX that re-imports', () async {
+    final sink = MemoryStageSink();
+    final session = RecordingSession(
+      stage: GpxStageWriter(sink, name: 'Morning ride'),
+    )..start(FakeSource());
+    session.processFix(fix(0, ele: 42.5));
+    session.processFix(fix(1, lat: 52.5201, ele: 43.0));
+    await session.stop();
+
+    final gpx = sink.buffer.toString();
+    expect(gpx, startsWith('<?xml'));
+    expect(gpx, contains('creator="unvisited"'));
+    // Schema order: ele before time inside a point.
+    final point = RegExp(r'<trkpt.*?</trkpt>', dotAll: true).firstMatch(gpx)!;
+    expect(point.group(0)!.indexOf('<ele>'),
+        lessThan(point.group(0)!.indexOf('<time>')));
+    expect(gpx, endsWith('</gpx>\n'));
+    expect(sink.closed, isTrue);
+    expect(sink.flushes, greaterThan(0));
+    expect(session.pointCount, 2);
+    expect(session.elapsed, const Duration(seconds: 1));
+
+    // The unified pipeline reads back exactly what was recorded.
+    final data = TrackImporter().import(gpx.codeUnits, filename: 'staged.gpx');
+    expect(data.format, 'GPX');
+    expect(data.points, hasLength(2));
+    expect(data.points.first.ele, closeTo(42.5, 0.01));
+    expect(data.distanceMeters, closeTo(session.distanceMeters, 0.1));
+  });
+
+  test('kill between writes: salvage repairs the file and it re-imports', () {
+    final sink = MemoryStageSink();
+    final session = RecordingSession(
+      stage: GpxStageWriter(sink, name: 'Killed ride'),
+    )..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201, ele: 43.0));
+    session.processFix(fix(2, lat: 52.5202, ele: 43.9));
+    // The process dies after the last flushed point: complete points, an
+    // open segment, none of the closing tags.
+    final killed = sink.buffer
+        .toString()
+        .substring(0, sink.buffer.length - 1); // byte-level mid-newline cut
+
+    final salvaged = salvageGpx(killed);
+    expect(salvaged, isNotNull);
+    final data =
+        TrackImporter().import(salvaged!.codeUnits, filename: 'salvage.gpx');
+    expect(data.format, 'GPX');
+    expect(data.points, hasLength(3));
+    expect(data.distanceMeters, closeTo(session.distanceMeters, 0.1));
+  });
+
+  test('kill mid-point: the half-written point is cut away', () {
+    final sink = MemoryStageSink();
+    final session = RecordingSession(
+      stage: GpxStageWriter(sink, name: 'Killed ride'),
+    )..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201, ele: 43.0));
+    session.processFix(fix(2, lat: 52.5202, ele: 43.9));
+    final text = sink.buffer.toString();
+    // A real flush can cut the file midway through the next point's
+    // markup: a point whose attributes were cut halfway through.
+    final midPointCut = '${text.substring(0, text.lastIndexOf("</trkpt>"))}'
+        '<trkpt lat="52.5203" lon="13.40';
+    final salvaged = salvageGpx(midPointCut);
+    expect(salvaged, isNotNull);
+    final data =
+        TrackImporter().import(salvaged!.codeUnits, filename: 'salvage.gpx');
+    expect(data.points, hasLength(2),
+        reason: 'the half-written point is cut, the flushed ones stay');
+    expect(data.points.last.ele, closeTo(43.0, 0.01));
+  });
+
+  test('a kill before the first flushed point leaves nothing to salvage',
+      () {
+    expect(
+        salvageGpx('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<gpx version="1.1" creator="unvisited"><trk><trkseg>'),
+        isNull);
+  });
+
+  test('empty session (no fix ever accepted) finalizes nothing', () {
+    final sink = MemoryStageSink();
+    final session =
+        RecordingSession(stage: GpxStageWriter(sink, name: 'Bare'));
+    session.start(FakeSource());
+    session.stop();
+    expect(sink.buffer.toString(), isEmpty,
+        reason: 'a session with no fix writes no file at all');
+    expect(session.elapsed, Duration.zero);
+  });
+
+  test('the staged file lands under the requested path and re-imports',
+      () async {
+    // Real file variant of the writer, the way slice 2 wires it: the path
+    // is the app root's recording/<timestamp>.gpx in production.
+    final dir = Directory.systemTemp.createTempSync('unvisited-rec');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}${Platform.pathSeparator}1721000000.gpx');
+    final sink = _FileSink(file);
+    final session = RecordingSession(
+      stage: GpxStageWriter(sink, name: 'File ride'),
+    )..start(FakeSource());
+    session.processFix(fix(0, ele: 42));
+    session.processFix(fix(1, lat: 52.5201));
+    session.stop();
+    await sink.done;
+
+    final bytes = file.readAsBytesSync();
+    expect(bytes, isNotEmpty);
+    final store = TrackStore(dir);
+    final result = store.importBytes(bytes, filename: 'staged.gpx');
+    expect(result.imported, isTrue, reason: result.reason);
+    final stored = store.tracks.single;
+    expect(stored.name, 'File ride',
+        reason: 'recorder names survive the round-trip');
+    expect(result.data!.points, hasLength(2));
+  });
+}
+
+/// A [StageSink] over a real file. `dart:io` writes are buffered; the
+/// flush and close futures are kept and awaited through [done] — in tests
+/// by reading the file afterwards — because an un-awaited flush binds the
+/// IOSink and a close arriving while it is bound throws.
+class _FileSink implements StageSink {
+  _FileSink(File file) : _iosink = file.openWrite();
+
+  final IOSink _iosink;
+  final List<Future<void>> _pending = [];
+
+  @override
+  void write(String s) {
+    _iosink.write(s);
+  }
+
+  @override
+  Future<void> flush() {
+    final f = _iosink.flush();
+    _pending.add(f);
+    return f;
+  }
+
+  @override
+  void close() {
+    _pending.add(_iosink.close());
+  }
+
+  Future<void> get done => Future.wait(_pending);
+}
