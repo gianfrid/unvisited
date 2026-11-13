@@ -120,4 +120,21 @@ void main() {
     final result = matcher.match(const [LatLng(52.5200, 13.5200)]);
     expect(result.matchedMeters, isEmpty);
   });
+
+  test('a track outside the region entirely matches nothing', () {
+    // ~880 km away (Paris): the region file holds no ways there, so the
+    // matcher must unlock nothing — corridor marks can never "leak" from a
+    // region into a zone it does not cover.
+    final result = matcher.match(const [
+      LatLng(48.8566, 2.3522),
+      LatLng(48.8570, 2.3530),
+      LatLng(48.8580, 2.3540),
+    ]);
+    expect(result.matchedMeters, isEmpty);
+    expect(result.corridors, isEmpty);
+    // Only the index's reference-latitude bucket (parsed once when the
+    // index is built, for the longitude cell width) was touched — none of
+    // the far-away query's own buckets exist in the file.
+    expect(store.parsedBucketCount, 1);
+  });
 }
