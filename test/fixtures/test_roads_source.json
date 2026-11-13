@@ -1,0 +1,22 @@
+{
+  "ways": [
+    {
+      "id": "1001",
+      "class": "residential",
+      "name": "Main Street",
+      "points": [[52.5200, 13.4050], [52.5200, 13.4100]]
+    },
+    {
+      "id": "1002",
+      "class": "primary",
+      "name": "Cross Avenue",
+      "points": [[52.5180, 13.4075], [52.5220, 13.4075]]
+    },
+    {
+      "id": "1003",
+      "class": "residential",
+      "name": "Parallel Lane",
+      "points": [[52.5204, 13.4050], [52.5204, 13.4100]]
+    }
+  ]
+}
