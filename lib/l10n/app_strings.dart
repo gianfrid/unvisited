@@ -207,8 +207,8 @@ class EnglishStrings extends AppStrings {
   String get settingsTitle => 'Settings';
   @override
   String get aboutDescription =>
-      'Local-only track viewer for GPX, FIT, KMZ and TCX files on '
-      'OpenStreetMap.';
+      'Local-only track recording and exploration on OpenStreetMap '
+      '(GPX, FIT, KMZ and TCX).';
   @override
   String buildDate(String date) => 'Build date: $date';
   @override
@@ -382,8 +382,8 @@ class ItalianStrings extends AppStrings {
   String get settingsTitle => 'Impostazioni';
   @override
   String get aboutDescription =>
-      'Visualizzatore di tracce solo locale per file GPX, FIT, KMZ e TCX '
-      'su OpenStreetMap.';
+      'Registrazione ed esplorazione di tracce solo in locale su '
+      'OpenStreetMap (GPX, FIT, KMZ e TCX).';
   @override
   String buildDate(String date) => 'Data di build: $date';
   @override

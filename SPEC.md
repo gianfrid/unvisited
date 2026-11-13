@@ -8,9 +8,10 @@ The rules: scope, invariants, testing, conventions and acceptance criteria. How 
 2. Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX (plain KML is handled alongside KMZ — OpenTracks exports both). All sources flow through one unified import pipeline.
 3. Persist imported tracks locally as files under an app-private storage root; catalog metadata lives in a JSON index (`index.json`) next to a `tracks/` directory. No database package.
 4. Show every imported track together on a single map using OpenStreetMap tiles.
-5. No in-app recording, no route planning yet. The map shows an exploration overlay in fog-of-war style: every track point unlocks the area around it (15 m radius circles drawn translucently over the tiles, which stay a fully legible map), and a section of an OSM road/trail that runs close to unlocked points is matched and unlocked with it. Road matching is offline and decided (research: `docs/offline-road-matching-for-unvisited-research-report.md`): road data comes from a Geofabrik extract filtered to `highway=*` ways, preprocessed on the desktop into a flattened, spatially bucketed file (varint polylines + JSON sidecar) that the user side-loads into the app — nothing road-related is bundled or fetched at runtime. Matching is geometric (point-to-segment within the ~15 m unlock radius against the same cell coalescing the circles use), per-segment: only the sub-length of a way actually walked unlocks, a way is flagged complete at ≥90% matched length. No Overpass, no routing graph, no HMM — a parallel service road over-unlocking is cosmetic and already true of the circles. ODbL attribution is covered by the existing OSM notice.
+5. The map shows an exploration overlay in fog-of-war style: every track point unlocks the area around it (15 m radius circles drawn translucently over the tiles, which stay a fully legible map), and a section of an OSM road/trail that runs close to unlocked points is matched and unlocked with it. Road matching is offline and decided (research: `docs/offline-road-matching-for-unvisited-research-report.md`): road data comes from a Geofabrik extract filtered to `highway=*` ways, preprocessed on the desktop into a flattened, spatially bucketed file (varint polylines + JSON sidecar) that the user side-loads into the app — nothing road-related is bundled or fetched at runtime. Matching is geometric (point-to-segment within the ~15 m unlock radius against the same cell coalescing the circles use), per-segment: only the sub-length of a way actually walked unlocks, a way is flagged complete at ≥90% matched length. No Overpass, no routing graph, no HMM — a parallel service road over-unlocking is cosmetic and already true of the circles. ODbL attribution is covered by the existing OSM notice.
+6. Active recording (Android, decided — research: `docs/active-recording-for-unvisited-research-report.md`): a Record action starts a foreground-service GPS session (geolocator's, with its notification and optional wake lock — no new packages), feeds a pure-Dart `RecordingSession` behind a `PositionSource` interface, tracks it in the UI as a dashboard (live speed, distance, duration/moving time; follow-camera with a course-up marker), and stages points as they arrive into a GPX file under the app root. Stopping finalizes that file through the same unified import pipeline as any other source — recorded tracks are ordinary catalog tracks: same dedup, same fog overlay, same road-corridor matching. The session tolerates process death (short flush cadence; an un-finalized file salvages as a partial track at next start) and deliberately reads only while-in-use location: it never starts from the background, so `ACCESS_BACKGROUND_LOCATION` stays out. Desktop Linux cannot record (no location plugin there — geolocator ships none for Linux); the Record action is hidden where location support is absent, and desktop recording is backlog. The OsmAnd-style tilted map view rides on upstream flutter_map pitch support (tracker item in TODO.md): raster tiles stay the only map source; a vector/3D-building look would be a new decision and is out of scope.
 
-Out of scope until the MVP is done: recording, route planning, cross-service integrations, cloud sync.
+Out of scope: route planning, turn-by-turn navigation, per-service integrations, cloud sync, accounts, and (pending an explicit decision) any vector-tile map sources. Desktop recording stays in the backlog.
 
 ## Hard rules and invariants
 
@@ -34,6 +35,13 @@ Out of scope until the MVP is done: recording, route planning, cross-service int
 - Key off the FIT File Id message: type 4 = activity, type 32 = monitoring. Do not branch on filename or folder path.
 - Skip `monitoring` FIT files (`GARMIN/Monitor/`, all-day health metrics). Naive "import every .fit" is wrong.
 - Tolerate truncated FIT files (missing summary/session block, e.g. battery death mid-ride) and Smart Recording's variable intervals plus pause events.
+
+### Recording
+
+- A recording session is state, not a second storage path: its points stream into a staging GPX under the app root and finalize through the unified pipeline on stop (content-hash dedup and unlock matching apply unchanged). Never add a parallel catalog or a second track format.
+- The session logic (`RecordingSession`, filters, GPX writer, stats) is pure Dart behind a `PositionSource` interface — no Flutter imports, unit-testable against synthetic position streams, Android-swappable like the parsers.
+- Recording only ever starts in the foreground (Record action). Never request `ACCESS_BACKGROUND_LOCATION`; never start the location service from the background.
+- Accept filters and staging semantics are part of the contract: fixes worse than the accuracy threshold (~50 m) are dropped, flush cadence keeps the loss window bounded, pause/fix-loss resume as new `<trkseg>` breaks with one track per session.
 
 ## Testing strategy
 
@@ -73,10 +81,12 @@ Android:
 3. Share a KMZ/GPX from OpenTracks via the share sheet; verify it imports.
 4. Pick a folder via SAF (e.g. a watch mounted over USB-OTG); verify every supported file below it imports.
 5. Repeat the dedup and persistence checks.
+6. Recording: accept the location prompt from the Record action; verify the foreground-service notification appears, walk/bike a stretch with the screen off, verify the session kept recording (distance grows), then stop — the track appears in the catalog, shows in the fog overlay, and unlocks road corridors when a region file is active.
+7. Kill the app mid-recording (swipe from recents): at next start the un-finalized recording is offered/imported as a partial track with a notice.
 
 ## Acceptance criteria
 
-- All MVP scope items (above) work on both Android and desktop Linux.
+- All scope items (above) work on their target platforms: recording and its dashboard on Android, everything else on both Android and desktop Linux.
 - Every supported source (OpenTracks, Garmin FIT, Strava GPX/FIT) flows through the unified pipeline and renders on the single OSM map.
 - FIT activity files import; FIT monitoring files are skipped without error; truncated FIT files still import.
 - `flutter analyze` is clean and `flutter test` passes.

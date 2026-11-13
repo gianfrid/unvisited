@@ -1,6 +1,6 @@
 # Unvisited
 
-A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. A companion to recording apps; it does not record activities itself.
+A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording is being added now (Android first; the design is decided — see [SPEC.md](SPEC.md) and TODO.md): one Record action turns the map into a ride/walk dashboard that writes an ordinary GPX track into the same catalog.
 
 Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
 
@@ -75,6 +75,7 @@ On Android you get everything the desktop has, plus:
 
 - **Folder import via SAF** — pick any folder (e.g. a watch mounted over USB-OTG); every supported file below it is imported.
 - **Share intents** — share a track from OpenTracks, a file manager, etc. directly into Unvisited.
+- **Recording (in delivery)** — a Record action starts a foreground-service GPS session and a live dashboard (speed, distance, duration; follow-camera), staged as a GPX that finalizes into the same catalog as any import. Desktop cannot record — desktop Linux has no location plugin — so the action is hidden there (desktop recording is backlog).
 
 Build an APK:
 
