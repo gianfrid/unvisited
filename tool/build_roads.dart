@@ -1,19 +1,28 @@
 // ignore_for_file: avoid_print
-// Builds an Unvisited road file from a JSON way list.
+// Builds an Unvisited road file from either input:
 //
-// Run with: dart run tool/build_roads.dart <ways.json> <output.roads>
+//   dart run tool/build_roads.dart <ways.json>      <output.roads>
+//   dart run tool/build_roads.dart <region.osm.pbf> <output.roads>
 //
-// Input JSON shape:
+// The input is detected by content, not extension: an OSM PBF file opens
+// with an "OSMHeader" blob (see tool/pbf_reader.dart's sniff); anything
+// else is read as the JSON way list. An osmium-filtered extract is the
+// recommended pipeline — filtering to highway ways plus their referenced
+// nodes:
+//
+//   osmium tags-filter region.osm.pbf w/highway -o roads.osm.pbf
+//
+// The reader also accepts the *unfiltered* extract (it only keeps ways
+// with a highway tag, but then needs a second pass to collect the nodes
+// those ways reference, at the cost of reading the file twice — and the
+// input being much larger). Both paths stream, so memory stays bounded by
+// the highway-referenced node count, not the file.
+//
+// JSON way-list shape (what the synthetic test fixture uses):
 // ```json
 // {"ways": [{"id": "123", "class": "residential", "name": "Main Street",
 //            "points": [[52.52, 13.405], [52.52, 13.41]]}]}
 // ```
-//
-// Today this input is hand-written (the synthetic test fixture). A later
-// slice grows the same tool a PBF reader (dev-only deps: protobuf +
-// dart_osmpbf) to consume an osmium-filtered Geofabrik extract:
-//
-//   osmium tags-filter region.osm.pbf w/highway -o roads.osm.pbf
 //
 // Output format: see lib/road/road_format.dart (version 2 — a JSON bucket
 // directory followed by one payload blob per z12 bucket, so the app opens a
@@ -25,15 +34,42 @@ import 'dart:math' as math;
 
 import 'package:unvisited/road/road_format.dart';
 
+import 'pbf_reader.dart';
+
 void main(List<String> args) {
   if (args.length != 2) {
-    print('usage: dart run tool/build_roads.dart <ways.json> <output.roads>');
+    print('usage: dart run tool/build_roads.dart <input> <output.roads>');
+    print('  input: ways JSON, or an (osmium-filtered) .osm.pbf extract');
     exit(2);
   }
-  final source = jsonDecode(File(args[0]).readAsStringSync()) as Map;
-  final ways = (source['ways'] as List).cast<Map>();
+  // Content sniff: an OSM PBF's "OSMHeader" marker sits at offset 4 (after
+  // the first frame's big-endian length), so 20 bytes decide the format.
+  final head = <int>[...File(args[0]).openSync().readSync(20)];
+  if (head.length < 19) {
+    print('error: ${args[0]} is too short to be either input format');
+    exit(1);
+  }
+  final List<Map> ways;
+  if (looksLikeOsmPbf(head)) {
+    print('reading OSM PBF ${args[0]} ...');
+    final stopwatch = Stopwatch()..start();
+    final extraction = extractHighwayWays(args[0], onWarning: print);
+    stopwatch.stop();
+    print(
+      'scanned ${extraction.totalWays} ways '
+      '(${extraction.highwayWays} highway-tagged) in '
+      '${(stopwatch.elapsedMilliseconds / 1000).toStringAsFixed(1)} s; '
+      'kept ${extraction.ways.length} with geometry'
+      '${extraction.shortWays > 0 ? ', ${extraction.shortWays} too short' : ''}'
+      '${extraction.missingNodeWays > 0 ? ', ${extraction.missingNodeWays} missing nodes' : ''}',
+    );
+    ways = extraction.ways;
+  } else {
+    final source = jsonDecode(File(args[0]).readAsStringSync()) as Map;
+    ways = (source['ways'] as List).cast<Map>();
+  }
   if (ways.isEmpty) {
-    print('error: no ways in ${args[0]}');
+    print('error: no highway ways in ${args[0]}');
     exit(1);
   }
   buildRoadFile(ways, args[1]);
@@ -72,8 +108,10 @@ void buildRoadFile(List<Map> ways, String outPath) {
   }
   final bytes = encodeRoadFile(buckets);
   File(outPath).writeAsBytesSync(bytes, flush: true);
-  print('$outPath written: ${ways.length - skipped} ways, '
-      '${buckets.length} buckets, ${bytes.length} bytes');
+  print(
+    '$outPath written: ${ways.length - skipped} ways, '
+    '${buckets.length} buckets, ${bytes.length} bytes',
+  );
 }
 
 /// Every z12 tile a way's bounding box touches. Bbox-based (not per-point)

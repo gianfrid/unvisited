@@ -9,6 +9,7 @@
 // CRC-16/XMODEM; the parser deliberately does not hard-verify CRCs because
 // truncated files must be tolerated (AGENTS.md).
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -18,9 +19,10 @@ const fitEpoch = 631065600; // 1989-12-31T00:00:00Z
 
 final rideStart =
     DateTime.parse('2024-05-01T08:00:00Z').millisecondsSinceEpoch ~/ 1000 -
-        fitEpoch;
+    fitEpoch;
 
-int semicircles(double deg) => (deg * 2147483648.0 / 180.0).round() & 0x7FFFFFFF;
+int semicircles(double deg) =>
+    (deg * 2147483648.0 / 180.0).round() & 0x7FFFFFFF;
 
 class FitWriter {
   final List<int> _bytes = [];
@@ -28,8 +30,11 @@ class FitWriter {
   /// Appends raw message bytes (used to simulated truncated writes).
   void appendBytes(List<int> b) => _bytes.addAll(b);
 
-  void definition(int local,
-      int globalMsg, List<List<int>> fields /* [num, size, baseType] */) {
+  void definition(
+    int local,
+    int globalMsg,
+    List<List<int>> fields /* [num, size, baseType] */,
+  ) {
     _bytes.add(0x40 | local);
     _bytes.addAll([0, 0]); // reserved, little-endian architecture
     _bytes.addAll([globalMsg & 0xFF, (globalMsg >> 8) & 0xFF]);
@@ -67,7 +72,12 @@ class FitWriter {
     return Uint8List.fromList(out);
   }
 
-  List<int> _u32(int v) => [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];
+  List<int> _u32(int v) => [
+    v & 0xFF,
+    (v >> 8) & 0xFF,
+    (v >> 16) & 0xFF,
+    (v >> 24) & 0xFF,
+  ];
 }
 
 int fitCrc(List<int> bytes, [int crc = 0]) {
@@ -84,7 +94,12 @@ int fitCrc(List<int> bytes, [int crc = 0]) {
   return crc;
 }
 
-List<int> u32(int v) => [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];
+List<int> u32(int v) => [
+  v & 0xFF,
+  (v >> 8) & 0xFF,
+  (v >> 16) & 0xFF,
+  (v >> 24) & 0xFF,
+];
 
 // ---- activity FIT: Berlin ride with GPS loss (dropped position records)
 //      and mixed absolute / compressed timestamps ----
@@ -174,7 +189,8 @@ Uint8List opentracksKmz() {
   final buffer = StringBuffer();
   buffer.writeln('<?xml version="1.0" encoding="UTF-8"?>');
   buffer.writeln(
-      '<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">');
+    '<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">',
+  );
   buffer.writeln('  <Document>');
   buffer.writeln('    <name>Afternoon ride</name>');
   buffer.writeln('    <Placemark>');
@@ -184,7 +200,8 @@ Uint8List opentracksKmz() {
     final t = DateTime.parse('2024-05-01T15:0$i:00Z');
     buffer.writeln('        <when>${t.toIso8601String()}</when>');
     buffer.writeln(
-        '        <gx:coord>${track[i + 1]} ${track[i]} ${40 + i}</gx:coord>');
+      '        <gx:coord>${track[i + 1]} ${track[i]} ${40 + i}</gx:coord>',
+    );
   }
   buffer.writeln('      </gx:Track>');
   buffer.writeln('    </Placemark>');
@@ -198,6 +215,276 @@ Uint8List opentracksKmz() {
   return Uint8List.fromList(ZipEncoder().encode(archive));
 }
 
+// ---- OSM PBF: a tiny town exercising both node encodings, non-default
+//      granularity/offsets, a way referencing nodes from a later block, and
+//      both raw and zlib blobs (read by tool/pbf_reader.dart) ----
+
+/// Minimal protobuf wire writer (what the OSM PBF fixture needs; the real
+/// reader side is hand-written in tool/pbf_reader.dart).
+class PbfWriter {
+  final List<int> _bytes = [];
+
+  void varint(int v) {
+    assert(v >= 0, 'use sint() for signed values');
+    var x = v;
+    while (x > 0x7f) {
+      _bytes.add((x & 0x7f) | 0x80);
+      x >>= 7;
+    }
+    _bytes.add(x);
+  }
+
+  /// sint32/sint64 field value (zigzag).
+  void sint(int v) => varint(v >= 0 ? v << 1 : (-v << 1) - 1);
+
+  void intField(int number, int v) {
+    _field(number, 0);
+    varint(v);
+  }
+
+  void sintField(int number, int v) {
+    _field(number, 0);
+    sint(v);
+  }
+
+  void string(int number, String s) => bytesField(number, utf8.encode(s));
+
+  void bytesField(int number, List<int> b) {
+    _field(number, 2);
+    varint(b.length);
+    _bytes.addAll(b);
+  }
+
+  void packedSint(int number, List<int> values) {
+    final sub = PbfWriter();
+    for (final v in values) {
+      sub.sint(v);
+    }
+    bytesField(number, sub._bytes);
+  }
+
+  void packedUint32(int number, List<int> values) {
+    final sub = PbfWriter();
+    for (final v in values) {
+      sub.varint(v);
+    }
+    bytesField(number, sub._bytes);
+  }
+
+  void _field(int number, int wire) => varint((number << 3) | wire);
+
+  List<int> get bytes => _bytes;
+}
+
+/// One top-level PBF frame: length-prefixed BlobHeader + Blob around a
+/// message payload (zlib-compressed when [compress]).
+Uint8List pbfFrame(String type, List<int> payload, {bool compress = false}) {
+  final blob = PbfWriter();
+  if (compress) {
+    blob.bytesField(3, zlib.encoder.convert(payload)); // zlib_data
+  } else {
+    blob.bytesField(1, payload); // raw
+  }
+  blob.intField(2, payload.length); // raw_size
+  final header = PbfWriter()
+    ..string(1, type)
+    ..intField(3, blob.bytes.length); // datasize
+  final h = header.bytes;
+  final b = blob.bytes;
+  return Uint8List.fromList([
+    (h.length >> 24) & 0xFF,
+    (h.length >> 16) & 0xFF,
+    (h.length >> 8) & 0xFF,
+    h.length & 0xFF,
+    ...h,
+    ...b,
+  ]);
+}
+
+const pbfTown = (
+  // Block A: plain nodes, granularity 100, no offsets (the proto defaults).
+  aStrings: ['', 'highway', 'name', 'service', 'Weinbergsweg', 'footway'],
+  // Block B: dense nodes, granularity 1000 with offsets (a real extract's
+  // writer picks these; the reader must honor all three knobs).
+  bStrings: ['', 'highway', 'name', 'primary', 'Torstraße', 'building', 'yes'],
+);
+
+({int id, double lat, double lon}) _pbfNode(int id, double lat, double lon) =>
+    (id: id, lat: lat, lon: lon);
+
+int _nanoRelative(double degrees, int granularity, int offset) =>
+    ((degrees * 1e9).round() - offset) ~/ granularity;
+
+/// A PrimitiveGroup of plain Node messages.
+List<int> _pbfPlainNodes(
+  List<({int id, double lat, double lon})> nodes,
+  int granularity,
+  int latOffset,
+  int lonOffset,
+) {
+  final group = PbfWriter();
+  for (final n in nodes) {
+    final node = PbfWriter()
+      ..sintField(1, n.id)
+      ..sintField(8, _nanoRelative(n.lat, granularity, latOffset))
+      ..sintField(9, _nanoRelative(n.lon, granularity, lonOffset));
+    group.bytesField(1, node.bytes);
+  }
+  return group.bytes;
+}
+
+/// A PrimitiveGroup with one DenseNodes row set (ids/lat/lon delta-coded).
+List<int> _pbfDenseNodes(
+  List<({int id, double lat, double lon})> nodes,
+  int granularity,
+  int latOffset,
+  int lonOffset,
+) {
+  final relLat = [
+    for (final n in nodes) _nanoRelative(n.lat, granularity, latOffset),
+  ];
+  final relLon = [
+    for (final n in nodes) _nanoRelative(n.lon, granularity, lonOffset),
+  ];
+  final dense = PbfWriter()
+    ..packedSint(1, [
+      for (var i = 0; i < nodes.length; i++)
+        nodes[i].id - (i == 0 ? 0 : nodes[i - 1].id),
+    ])
+    ..packedSint(8, [
+      for (var i = 0; i < relLat.length; i++)
+        relLat[i] - (i == 0 ? 0 : relLat[i - 1]),
+    ])
+    ..packedSint(9, [
+      for (var i = 0; i < relLon.length; i++)
+        relLon[i] - (i == 0 ? 0 : relLon[i - 1]),
+    ])
+    // keys_vals: one 0 terminator per untagged node.
+    ..packedUint32(10, [for (var i = 0; i < nodes.length; i++) 0]);
+  final group = PbfWriter()..bytesField(2, dense.bytes);
+  return group.bytes;
+}
+
+/// A PrimitiveGroup of Way messages (tags as string-table indices, refs
+/// delta-coded).
+List<int> _pbfWays(
+  List<({int id, List<int> keys, List<int> vals, List<int> refs})> ways,
+) {
+  final group = PbfWriter();
+  for (final w in ways) {
+    final way = PbfWriter()
+      ..intField(1, w.id)
+      ..packedUint32(2, w.keys)
+      ..packedUint32(3, w.vals);
+    var pos = 0;
+    final deltas = <int>[];
+    for (final ref in w.refs) {
+      deltas.add(ref - pos);
+      pos = ref;
+    }
+    way.packedSint(8, deltas);
+    group.bytesField(3, way.bytes);
+  }
+  return group.bytes;
+}
+
+/// A PrimitiveBlock payload from string table + groups + block scalars.
+List<int> _pbfBlock({
+  required List<String> strings,
+  required int granularity,
+  required int latOffset,
+  required int lonOffset,
+  required List<List<int>> groups,
+}) {
+  final table = PbfWriter();
+  for (final s in strings) {
+    table.string(1, s);
+  }
+  final block = PbfWriter()..bytesField(1, table.bytes);
+  for (final g in groups) {
+    block.bytesField(2, g);
+  }
+  block
+    ..sintField(17, granularity)
+    ..intField(19, latOffset)
+    ..intField(20, lonOffset);
+  return block.bytes;
+}
+
+Uint8List townOsmPbf() {
+  // OSMHeader: the required-features declaration real files carry.
+  final header = PbfWriter()
+    ..string(4, 'OsmSchema-V0.6')
+    ..string(4, 'DenseNodes')
+    ..string(16, 'unvisited-make_fixtures');
+
+  const aGranularity = 100;
+  const bGranularity = 1000;
+  const bLatOffset = 52000000000; // 52 degrees
+  const bLonOffset = 13000000000; // 13 degrees
+
+  // Way 100 (service, Weinbergsweg): nodes 1-3 in this block.
+  // Way 103 (footway): references node 999, which does not exist anywhere —
+  // the missing-node drop path.
+  final blockA = _pbfBlock(
+    strings: pbfTown.aStrings,
+    granularity: aGranularity,
+    latOffset: 0,
+    lonOffset: 0,
+    groups: [
+      _pbfPlainNodes(
+        [
+          _pbfNode(1, 52.5280, 13.4020),
+          _pbfNode(2, 52.5288, 13.4030),
+          _pbfNode(3, 52.5250, 13.4000),
+        ],
+        aGranularity,
+        0,
+        0,
+      ),
+      _pbfWays([
+        (id: 100, keys: [1, 2], vals: [3, 4], refs: [1, 2, 3]),
+        (id: 103, keys: [1], vals: [5], refs: [2, 999]),
+      ]),
+    ],
+  );
+
+  // Way 101 (primary, Torstraße) is kept; way 102 (building=yes) is not a
+  // road and must be filtered out by the highway-tag choice.
+  final blockB = _pbfBlock(
+    strings: pbfTown.bStrings,
+    granularity: bGranularity,
+    latOffset: bLatOffset,
+    lonOffset: bLonOffset,
+    groups: [
+      _pbfDenseNodes(
+        [
+          _pbfNode(4, 52.5255, 13.4010),
+          _pbfNode(5, 52.5260, 13.4020),
+          _pbfNode(6, 52.5265, 13.4030),
+          _pbfNode(7, 52.5300, 13.4100),
+          _pbfNode(8, 52.5302, 13.4102),
+          _pbfNode(9, 52.5304, 13.4104),
+        ],
+        bGranularity,
+        bLatOffset,
+        bLonOffset,
+      ),
+      _pbfWays([
+        (id: 101, keys: [1, 2], vals: [3, 4], refs: [3, 4, 5]),
+        (id: 102, keys: [5], vals: [6], refs: [7, 8, 9]),
+      ]),
+    ],
+  );
+
+  final frames = [
+    pbfFrame('OSMHeader', header.bytes),
+    pbfFrame('OSMData', blockA),
+    pbfFrame('OSMData', blockB, compress: true),
+  ];
+  return Uint8List.fromList([for (final f in frames) ...f]);
+}
+
 void main() {
   final dir = Directory('test/fixtures');
   if (!dir.existsSync()) dir.createSync(recursive: true);
@@ -205,6 +492,7 @@ void main() {
   _write('test/fixtures/truncated_ride.fit', truncatedRide());
   _write('test/fixtures/monitoring.fit', monitoringFile());
   _write('test/fixtures/afternoon_ride.kmz', opentracksKmz());
+  _write('test/fixtures/town.osm.pbf', townOsmPbf());
   print('fixtures written');
 }
 

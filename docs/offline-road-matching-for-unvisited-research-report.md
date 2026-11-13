@@ -50,15 +50,15 @@ Search angles: the HMM map-matching literature (Newson & Krumm 2009 as ground tr
 
 **Realistic roads-only on-disk sizes (estimates).** Buildings dominate OSM volume; the highway subset is typically ~5–10% of nodes/ways and less of the byte volume (way geometry + a handful of tags). Applying that to the measured extract sizes plus format overhead:
 
-| Region | Geofabrik full PBF | Roads-only flattened, indexed (estimate) |
+| Region | Geofabrik full PBF | Roads-only flattened, indexed |
 |---|---|---|
-| City (Berlin) | 95 MB | 5–15 MB |
-| German region (NRW) | 871 MB | 50–150 MB |
-| Germany | 4.5 GB | 250–500 MB |
-| Western Europe | ~20–25 GB (share of 33 GB Europe file) | 1.5–3 GB |
-| Europe | 33 GB | 2–4 GB |
+| City (Berlin) | 95 MB | **38 MB (measured, slice 5)** |
+| German region (NRW) | 871 MB | ~300–400 MB (scaled from the Berlin measurement; not measured) |
+| Germany | 4.5 GB | ~1.5–2 GB (scaled; not measured) |
+| Western Europe | ~20–25 GB (share of 33 GB Europe file) | ~6–8 GB (scaled; not measured) |
+| Europe | 33 GB | ~9–12 GB (scaled; not measured) |
 
-These are estimates, not measurements; slice 1 of the recommendation includes generating one real city file to calibrate. A city file is bundleable in the APK; region/country files must be user-provided (side-loaded or downloaded once as a plain file — the spec allows "a bundled or user-provided file").
+Measured on the real November 2026 Berlin extract (95 MB, unfiltered — the build tool drops non-highway ways itself): 1,342,290 ways scanned in 4.3 s, 475,130 highway ways kept, output 38 MB in 46 z12 buckets (~80 B/way incl. bucket duplication). That is 2.5–8× the original 5–15 MB estimate — the JSON bucket payloads and per-bucket duplication dominate — which strengthens the case for the binary-layout follow-up in the profiling TODO before Germany-sized regions. Opening is cost-free by design (directory only, ~9 ms), and parsing a 3×3 bucket neighborhood in central Berlin (272 k ways) takes ~330 ms cold on the desktop VM — a walk touches a few buckets once, and per-bucket work amortizes thereafter.
 
 **Licensing.** Geofabrik extracts are ODbL. Unvisited's flattened roads file is a Derived/Produced Work; public display requires attribution "reasonably calculated to make any Person … aware that Content was obtained from OpenStreetMap". The app already attributes OSM for tiles; the same notice covers the road data. Note Geofabrik strips user names/IDs/changeset IDs from extracts for GDPR reasons, which also simplifies compliance on the app side. ([attribution guidelines](https://osmfoundation.org/wiki/Licence/Attribution_Guidelines), [community advice](https://wiki.openstreetmap.org/wiki/Community_attribution_advice), [Geofabrik main](https://download.geofabrik.de/))
 

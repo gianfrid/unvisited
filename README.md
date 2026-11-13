@@ -31,8 +31,11 @@ lib/
 └── ui/                      # app_model, map_page, track_colors
 test/                        # unit tests, fixtures in test/fixtures/
 assets/icon/icon.svg         # the app icon (source of truth)
-tool/make_fixtures.dart      # regenerates binary FIT/KMZ fixtures
+tool/make_fixtures.dart      # regenerates binary FIT/KMZ/PBF test fixtures
 tool/make_icons.dart         # regenerates every platform icon from the SVG
+tool/build_roads.dart        # builds .unvisited-roads road files (PBF or JSON ways in)
+tool/pbf_reader.dart         # hand-written OSM PBF reader for the build CLI
+tool/bench_roads.dart        # benchmarks the road parse/match pipeline
 ```
 
 ## Prerequisites
@@ -78,6 +81,17 @@ Build an APK:
 ```bash
 flutter build apk --debug     # build/app/outputs/flutter-apk/app-debug.apk
 ```
+
+## Road data files (optional)
+
+Road matching works on one side-loaded region file (extension `.unvisited-roads`); nothing road-related is bundled with the app or fetched at runtime. Build one from any Geofabrik extract on the desktop:
+
+```bash
+osmium tags-filter region.osm.pbf w/highway -o roads.osm.pbf   # optional pre-filter
+dart run tool/build_roads.dart roads.osm.pbf region.unvisited-roads
+```
+
+The build CLI also accepts the unfiltered extract directly (its own reader drops everything without a `highway` tag); the osmium filter only makes the build faster and the intermediate file smaller. All `highway=*` classes are in scope. ODbL attribution is covered by the app's existing OSM notice.
 
 ## Tests
 
