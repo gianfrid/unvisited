@@ -55,6 +55,15 @@ abstract class AppStrings {
   /// did nothing.
   String get recordDeclined;
 
+  // Recording dashboard (labels of the stats panel; the values carry
+  // their units code-side like the distances do).
+  String get statSpeed;
+  String get statAvgSpeed;
+  String get statDistance;
+  String get statElapsed;
+  String get statMoving;
+  String get statAltitude;
+
   /// Shown while a fix is being acquired: the GPS can take seconds to
   /// answer, and an unchanged button reads as a dead one.
   String get locating;  String get tracksLabel;
@@ -176,6 +185,18 @@ class EnglishStrings extends AppStrings {
   String get stopLabel => 'Stop';
   @override
   String get recordDeclined => 'Recording needs location permission';
+  @override
+  String get statSpeed => 'Speed';
+  @override
+  String get statAvgSpeed => 'Avg speed';
+  @override
+  String get statDistance => 'Distance';
+  @override
+  String get statElapsed => 'Elapsed';
+  @override
+  String get statMoving => 'Moving';
+  @override
+  String get statAltitude => 'Altitude';
   @override
   String get tracksLabel => 'Tracks';
   @override
@@ -358,6 +379,18 @@ class ItalianStrings extends AppStrings {
   String get stopLabel => 'Ferma';
   @override
   String get recordDeclined => 'La registrazione richiede la posizione';
+  @override
+  String get statSpeed => 'Velocità';
+  @override
+  String get statAvgSpeed => 'Media';
+  @override
+  String get statDistance => 'Distanza';
+  @override
+  String get statElapsed => 'Trascorso';
+  @override
+  String get statMoving => 'In movimento';
+  @override
+  String get statAltitude => 'Altitudine';
   @override
   String get tracksLabel => 'Tracce';
   @override

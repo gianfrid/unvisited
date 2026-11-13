@@ -30,6 +30,7 @@ void main() {
     double lon = 13.4050,
     double? acc = 5,
     double? speed,
+    double? heading,
     double? ele,
   }) =>
       PositionFix(
@@ -38,6 +39,7 @@ void main() {
         time: base.add(Duration(seconds: second)),
         accuracy: acc,
         speed: speed,
+        heading: heading,
         ele: ele,
       );
 
@@ -137,6 +139,30 @@ void main() {
     expect('<trkseg>'.allMatches(gpx).length, 2);
     expect('</trkseg>'.allMatches(gpx).length, 2,
         reason: 'stop finalizes the open one');
+  });
+
+  test('course is the fix heading when the device reports one', () {
+    final session = newSession('Compass')..start(FakeSource());
+    expect(session.currentCourse, isNull,
+        reason: 'no heading-bearing fix has been accepted yet');
+    session.processFix(fix(0, heading: 170));
+    expect(session.currentCourse, 170,
+        reason: 'one heading-bearing fix is enough');
+    // A subsequent fix without a heading falls back to the bearing.
+    session.processFix(fix(1, lat: 52.5201, heading: null));
+    expect(session.currentCourse, closeTo(0, 0.5),
+        reason: 'bearing fallback: north along the meridian');
+  });
+
+  test('course falls back to the bearing between fixes', () {
+    final session = newSession('Bearing')..start(FakeSource());
+    // The very first fix carries no heading: nothing is measured.
+    expect(session.processFix(fix(0)), FixDisposition.accepted);
+    expect(session.currentCourse, isNull);
+    // East along a parallel: the displacement's initial bearing.
+    session.processFix(fix(1, lon: 13.405173));
+    expect(session.currentCourse, closeTo(90, 0.5),
+        reason: 'fused fallback: bearing between the fixes');
   });
 
   test('a fix-loss gap closes the segment automatically', () {

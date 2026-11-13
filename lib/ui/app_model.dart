@@ -499,6 +499,12 @@ class AppModel extends ChangeNotifier {
   File? _recordingFile;
   bool get isRecording => _recording != null;
 
+  /// Repaints the UI for one delivered recording fix: the dashboard's
+  /// live stats and the follow-camera marker rebuild off the session's
+  /// intake, whose 1 Hz fixes are the tick they need. Wraps the protected
+  /// notification so listeners outside the model's own members stay legal.
+  void notifyRecordingFix() => notifyListeners();
+
   /// Starts recording: the while-in-use permission is requested up front
   /// (same flow as the locate attempt — a session is never started from
   /// the background), the engine consumes the Android source, and fixes
@@ -537,6 +543,9 @@ class AppModel extends ChangeNotifier {
     final sink = FileStageSink(file);
     final session = RecordingSession(
       stage: GpxStageWriter(sink, name: _recordingName(start)),
+      // The dashboard's tick: every delivered fix, after the engine
+      // processed it, repaints the HUD and moves the follow-camera.
+      onFix: (_) => notifyRecordingFix(),
     );
     _recording = session;
     _recordingFile = file;

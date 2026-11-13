@@ -38,9 +38,6 @@ course-up marker). Background location is deliberately never requested
 staged file as a partial track on next start. Desktop recording is backlog
 (no Linux location plugin).
 
-- [] slice 3 — dashboard: follow-camera + course-up rotating marker during
-  recording; stats panel (current/avg speed, distance, elapsed/moving
-  time, altitude when reported); recording strings en+it + coverage test.
 - [] slice 4 — robustness: startup salvage flow (notice + import of
   un-finalized GPX), battery-optimization exemption advisory in Settings
   (soft, no blocking dialogs), GPX writer↔reader round-trip fixture via

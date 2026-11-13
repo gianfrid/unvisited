@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_strings.dart';
+import '../recording/recording_session.dart';
 import '../storage/track_store.dart';
 import '../tile_source.dart';
 import '../build_version.dart';
@@ -37,6 +39,21 @@ class MapPage extends StatefulWidget {
   @override
   State<MapPage> createState() => _MapPageState();
 }
+
+/// Compact distance: meters under the kilometer, then km with the last
+/// digit dropped past double digits. The one format every shown distance
+/// uses (the recording chip and stats panel, the tracks drawer).
+String _formatDistance(double meters) => meters >= 1000
+    ? '${(meters / 1000).toStringAsFixed(meters >= 10000 ? 0 : 1)} km'
+    : '${meters.round()} m';
+
+/// Clock-like duration: h:mm:ss past the hour, mm:ss otherwise. The one
+/// format every recording duration uses (the chip, the stats panel).
+String _formatDuration(Duration d) => d.inHours > 0
+    ? '${d.inHours}:${d.inMinutes.remainder(60).toString().padLeft(2, '0')}:'
+        '${d.inSeconds.remainder(60).toString().padLeft(2, '0')}'
+    : '${d.inMinutes.remainder(60).toString().padLeft(2, '0')}:'
+        '${d.inSeconds.remainder(60).toString().padLeft(2, '0')}';
 
 /// OSM standard tiles exist between zoom 0 and 19; 3 is a world view that
 /// still feels like a map. Both the camera and the zoom slider stay inside.
@@ -80,13 +97,20 @@ class _MapPageState extends State<MapPage> {
     _mapEvents = _mapController.mapEventStream.listen((event) {
       final cell = fogCellSizeFor(
           zoom: event.camera.zoom, latitude: event.camera.center.latitude);
+      // The follow-camera releases on any gesture move — including the
+      // fling/double-tap-zoom animations that report through their own
+      // sources after the gesture ends.
       var dirty = cell != _fogCellSize;
+      if (_followRecording && !_programmaticEvents.contains(event.source)) {
+        _followRecording = false;
+        dirty = true;
+      }
       if (!dirty && _locatedPosition != null) {
         // The position marker shows the last fix; once the user pans away
         // from it, it would sit somewhere they are not — drop it.
-        final moved = const Distance().distance(
+        final drift = const Distance().distance(
             event.camera.center, _locatedPosition!);
-        if (moved > _markerClearDistance) {
+        if (drift > _markerClearDistance) {
           _locatedPosition = null;
           dirty = true;
         }
@@ -119,6 +143,25 @@ class _MapPageState extends State<MapPage> {
   /// How far the map center may drift from [_locatedPosition] before the
   /// marker is dropped. Roughly half a city block at the locate zoom.
   static const _markerClearDistance = 50.0; // meters
+
+  /// Whether the map follows the recording fixes (the dashboard's
+  /// follow-camera): a new session arms it, a user pan releases it —
+  /// a fix must never pull the view back against the user's hand.
+  bool _followRecording = false;
+  bool _wasRecording = false;
+
+  /// Whether the recording dashboard's stats panel is expanded; the
+  /// HUD chip toggles it.
+  bool _dashboardOpen = false;
+
+  /// Map-event sources that are not the user's hand: programmatic moves
+  /// (the follow-camera itself, the zoom slider), camera fits, customs.
+  /// Everything else runs the follow-camera release below.
+  static const _programmaticEvents = <MapEventSource>{
+    MapEventSource.mapController,
+    MapEventSource.fitCamera,
+    MapEventSource.custom,
+  };
 
   /// Cached unlock centers keyed to the current overlay inputs (visible
   /// track ids + cell size), so pans and transient item rebuilds do not
@@ -157,6 +200,25 @@ class _MapPageState extends State<MapPage> {
           coordinates: pts,
           padding: _fitPadding,
         ));
+      }
+    }
+    // A session boundary re-arms the follow-camera (the old marker and
+    // any open panel are gone with it).
+    final recording = widget.model.isRecording;
+    if (recording != _wasRecording) {
+      _wasRecording = recording;
+      _followRecording = recording;
+      _dashboardOpen = false;
+    }
+    // The follow-camera rides each accepted fix while it is armed; the
+    // marker rebuilds off the session's own getters below either way.
+    if (recording && _followRecording) {
+      final session = widget.model.recording;
+      final lat = session?.currentLat;
+      final lon = session?.currentLon;
+      if (lat != null && lon != null) {
+        _mapController.move(
+            LatLng(lat, lon), _mapController.camera.zoom);
       }
     }
     setState(() {});
@@ -214,50 +276,100 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _stopRecording() => widget.model.stopRecording();
 
-  /// While recording, the HUD chip sits below the toolbar: the session's
-  /// pulsing tint dot with its live duration and distance (the engine's
-  /// numbers — a chip that never moves reads as a stuck one). Returns a
-  /// direct child of the map's stack; absent while no session runs.
-  Widget _recordingChip(AppStrings strings) {
+  /// While recording, the dashboard: the HUD chip — the pulsing dot with
+  /// its live duration and distance, tap to expand — and the stats panel
+  /// it opens, both re-rendering off the model's per-fix notifications
+  /// (the engine's numbers, not a straight-line snapshot). Absent while
+  /// no session runs.
+  Widget _recordingDashboard(AppStrings strings) {
     final session = widget.model.recording;
     if (session == null) return const SizedBox.shrink();
-    final duration = _chipDuration(session.elapsed);
     final meters = session.distanceMeters;
     return Positioned(
       top: kToolbarHeight + 16,
-      left: 0,
-      right: 0,
-      child: Align(
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.fiber_manual_record,
-                    size: 12, color: Colors.redAccent),
-                const SizedBox(width: 8),
-                Text(duration, style: Theme.of(context).textTheme.bodyMedium),
-                if (meters > 0) ...[
-                  const SizedBox(width: 12),
-                  Text('${meters.toStringAsFixed(0)} m',
-                      style: Theme.of(context).textTheme.bodyMedium),
-                ],
-              ],
+      left: 12,
+      right: 12,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            child: Card(
+              child: InkWell(
+                key: const ValueKey('recording-chip'),
+                borderRadius: BorderRadius.circular(12),
+                onTap: () =>
+                    setState(() => _dashboardOpen = !_dashboardOpen),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.fiber_manual_record,
+                          size: 12, color: Colors.redAccent),
+                      const SizedBox(width: 8),
+                      Text(_formatDuration(session.elapsed),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium),
+                      if (meters > 0) ...[
+                        const SizedBox(width: 12),
+                        Text(_formatDistance(meters),
+                            style:
+                                Theme.of(context).textTheme.bodyMedium),
+                      ],
+                      const SizedBox(width: 8),
+                      Icon(
+                        _dashboardOpen
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        size: 18,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+          if (_dashboardOpen)
+            _StatsPanel(session: session, strings: strings),
+        ],
       ),
     );
   }
 
-  /// Chip-shaped duration: clock-like past the hour (h:mm:ss); minutes
-  /// and seconds only otherwise.
-  String _chipDuration(Duration d) => d.inHours > 0
-      ? '${d.inHours}:${d.inMinutes.remainder(60).toString().padLeft(2, "0")}:'
-          '${d.inSeconds.remainder(60).toString().padLeft(2, "0")}'
-      : '${d.inMinutes.remainder(60).toString().padLeft(2, "0")}:'
-          '${d.inSeconds.remainder(60).toString().padLeft(2, "0")}';
+  /// The recording marker: at the last accepted fix, rotating to its
+  /// course so the nose points where the user is moving — course-up over
+  /// the map's north-up camera (the tilt stays excluded; see SPEC). A fix
+  /// without a heading and no bearing yet renders unrotated.
+  List<Widget> _recordingMarkers() {
+    final session = widget.model.recording;
+    final lat = session?.currentLat;
+    final lon = session?.currentLon;
+    if (lat == null || lon == null) return const [];
+    return [
+      MarkerLayer(
+        markers: [
+          Marker(
+            point: LatLng(lat, lon),
+            width: 44,
+            height: 44,
+            child: Transform.rotate(
+              angle: (session!.currentCourse ?? 0) * math.pi / 180,
+              child: Icon(
+                Icons.navigation,
+                size: 32,
+                color: Theme.of(context).colorScheme.primary,
+                shadows: const [
+                  Shadow(blurRadius: 4, color: Colors.black38),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
 
   /// Centers the map on the last saved position while waiting for a live
   /// fix (and moves onto the fix once it arrives). Never asks for
@@ -570,6 +682,9 @@ class _MapPageState extends State<MapPage> {
                     ),
                   ],
                 ),
+              // The recording marker (course-up) rides above the locate
+              // one so a session's fixes read on top of a startup fix.
+              ..._recordingMarkers(),
               RichAttributionWidget(
                 // The default flutter_map logo badge is redundant next to
                 // the OSM attribution this app already shows.
@@ -677,7 +792,7 @@ class _MapPageState extends State<MapPage> {
               ),
             ),
           ),
-          _recordingChip(strings),
+          _recordingDashboard(strings),
           if (mapTracks.isEmpty)
             Center(
               child: _EmptyHint(strings: strings),
@@ -1333,6 +1448,71 @@ class _TintSwatch extends StatelessWidget {
   }
 }
 
+/// The recording dashboard's stats panel: the engine's live numbers as
+/// labeled rows in the card under the HUD chip. The labels come from
+/// [strings]; the values carry their units code-side like the distances
+/// do, and a not-yet-measured value shows a dash.
+class _StatsPanel extends StatelessWidget {
+  const _StatsPanel({required this.session, required this.strings});
+
+  final RecordingSession session;
+  final AppStrings strings;
+
+  @override
+  Widget build(BuildContext context) {
+    String kmh(double? metersPerSecond) => metersPerSecond == null
+        ? '—'
+        : '${(metersPerSecond * 3.6).toStringAsFixed(1)} km/h';
+    final moving = session.movingTime;
+    final avg =
+        moving.inSeconds > 0 ? session.distanceMeters / moving.inSeconds : null;
+    final rows = <(String, String)>[
+      (
+        strings.statSpeed,
+        kmh(session.currentSpeed),
+      ),
+      (strings.statAvgSpeed, kmh(avg)),
+      (
+        strings.statDistance,
+        session.distanceMeters > 0
+            ? _formatDistance(session.distanceMeters)
+            : '—',
+      ),
+      (strings.statElapsed, _formatDuration(session.elapsed)),
+      (strings.statMoving, _formatDuration(moving)),
+      if (session.currentEle != null)
+        (strings.statAltitude, '${session.currentEle!.round()} m'),
+    ];
+    return Card(
+      key: const ValueKey('stats-panel'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final (label, value) in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(label,
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ),
+                    const SizedBox(width: 16),
+                    Text(value, style: Theme.of(context).textTheme.bodyMedium),
+                  ],
+                ),
+              ),
+          const SizedBox(height: 4),
+        ],
+        ),
+      ),
+    );
+  }
+}
+
 class TrackDrawer extends StatelessWidget {
   const TrackDrawer({super.key, required this.model});
 
@@ -1406,9 +1586,7 @@ class _TrackTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
-    final distance = track.distanceMeters >= 1000
-        ? '${(track.distanceMeters / 1000).toStringAsFixed(track.distanceMeters >= 10000 ? 0 : 1)} km'
-        : '${track.distanceMeters.round()} m';
+    final distance = _formatDistance(track.distanceMeters);
     final date = track.startTimeUtc == null
         ? ''
         : ' · ${track.startTimeUtc!.toLocal().toIso8601String().split('T').first}';

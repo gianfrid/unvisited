@@ -147,6 +147,126 @@ void main() {
     expect(model.recording, isNotNull);
   });
 
+  testWidgets('the dashboard expands into the stats panel with live numbers',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // See above.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0, ele: 42.0, speed: 1.0);
+    fakeFix(source, 1, lat: 52.5201, ele: 43.0, speed: 1.0);
+    fakeFix(source, 2, lat: 52.5202, speed: 1.0, ele: 44.0);
+    await tester.pump();
+    await tester.pump();
+
+    // Collapsed: the chip alone — duration and distance on it, no panel.
+    expect(find.byKey(const ValueKey('stats-panel')), findsNothing);
+    expect(find.text('00:02'), findsOneWidget);
+    expect(find.text('22 m'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('recording-chip')));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('stats-panel')), findsOneWidget);
+    // The engine's numbers, in the panel's labels: current speed (the
+    // fix's own 1 m/s), the moving average over the walking fixes,
+    // distance, both durations and the altitude the fix reported.
+    expect(find.text('Speed'), findsOneWidget);
+    expect(find.text('3.6 km/h'), findsOneWidget);
+    expect(find.text('Avg speed'), findsOneWidget);
+    expect(find.text('40.0 km/h'), findsOneWidget);
+    expect(find.text('Distance'), findsOneWidget);
+    expect(find.text('22 m'), findsNWidgets(2),
+        reason: 'the panel repeats the chip s distance');
+    expect(find.text('Elapsed'), findsOneWidget);
+    // Chip, Elapsed and Moving all read 00:02 on this stream.
+    expect(find.text('00:02'), findsNWidgets(3));
+    expect(find.text('Moving'), findsOneWidget);
+    expect(find.text('Altitude'), findsOneWidget);
+    expect(find.text('44 m'), findsOneWidget,
+        reason: 'the last accepted fix s altitude');
+  });
+
+  testWidgets('the recording camera follows the fixes; a pan releases it',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // See above.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    LatLng cameraCenter() => MapController.of(
+            tester.element(find.byType(TileLayer)))
+        .camera
+        .center;
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0);
+    fakeFix(source, 1, lat: 52.5201);
+    await tester.pump();
+    await tester.pump();
+
+    // Follow-camera: each accepted fix centers the view on itself.
+    final followed = cameraCenter();
+    expect(followed.latitude, closeTo(52.5201, 1e-6));
+    // The course-up marker rides the fix.
+    expect(find.byIcon(Icons.navigation), findsOneWidget);
+
+    // A user pan releases the follow: the next fix stays where it is on
+    // the map, the marker takes the new position without recentering.
+    // The empty-map hint sits dead center; drag below it.
+    final size = tester.getSize(find.byType(FlutterMap));
+    await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.8), const Offset(0, 80));
+    await tester.pump();
+    final panned = cameraCenter();
+    expect(panned.latitude, greaterThan(followed.latitude),
+        reason: 'dragging the map down moved the camera north');
+
+    fakeFix(source, 2, lat: 52.5202);
+    await tester.pump();
+    expect(find.byIcon(Icons.navigation), findsOneWidget);
+    expect(cameraCenter(), sameCameraAs(panned),
+        reason: 'the pan released the follow');
+  });
+
   testWidgets('dark theme darkens the tiles client-side, light leaves them',
       (tester) async {
     final root = createRoot();
@@ -1294,6 +1414,8 @@ void fakeFix(
   double lon = 13.4050,
   double? ele,
   double? acc = 5,
+  double? speed,
+  double? heading,
 }) {
   source.controller.add(PositionFix(
     lat: lat,
@@ -1301,5 +1423,15 @@ void fakeFix(
     time: DateTime.utc(2026, 11, 13, 12).add(Duration(seconds: second)),
     ele: ele,
     accuracy: acc,
+    speed: speed,
+    heading: heading,
   ));
 }
+
+/// Matches a camera center against [expected] positionally: the released
+/// follow-camera must leave the view where the user's pan put it.
+Matcher sameCameraAs(LatLng expected) => predicate<LatLng>(
+    (c) =>
+        (c.latitude - expected.latitude).abs() < 1e-6 &&
+        (c.longitude - expected.longitude).abs() < 1e-6,
+    'camera stays at $expected');

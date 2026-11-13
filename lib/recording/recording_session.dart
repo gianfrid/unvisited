@@ -42,12 +42,18 @@ enum FixDisposition { accepted, rejectedAccuracy, rejectedStale }
 class RecordingSession {
   RecordingSession({
     required this.stage,
+    this.onFix,
     this.maxAccuracy = 50,
     this.segmentGap = const Duration(seconds: 30),
     this.movingSpeed = 0.5,
   });
 
   final GpxStageWriter stage;
+
+  /// Called with every delivered fix after the engine processed it — the
+  /// dashboard's tick: the UI reads the stats below at that point, so
+  /// what it shows is always the state of the last delivered fix.
+  final void Function(PositionFix fix)? onFix;
 
   /// Horizontal accuracy above which a fix is dropped, in meters.
   final double maxAccuracy;
@@ -85,6 +91,21 @@ class RecordingSession {
 
   double? get currentEle => _currentEle;
   double? _currentEle;
+
+  /// Last accepted fix's latitude, for the follow-camera; null until one
+  /// fix is accepted.
+  double? get currentLat => _lastLat;
+
+  /// Last accepted fix's longitude (see [currentLat]).
+  double? get currentLon => _lastLon;
+
+  /// The last accepted fix's course over ground in degrees clockwise from
+  /// true north — the device's own heading when it reports one, else the
+  /// bearing between the fixes it bridges, fix by fix. Null until a fix
+  /// carries a heading or two fixes have been accepted: with one fix and
+  /// no heading the engine cannot yet tell which way is forward.
+  double? get currentCourse => _currentCourse;
+  double? _currentCourse;
 
   double? _lastLat;
   double? _lastLon;
@@ -150,6 +171,11 @@ class RecordingSession {
       _currentSpeed = fused;
       if (fused >= movingSpeed) _movingMillis += gap.inMilliseconds;
     }
+    // Course over ground: the device's own heading wins; otherwise the
+    // bearing the fix's displacement bridges. Computed before the last
+    // fix is overwritten below.
+    _currentCourse = fix.heading ??
+        (first ? null : _bearing(_lastLat!, _lastLon!, fix.lat, fix.lon));
     if (first) _firstFix = fix.time;
     _lastFix = fix.time;
     _lastLat = fix.lat;
@@ -159,7 +185,10 @@ class RecordingSession {
     return FixDisposition.accepted;
   }
 
-  void _onFix(PositionFix fix) => processFix(fix);
+  void _onFix(PositionFix fix) {
+    processFix(fix);
+    if (onFix != null) onFix!(fix);
+  }
 }
 
 const _earthRadius = 6371000.0;
@@ -173,4 +202,15 @@ double _haversine(double lat1, double lon1, double lat2, double lon2) {
   final h = math.pow(math.sin(dLat / 2), 2) +
       math.cos(lat1 * rad) * math.cos(lat2 * rad) * math.pow(math.sin(dLon / 2), 2);
   return 2 * _earthRadius * math.asin(math.sqrt(h));
+}
+
+/// Initial bearing from one point to the next, in degrees clockwise
+/// from true north — the course over ground the fix's displacement
+/// bridges.
+double _bearing(double lat1, double lon1, double lat2, double lon2) {
+  final rad = math.pi / 180;
+  final y = math.sin((lon2 - lon1) * rad) * math.cos(lat2 * rad);
+  final x = math.cos(lat1 * rad) * math.sin(lat2 * rad) -
+      math.sin(lat1 * rad) * math.cos(lat2 * rad) * math.cos((lon2 - lon1) * rad);
+  return (math.atan2(y, x) / rad + 360) % 360;
 }
