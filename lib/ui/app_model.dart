@@ -15,6 +15,12 @@ import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_matcher.dart';
 import '../road/road_store.dart';
 import '../storage/track_store.dart';
+import '../recording/position_source.dart' show PositionSource;
+import '../recording/android_position_source.dart'
+    show AndroidPositionSource;
+import '../recording/recording_session.dart';
+import '../recording/staging_gpx.dart'
+    show FileStageSink, GpxStageWriter;
 import 'fog_of_war.dart' show unlockCenters;
 
 /// Why a position could not be obtained; each maps to a message that
@@ -484,6 +490,93 @@ class AppModel extends ChangeNotifier {
   LatLng? get savedPosition => store.lastPositionLat == null
       ? null
       : LatLng(store.lastPositionLat!, store.lastPositionLon!);
+
+  /// The live recording session, or null. The map's HUD chip reads this.
+  RecordingSession? _recording;
+  RecordingSession? get recording => _recording;
+
+  /// The file the live session stages its fixes into, or null.
+  File? _recordingFile;
+  bool get isRecording => _recording != null;
+
+  /// Starts recording: the while-in-use permission is requested up front
+  /// (same flow as the locate attempt — a session is never started from
+  /// the background), the engine consumes the Android source, and fixes
+  /// stage into `<app root>/recording/<start timestamp>.gpx` as they
+  /// arrive. Returns the staged file's name, or null when the
+  /// user declined (or no host plugin answers — widget tests run here);
+  /// desktop runs never get here, the Record action stays hidden where
+  /// the platform has no location support. Spec rule: desktop recording
+  /// is backlog, Linux ships no location source at all.
+  Future<String?> startRecording(
+      {PositionSource? source, bool permissionGate = true}) async {
+    if (_recording != null) return null; // One at a time.
+    if (permissionGate) {
+      try {
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          return null;
+        }
+      } catch (_) {
+        // No host plugin (widget tests, a broken setup): the gate fails
+        // closed instead of half-starting a session nobody can feed.
+        return null;
+      }
+    }
+    final start = DateTime.now();
+    final recordingDir = Directory(
+        '${store.root.path}${Platform.pathSeparator}recording');
+    recordingDir.createSync(recursive: true);
+    final file = File(
+        '${recordingDir.path}${Platform.pathSeparator}'
+        '${start.millisecondsSinceEpoch}.gpx');
+    final sink = FileStageSink(file);
+    final session = RecordingSession(
+      stage: GpxStageWriter(sink, name: _recordingName(start)),
+    );
+    _recording = session;
+    _recordingFile = file;
+    session.start(source ?? const AndroidPositionSource());
+    notifyListeners();
+    return file.uri.pathSegments.last;
+  }
+
+  /// Stops recording: the finalized GPX goes through the unified import
+  /// pipeline like any other source (dedup, fog, road corridors all
+  /// behave identically for a recorded track), and the staged file is
+  /// deleted — the catalog owns the copy under `tracks/`. A killed
+  /// process never gets here: its un-finalized file stays behind, and
+  /// the startup salvage (slice 4) imports the partial track.
+  Future<void> stopRecording() async {
+    final session = _recording;
+    final file = _recordingFile;
+    if (session == null || file == null) return;
+    _recording = null;
+    _recordingFile = null;
+    notifyListeners(); // The chip is gone while the import still runs.
+    await session.stop();
+    final bytes = await file.readAsBytes();
+    if (bytes.isNotEmpty) {
+      store.importBytes(bytes, filename: session.stage.trackName);
+    }
+    // The staged file is spent; the catalog's copy is the one that stays.
+    if (file.existsSync()) file.deleteSync();
+  }
+
+  /// A staged track's name inside the GPX: the UTC start's numerals, so a
+  /// recorded track reads by when it was taken (locale-independent — model
+  /// classes never build sentences).
+  String _recordingName(DateTime start) =>
+      '${start.year.toString().padLeft(4, '0')}-'
+      '${start.month.toString().padLeft(2, '0')}-'
+      '${start.day.toString().padLeft(2, '0')} '
+      '${start.hour.toString().padLeft(2, '0')}:'
+      '${start.minute.toString().padLeft(2, '0')}';
+
 
   /// Exploration overlay tint key (see the tints in track_colors.dart),
   /// persisted in the index.

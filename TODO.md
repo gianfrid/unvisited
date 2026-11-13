@@ -38,13 +38,6 @@ course-up marker). Background location is deliberately never requested
 staged file as a partial track on next start. Desktop recording is backlog
 (no Linux location plugin).
 
-- [] slice 2 — Android session: manifest gains FOREGROUND_SERVICE,
-  FOREGROUND_SERVICE_LOCATION, POST_NOTIFICATIONS (verify geolocator's
-  merged service declaration at target API 34+); geolocator stream with
-  ForegroundNotificationConfig + wake lock; Record action with the full
-  permission flow, HUD chip, stop → unified import; action hidden where
-  location support is unavailable (desktop). Manual verification per
-  SPEC (screen-off session, recents-kill salvage).
 - [] slice 3 — dashboard: follow-camera + course-up rotating marker during
   recording; stats panel (current/avg speed, distance, elapsed/moving
   time, altitude when reported); recording strings en+it + coverage test.

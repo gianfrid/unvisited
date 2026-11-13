@@ -15,6 +15,8 @@
 /// directly.
 library;
 
+import 'dart:io';
+
 /// Where the staged GPX bytes go. `dart:io`-backed for the app (slice 2
 /// wires the app root), in-memory for the unit tests — same code path.
 ///
@@ -26,6 +28,40 @@ abstract class StageSink {
   void write(String s);
   Future<void> flush();
   void close();
+}
+
+/// A [StageSink] over a real file, the way the app wires it: the session
+/// stages fixes under `<app root>/recording/<start timestamp>.gpx` (path
+/// decided by the caller; slice 2's below). `dart:io` writes are buffered;
+/// the flush and close futures are kept and re-raced through [done] — in
+/// tests by reading the file afterwards — because an un-awaited flush
+/// binds the IOSink and a close arriving while it is bound throws.
+class FileStageSink implements StageSink {
+  FileStageSink(File file) : _iosink = file.openWrite();
+
+  final IOSink _iosink;
+  final List<Future<void>> _pending = [];
+
+  @override
+  void write(String s) {
+    _iosink.write(s);
+  }
+
+  @override
+  Future<void> flush() {
+    final f = _iosink.flush();
+    _pending.add(f);
+    return f;
+  }
+
+  @override
+  void close() {
+    _pending.add(_iosink.close());
+  }
+
+  /// Completes once everything flushed so far has landed and the file is
+  /// closed out.
+  Future<void> get done => Future.wait(_pending);
 }
 
 /// A [StageSink] over a [StringSink]; flushes are bookkeeping only.
@@ -57,6 +93,10 @@ class GpxStageWriter {
   static const _header = '<?xml version="1.0" encoding="UTF-8"?>\n'
       '<gpx version="1.1" creator="unvisited" '
       'xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>';
+
+  /// The track name the GPX carries in its `<name>` element — it flows
+  /// through the importer to the catalog entry.
+  String get trackName => _name;
 
   final StageSink _sink;
   final String _name;

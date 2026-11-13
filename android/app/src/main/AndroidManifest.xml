@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools">
     <!-- OSM map tiles are the app's only network use. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Device location: only used after the user taps the locate button
@@ -6,6 +7,15 @@
          when permission is already granted. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- Active recording: geolocator's foreground service carries the
+         session (its merged declaration is verified on-device at target
+         API 34+ per SPEC's manual checklist). The notification is
+         mandatory under promotion; the session starts only from the
+         Record button, so while-in-use location suffices. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application
         android:label="unvisited"
         android:name="${applicationName}"

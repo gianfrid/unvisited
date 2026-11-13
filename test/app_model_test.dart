@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart'
@@ -18,6 +19,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
+import 'package:unvisited/recording/position_source.dart'
+    show PositionFix, PositionSource;
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/track_colors.dart';
 
@@ -700,4 +703,70 @@ void main() {
       expect(reloaded.tileLayer, 'standard');
     });
   });
+
+  group('recording', () {
+    test('start is gated closed when no host plugin answers', () async {
+      // The unit-test host has no geolocator; the gate fails closed
+      // instead of half-starting a session nobody can feed.
+      expect(await model.startRecording(), isNull);
+      expect(model.isRecording, isFalse);
+    });
+
+    test('a fake-sourced session records and stops through the pipeline',
+        () async {
+      final source = FakePositionSource();
+      final staged =
+          await model.startRecording(source: source, permissionGate: false);
+      expect(staged, isNotNull);
+      expect(model.isRecording, isTrue);
+      expect(await model.startRecording(source: source, permissionGate: false),
+          isNull, reason: 'one session at a time');
+
+      fakeFix(source, 0, ele: 42.0);
+      fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201, ele: 43.0);
+      await Future<void>.delayed(Duration.zero);
+      await model.stopRecording();
+      expect(model.isRecording, isFalse);
+      final stored = model.tracks.single;
+      expect(stored.pointCount, 2);
+      expect(stored.format, 'GPX');
+      expect(stored.name, isNotEmpty, reason: 'the staged name survives');
+      // The staged file is deleted; the catalog owns the copy.
+      final dir = Directory('${root.path}${Platform.pathSeparator}recording');
+      expect(dir.existsSync(), isTrue);
+      expect(dir.listSync(), isEmpty);
+    });
+  });
+}
+
+/// A fix stream the recording tests push through at will.
+class FakePositionSource implements PositionSource {
+  FakePositionSource();
+  final controller = StreamController<PositionFix>();
+
+  @override
+  Stream<PositionFix> get stream => controller.stream;
+}
+
+/// Walking north along the Greenwich meridian, ~11.1 m per 0.0001 deg of
+/// latitude; fixes stage per second (the engine's stream settles on the
+/// microtask boundary).
+void fakeFix(
+  FakePositionSource source,
+  int second, {
+  double lat = 52.5200,
+  double prevLat = 52.5200,
+  double lon = 13.4050,
+  double? ele,
+  double? acc = 5,
+  double? speed,
+}) {
+  source.controller.add(PositionFix(
+    lat: lat,
+    lon: lon,
+    ele: ele,
+    accuracy: acc,
+    speed: speed,
+    time: DateTime.utc(2026, 11, 13, 12).add(Duration(seconds: second)),
+  ));
 }

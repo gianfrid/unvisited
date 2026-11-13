@@ -202,6 +202,63 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  /// Record button: starts a session through the model and pulses the
+  /// chip; a declined permission says so instead of leaving a button that
+  /// silently did nothing.
+  Future<void> _startRecording() async {
+    final strings = AppStrings.ofContext(context);
+    final staged = await widget.model.startRecording();
+    if (!mounted || staged != null) return;
+    _toast(strings.recordDeclined);
+  }
+
+  Future<void> _stopRecording() => widget.model.stopRecording();
+
+  /// While recording, the HUD chip sits below the toolbar: the session's
+  /// pulsing tint dot with its live duration and distance (the engine's
+  /// numbers — a chip that never moves reads as a stuck one). Returns a
+  /// direct child of the map's stack; absent while no session runs.
+  Widget _recordingChip(AppStrings strings) {
+    final session = widget.model.recording;
+    if (session == null) return const SizedBox.shrink();
+    final duration = _chipDuration(session.elapsed);
+    final meters = session.distanceMeters;
+    return Positioned(
+      top: kToolbarHeight + 16,
+      left: 0,
+      right: 0,
+      child: Align(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.fiber_manual_record,
+                    size: 12, color: Colors.redAccent),
+                const SizedBox(width: 8),
+                Text(duration, style: Theme.of(context).textTheme.bodyMedium),
+                if (meters > 0) ...[
+                  const SizedBox(width: 12),
+                  Text('${meters.toStringAsFixed(0)} m',
+                      style: Theme.of(context).textTheme.bodyMedium),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Chip-shaped duration: clock-like past the hour (h:mm:ss); minutes
+  /// and seconds only otherwise.
+  String _chipDuration(Duration d) => d.inHours > 0
+      ? '${d.inHours}:${d.inMinutes.remainder(60).toString().padLeft(2, "0")}:'
+          '${d.inSeconds.remainder(60).toString().padLeft(2, "0")}'
+      : '${d.inMinutes.remainder(60).toString().padLeft(2, "0")}:'
+          '${d.inSeconds.remainder(60).toString().padLeft(2, "0")}';
+
   /// Centers the map on the last saved position while waiting for a live
   /// fix (and moves onto the fix once it arrives). Never asks for
   /// permission; when none is granted or the platform has no location
@@ -567,13 +624,10 @@ class _MapPageState extends State<MapPage> {
                     tooltip: strings.fitTooltip,
                     onTap: mapTracks.isEmpty ? null : _fitTracks,
                   ),
-                  // Omitted entirely where the platform cannot deliver a
-                  // position (desktop Linux): a button that always fails
-                  // is worse than none.
+                  // A spinner replaces the icon while a fix is being
+                  // acquired; the caption says what is happening.
                   if (widget.locationSupported)
                     _HeaderAction(
-                      // A spinner replaces the icon while a fix is being
-                      // acquired; the caption says what is happening.
                       icon: _locating
                           ? const SizedBox(
                               width: 20,
@@ -584,6 +638,25 @@ class _MapPageState extends State<MapPage> {
                       label: _locating ? strings.locating : strings.locateLabel,
                       tooltip: strings.locateTooltip,
                       onTap: _locating ? null : _locate,
+                    ),
+                  // Record: hidden where the platform cannot deliver a
+                  // position (no host plugin, desktop Linux) — a session
+                  // could never start there. While recording the same
+                  // slot stops it; the chip below shows the live stats.
+                  if (widget.locationSupported)
+                    _HeaderAction(
+                      icon: Icon(widget.model.isRecording
+                          ? Icons.stop
+                          : Icons.fiber_manual_record),
+                      label: widget.model.isRecording
+                          ? strings.stopLabel
+                          : strings.recordLabel,
+                      tooltip: widget.model.isRecording
+                          ? strings.stopLabel
+                          : strings.recordLabel,
+                      onTap: widget.model.isRecording
+                          ? _stopRecording
+                          : _startRecording,
                     ),
                   Builder(
                     builder: (context) => _HeaderAction(
@@ -604,6 +677,7 @@ class _MapPageState extends State<MapPage> {
               ),
             ),
           ),
+          _recordingChip(strings),
           if (mapTracks.isEmpty)
             Center(
               child: _EmptyHint(strings: strings),

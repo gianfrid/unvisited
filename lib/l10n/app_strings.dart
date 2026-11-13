@@ -41,10 +41,23 @@ abstract class AppStrings {
   String get locateLabel;
   String get locateTooltip;
 
+  /// The toolbar's recording action; hidden where the platform has no
+  /// location support (the session could never start there).
+  String get recordLabel;
+
+  /// The recording action's stop; the chip meanwhile shows the live
+  /// duration and distance (meters — the engine's haversine sum, not a
+  /// straight line).
+  String get stopLabel;
+
+  /// Says why recording could not start after the user declined the
+  /// while-in-use permission; told instead of a button that silently
+  /// did nothing.
+  String get recordDeclined;
+
   /// Shown while a fix is being acquired: the GPS can take seconds to
   /// answer, and an unchanged button reads as a dead one.
-  String get locating;
-  String get tracksLabel;
+  String get locating;  String get tracksLabel;
   String get settingsLabel;
 
   // Import sheet.
@@ -157,6 +170,12 @@ class EnglishStrings extends AppStrings {
   String get locateTooltip => 'Center on current position';
   @override
   String get locating => 'Locating…';
+  @override
+  String get recordLabel => 'Record';
+  @override
+  String get stopLabel => 'Stop';
+  @override
+  String get recordDeclined => 'Recording needs location permission';
   @override
   String get tracksLabel => 'Tracks';
   @override
@@ -333,6 +352,12 @@ class ItalianStrings extends AppStrings {
   String get locateTooltip => 'Centra sulla posizione attuale';
   @override
   String get locating => 'Localizzazione…';
+  @override
+  String get recordLabel => 'Registra';
+  @override
+  String get stopLabel => 'Ferma';
+  @override
+  String get recordDeclined => 'La registrazione richiede la posizione';
   @override
   String get tracksLabel => 'Tracce';
   @override
