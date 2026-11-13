@@ -59,6 +59,55 @@ void main() {
     expect(provider, isNull);
   });
 
+  testWidgets('dark theme darkens the tiles client-side, light leaves them',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    // Light theme: standard OSM tiles, no tile builder.
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(colorSchemeSeed: const Color(0xFF4363D8)),
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+    expect(
+        tester.widget<TileLayer>(find.byType(TileLayer)).tileBuilder, isNull);
+
+    // Dark theme: tiles are inverted client-side (no new tile endpoint).
+    // Several pumps: the theme switch settles a frame or two later than
+    // the widget swap.
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(colorSchemeSeed: const Color(0xFF4363D8)),
+      darkTheme: ThemeData(
+          colorSchemeSeed: const Color(0xFF4363D8),
+          brightness: Brightness.dark),
+      themeMode: ThemeMode.dark,
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(tester.widget<TileLayer>(find.byType(TileLayer)).tileBuilder,
+        same(darkModeTileBuilder));
+  });
+
   testWidgets('unusable cache dir disables caching instead of stalling tiles',
       (tester) async {
     final root = createRoot();

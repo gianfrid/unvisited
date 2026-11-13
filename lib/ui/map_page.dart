@@ -427,6 +427,15 @@ class _MapPageState extends State<MapPage> {
               TileLayer(
                 urlTemplate: tileUrlTemplate,
                 userAgentPackageName: tileUserAgent,
+                // Dark mode: OSM standard tiles are light-only, so a dark
+                // UI would leave a bright map. Darken client-side with
+                // flutter_map's built-in inverted-matrix builder — no new
+                // tile endpoint (SPEC forbids one); the result is a dimmed
+                // map rather than true dark cartography, the accepted
+                // trade-off.
+                tileBuilder: Theme.of(context).brightness == Brightness.dark
+                    ? darkModeTileBuilder
+                    : null,
                 tileProvider: NetworkTileProvider(
                   // Not const: TileLayer's constructor inserts a default
                   // User-Agent into the provider's headers when absent, and
