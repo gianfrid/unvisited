@@ -222,6 +222,11 @@ class TrackStore {
     } on TrackParseException catch (e) {
       return ImportResult(reason: 'failed: $e');
     }
+    if (_findNearDuplicate(data) != null) {
+      // Same activity in different bytes (e.g. one export as FIT, another
+      // as GPX): counts as a duplicate like a byte-identical re-import.
+      return ImportResult(reason: 'duplicate');
+    }
     final id = contentHash(bytes);
     final ext = (data.format).toLowerCase();
     final stored = StoredTrack(
@@ -240,6 +245,45 @@ class TrackStore {
     _saveIndex();
     return ImportResult(track: stored, data: data);
   }
+
+  /// The stored track that [data] describes in different bytes, or null.
+  ///
+  /// Cross-format dedup heuristic (SPEC: the same activity exported once
+  /// as FIT and once as GPX has different bytes and different names, so
+  /// the content hash cannot catch it). Two signals together, both cheap:
+  /// the start time (an activity starts once, however it is encoded) and
+  /// the total distance (re-sampling changes point counts, not length by
+  /// much). Either signal alone would false-positive — two people can
+  /// start a ride at the same second.
+  StoredTrack? _findNearDuplicate(TrackData data) {
+    final start = data.startTime?.toUtc();
+    if (start == null) return null;
+    for (final t in _tracks) {
+      final other = t.startTimeUtc;
+      if (other == null) continue;
+      if (start.difference(other).abs() > _sameActivityStartTolerance) {
+        continue;
+      }
+      final scale = t.distanceMeters > data.distanceMeters
+          ? t.distanceMeters
+          : data.distanceMeters;
+      final diff = (t.distanceMeters - data.distanceMeters).abs();
+      // The 1 m floor keeps two tiny (sub-meter) tracks comparable.
+      if (diff / (scale > 1 ? scale : 1) <= _sameActivityDistanceTolerance) {
+        return t;
+      }
+    }
+    return null;
+  }
+
+  /// Start times within this window count as the same activity start:
+  /// formats round timestamps differently (FIT stores whole seconds, some
+  /// writers drift a beat).
+  static const _sameActivityStartTolerance = Duration(seconds: 2);
+
+  /// Total distance within this relative tolerance counts as the same
+  /// route; re-sampling between formats shifts it, but not by a tenth.
+  static const _sameActivityDistanceTolerance = 0.10;
 
   Future<void> remove(StoredTrack track) async {
     _tracks.removeWhere((t) => t.id == track.id);

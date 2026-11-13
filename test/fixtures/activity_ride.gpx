@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The same activity as activity_ride.fit, re-exported as GPX (e.g. by
+     Strava): identical coordinates and timestamps, different bytes and a
+     different name. Used to test cross-format dedup. -->
+<gpx version="1.1" creator="Unvisited test fixture"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Morning ride</name>
+    <trkseg>
+      <trkpt lat="52.52000" lon="13.40500">
+        <time>2024-05-01T08:00:00Z</time>
+      </trkpt>
+      <trkpt lat="52.52100" lon="13.40600">
+        <time>2024-05-01T08:00:04Z</time>
+      </trkpt>
+      <trkpt lat="52.52200" lon="13.40700">
+        <time>2024-05-01T08:00:08Z</time>
+      </trkpt>
+      <trkpt lat="52.52300" lon="13.40850">
+        <time>2024-05-01T08:00:12Z</time>
+      </trkpt>
+      <trkpt lat="52.52400" lon="13.41000">
+        <time>2024-05-01T08:00:16Z</time>
+      </trkpt>
+      <trkpt lat="52.52500" lon="13.41150">
+        <time>2024-05-01T08:00:20Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

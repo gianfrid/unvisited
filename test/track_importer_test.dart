@@ -90,6 +90,68 @@ void main() {
       expect(store.tracks.length, 1);
     });
 
+    test('the same activity re-exported in another format is a duplicate',
+        () {
+      // activity_ride.gpx holds the same coordinates and timestamps as
+      // activity_ride.fit under different bytes and a different name.
+      final first = store.importBytes(fixture('activity_ride.fit'),
+          filename: 'activity_ride.fit');
+      final second = store.importBytes(fixture('activity_ride.gpx'),
+          filename: 'activity_ride.gpx');
+      expect(first.imported, isTrue);
+      expect(second.imported, isFalse);
+      expect(second.reason, 'duplicate');
+      expect(store.tracks.length, 1);
+      // The stored copy is the first import; the near-duplicate is not
+      // written to disk.
+      expect(File('${tmp.path}/tracks/${first.track!.id}.gpx').existsSync(),
+          isFalse);
+    });
+
+    test('two activities sharing a start time are both kept', () {
+      // eiffel_ride.tcx starts at the same second as activity_ride.fit
+      // but is a short stroll, not a 700 m ride: start time alone must
+      // not dedup.
+      final fit = store.importBytes(fixture('activity_ride.fit'),
+          filename: 'activity_ride.fit');
+      final tcx = store.importBytes(fixture('eiffel_ride.tcx'),
+          filename: 'eiffel_ride.tcx');
+      expect(fit.imported, isTrue);
+      expect(tcx.imported, isTrue);
+      expect(store.tracks.length, 2);
+    });
+
+    test('an activity without a start time is never near-deduped', () {
+      // A track whose points carry no timestamps (start unknown) must
+      // fall back to the byte-hash rule only.
+      const timeless = '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">'
+          '<trk><name>Timeless</name><trkseg>'
+          '<trkpt lat="52.52000" lon="13.40500"/>'
+          '<trkpt lat="52.52100" lon="13.40600"/>'
+          '</trkseg></trk></gpx>';
+      final first = store.importBytes(timeless.codeUnits,
+          filename: 'timeless.gpx');
+      expect(first.imported, isTrue);
+      // A same-shaped track with the same (absent) start does not dedup
+      // against it: without a start time the heuristic stays silent.
+      const timeless2 = '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">'
+          '<trk><name>Timeless too</name><trkseg>'
+          '<trkpt lat="52.52000" lon="13.40500"/>'
+          '<trkpt lat="52.52100" lon="13.40600"/>'
+          '</trkseg></trk></gpx>';
+      final second = store.importBytes(timeless2.codeUnits,
+          filename: 'timeless2.gpx');
+      expect(second.imported, isTrue);
+      expect(store.tracks.length, 2);
+      // Identical bytes still dedup through the content hash.
+      final third = store.importBytes(timeless.codeUnits,
+          filename: 'timeless-again.gpx');
+      expect(third.imported, isFalse);
+      expect(third.reason, 'duplicate');
+    });
+
     test('monitoring files are skipped with a reason', () {
       final r = store.importBytes(fixture('monitoring.fit'),
           filename: 'monitoring.fit');

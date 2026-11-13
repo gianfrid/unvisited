@@ -22,7 +22,7 @@ Out of scope until the MVP is done: recording, route planning, cross-service int
 ### Storage
 
 - Catalog is a JSON index (`index.json`) by design — never add a database package.
-- Track deduplication: byte-identical re-imports dedup by 64-bit FNV-1a content hash (id = hash). The same activity exported once by Garmin as FIT and once by Strava as GPX has different bytes and will appear twice — cross-format activity dedup is future work.
+- Track deduplication: byte-identical re-imports dedup by 64-bit FNV-1a content hash (id = hash). Cross-format activity dedup catches the same activity exported once as FIT and once as GPX: matching start time (±2 s) and total distance (within 10%) counts as a duplicate; either signal alone never dedups, and a track without a start time is only caught by the byte hash.
 
 ### Import pipeline
 
