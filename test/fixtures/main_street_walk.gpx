@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Unvisited test fixture"
+     xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Main Street walk</name>
+    <trkseg>
+      <trkpt lat="52.52000" lon="13.40500"><time>2024-05-01T09:00:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40544"><time>2024-05-01T09:01:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40589"><time>2024-05-01T09:02:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40633"><time>2024-05-01T09:03:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40677"><time>2024-05-01T09:04:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40721"><time>2024-05-01T09:05:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40766"><time>2024-05-01T09:06:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40810"><time>2024-05-01T09:07:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40854"><time>2024-05-01T09:08:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40899"><time>2024-05-01T09:09:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40943"><time>2024-05-01T09:10:00Z</time></trkpt>
+      <trkpt lat="52.52000" lon="13.40987"><time>2024-05-01T09:11:00Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

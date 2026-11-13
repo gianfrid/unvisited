@@ -17,14 +17,6 @@ matched-length ratio in `index.json`.
   covered by the existing OSM notice); ARCHITECTURE.md gains a "Road
   matching" section (data flow, format, interface, persistence) replacing the
   "deferred" note; no code.
-- [] slice 3 — persistence + model wiring: `index.json` gains per-track
-  `unlockedWays: {wayId: matchedLength}` (survives delete-all of *other*
-  tracks; deleting a track deletes its entry), computed at import time
-  (or lazily on first view when a road file is present) and recomputed
-  when a region file is added later. StoredTrack + TrackStore load/save
-  updated; migration: old indexes load with empty maps. Tests: import
-  with a road store present persists the expected way ids; re-import
-  dedup keeps existing unlock state; index without the field loads.
 - [] slice 4 — rendering: unlocked corridors as translucent polylines
   (same tint family as the circles) in a `PolylineLayer` above the tiles,
   merged visually with the circle overlay; culling/simplification left to

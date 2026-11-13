@@ -10,7 +10,10 @@ import 'package:latlong2/latlong.dart';
 
 import '../host_channel.dart';
 import '../l10n/app_strings.dart';
+import '../road/road_matcher.dart';
+import '../road/road_store.dart';
 import '../storage/track_store.dart';
+import 'fog_of_war.dart' show unlockCenters;
 
 /// Why a position could not be obtained; each maps to a message that
 /// tells the user what to do about it.
@@ -97,6 +100,27 @@ class AppModel extends ChangeNotifier {
   final TrackStore store;
   final _pointCache = <String, List<LatLng>>{};
 
+  /// The active road file, if any (user side-loaded; see
+  /// `lib/road/road_format.dart`). Null means roads are not matched: the
+  /// overlay is circles-only and unlock state stays empty.
+  RoadStore? _roadStore;
+  GeometricRoadMatcher? _roadMatcher;
+  RoadStore? get roadStore => _roadStore;
+
+  /// Activates a side-loaded road file for matching (null deactivates).
+  /// Imports compute unlock state for new tracks while it is active.
+  void setRoadFile(String? path) {
+    if (path == null) {
+      _roadStore = null;
+      _roadMatcher = null;
+    } else {
+      final road = RoadStore.open(path);
+      _roadStore = road;
+      _roadMatcher = GeometricRoadMatcher(road);
+    }
+    notifyListeners();
+  }
+
   List<StoredTrack> get tracks => store.tracks;
 
   bool _busy = false;
@@ -130,6 +154,7 @@ class AppModel extends ChangeNotifier {
       final result = store.importBytes(f.readAsBytesSync(),
           filename: name ?? path);
       _noteImported(newPoints, result);
+      _matchRoads(result);
       if (result.imported) _pointCache.remove(result.track!.id);
       notifyListeners();
     } finally {
@@ -145,12 +170,30 @@ class AppModel extends ChangeNotifier {
     importEpoch++;
   }
 
+  /// Computes road unlock state for a freshly imported track and persists
+  /// it on the catalog entry. No-op without an active road file — the
+  /// overlay stays circles-only and the index field stays absent. Matching
+  /// runs on the same cell-coalesced unlock centers the circles use, so
+  /// roads and circles always tell the same story.
+  void _matchRoads(ImportResult result) {
+    final matcher = _roadMatcher;
+    final data = result.data;
+    if (!result.imported || matcher == null || data == null) return;
+    final match = matcher.match(unlockCenters(
+      data.points.map((p) => LatLng(p.lat, p.lon)),
+    ));
+    if (match.matchedMeters.isNotEmpty) {
+      store.saveUnlockedWays(result.track!, match.matchedMeters);
+    }
+  }
+
   /// Runs one candidate file through the unified pipeline, recording it in
   /// [summary] and collecting its points for the camera refit.
   void _importBytes(List<int> bytes, String name, ImportSummary summary,
       List<LatLng> newPoints) {
     final result = store.importBytes(bytes, filename: name);
     _noteImported(newPoints, result);
+    _matchRoads(result);
     summary.add(result);
   }
 

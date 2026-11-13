@@ -339,6 +339,84 @@ void main() {
     });
   });
 
+  group('road unlock state', () {
+    /// Copies the synthetic road fixture into the temp root and activates
+    /// it on the model.
+    void activateRoad() {
+      final roadFile = File(
+          '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads');
+      roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
+      model.setRoadFile(roadFile.path);
+    }
+
+    test('an import with an active road file persists unlock state',
+        () async {
+      activateRoad();
+      final dir = stageDir();
+      File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
+          .writeAsBytesSync(fixture('main_street_walk.gpx'));
+
+      await model.importFromDirectory(dir.path);
+
+      final walk = model.tracks.singleWhere((t) => t.name == 'Main Street walk');
+      expect(walk.unlockedWays.keys, contains('1001')); // Main Street
+      expect(walk.unlockedWays['1001']!, greaterThan(300)); // ~340 m walked
+      // The walk never comes near Parallel Lane (44 m north).
+      expect(walk.unlockedWays.containsKey('1003'), isFalse);
+
+      // The state survives a restart (round-trips through index.json).
+      final reloaded = TrackStore(root);
+      await reloaded.load();
+      expect(reloaded.tracks.singleWhere((t) => t.name == 'Main Street walk')
+          .unlockedWays['1001'], greaterThan(300));
+    });
+
+    test('an import without a road file leaves unlock state empty',
+        () async {
+      final dir = stageDir();
+      await model.importFromDirectory(dir.path);
+      for (final t in model.tracks) {
+        expect(t.unlockedWays, isEmpty);
+      }
+    });
+
+    test('a byte-identical re-import keeps the existing unlock state',
+        () async {
+      activateRoad();
+      final dir = stageDir();
+      File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
+          .writeAsBytesSync(fixture('main_street_walk.gpx'));
+      await model.importFromDirectory(dir.path);
+      final before = Map.of(model.tracks
+          .singleWhere((t) => t.name == 'Main Street walk')
+          .unlockedWays);
+
+      final summary = await model.importFromDirectory(dir.path);
+
+      expect(summary.duplicates, greaterThanOrEqualTo(1));
+      expect(model.tracks.singleWhere((t) => t.name == 'Main Street walk')
+          .unlockedWays, before);
+    });
+
+    test('an index without the unlockedWays field loads with empty maps',
+        () async {
+      // A pre-road-matching index: entries without the field must load.
+      // (load() skips entries whose track file is gone, so create it.)
+      Directory('${root.path}${Platform.pathSeparator}tracks')
+          .createSync(recursive: true);
+      File('${root.path}${Platform.pathSeparator}tracks${Platform.pathSeparator}abc.gpx')
+          .writeAsStringSync('<gpx/>');
+      File('${root.path}${Platform.pathSeparator}index.json')
+          .writeAsStringSync('{"version": 1, "tracks": [{"id": "abc", '
+              '"name": "old", "format": "GPX", "file": "abc.gpx", '
+              '"pointCount": 1, "distanceMeters": 10.0, "visible": true}], '
+              '"settings": {}}');
+      final reloaded = TrackStore(root);
+      await reloaded.load();
+      expect(reloaded.tracks.single.unlockedWays, isEmpty);
+    });
+  });
+
   group('theme mode', () {
     test('defaults to system', () {
       expect(model.themeMode, 'system');

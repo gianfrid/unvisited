@@ -32,6 +32,12 @@ class StoredTrack {
   final DateTime? startTimeUtc;
   bool visible;
 
+  /// Road unlock state: OSM way id → matched length in meters (see
+  /// `lib/road/road_matcher.dart`). Computed at import time when a road
+  /// file is active; empty when no road data is present. Lives on the
+  /// track, so deleting the track deletes its unlock state with it.
+  Map<String, double> unlockedWays = {};
+
   Map<String, dynamic> toMap() => {
         'id': id,
         'name': name,
@@ -41,6 +47,9 @@ class StoredTrack {
         'distanceMeters': distanceMeters,
         'startTimeUtc': startTimeUtc?.toIso8601String(),
         'visible': visible,
+        // Written only when non-empty: indexes from before road matching
+        // (and tracks imported without road data) stay unchanged.
+        if (unlockedWays.isNotEmpty) 'unlockedWays': unlockedWays,
       };
 
   static StoredTrack fromMap(Map<String, dynamic> m) => StoredTrack(
@@ -54,7 +63,19 @@ class StoredTrack {
             ? null
             : DateTime.tryParse(m['startTimeUtc'] as String),
         visible: m['visible'] as bool? ?? true,
-      );
+      )
+        ..unlockedWays = _unlockedWaysFrom(m['unlockedWays']);
+
+  /// Tolerates a missing or malformed field: an old index (or a hand-edited
+  /// one) must never break startup.
+  static Map<String, double> _unlockedWaysFrom(dynamic raw) {
+    if (raw is! Map) return {};
+    return {
+      for (final entry in raw.entries)
+        if (entry.key is String && entry.value is num)
+          entry.key as String: (entry.value as num).toDouble(),
+    };
+  }
 }
 
 class ImportResult {
@@ -313,6 +334,15 @@ class TrackStore {
     for (final t in _tracks) {
       t.visible = visible;
     }
+    _saveIndex();
+  }
+
+  /// Persists a track's road unlock state (way id → matched meters),
+  /// computed by the model's matcher at import time. A preference-adjacent
+  /// catalog field: it survives like the rest of the track entry and is
+  /// deleted with the track.
+  void saveUnlockedWays(StoredTrack track, Map<String, double> matched) {
+    track.unlockedWays = Map.of(matched);
     _saveIndex();
   }
 
