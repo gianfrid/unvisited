@@ -929,6 +929,21 @@ class _SettingsSheet extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
                   onTap: () => _pickLanguage(context, model),
                 ),
+                ListTile(
+                  dense: true,
+                  title: Text(strings.theme),
+                  subtitle: Text(strings.themeSubtitle),
+                  trailing: Text(
+                    model.themeMode == 'system'
+                        ? strings.systemTheme
+                        : model.themeMode == 'light'
+                            ? strings.lightTheme
+                            : strings.darkTheme,
+                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                  onTap: () => _pickTheme(context, model),
+                ),
               ],
             ),
           ),
@@ -988,6 +1003,43 @@ Future<void> _pickLanguage(BuildContext context, AppModel model) async {
     },
   );
   if (choice != null) await model.setLanguage(choice);
+}
+
+/// Theme picker: "system", "light", or "dark".
+Future<void> _pickTheme(BuildContext context, AppModel model) async {
+  final choice = await showDialog<String>(
+    context: context,
+    builder: (context) {
+      final strings = AppStrings.ofContext(context);
+      return SimpleDialog(
+        title: Text(strings.theme),
+        children: [
+          RadioGroup<String>(
+            groupValue: model.themeMode,
+            onChanged: (value) => Navigator.of(context).pop(value),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  value: 'system',
+                  title: Text(strings.systemTheme),
+                ),
+                RadioListTile<String>(
+                  value: 'light',
+                  title: Text(strings.lightTheme),
+                ),
+                RadioListTile<String>(
+                  value: 'dark',
+                  title: Text(strings.darkTheme),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    },
+  );
+  if (choice != null) await model.setThemeMode(choice);
 }
 
 /// One selectable tint swatch for the exploration overlay, labeled by

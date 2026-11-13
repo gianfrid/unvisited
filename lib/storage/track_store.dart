@@ -133,6 +133,11 @@ class TrackStore {
   String _language = 'system';
   String get language => _language;
 
+  /// Theme mode: 'system' (follow the device), 'light', or 'dark'.
+  /// Persisted in the index like other preferences.
+  String _themeMode = 'system';
+  String get themeMode => _themeMode;
+
   /// Saves the device position as the map start center for next launch.
   /// This survives [clearAll]: it is the user's location, not track data.
   Future<void> savePosition(double lat, double lon) async {
@@ -160,6 +165,12 @@ class TrackStore {
     _saveIndex();
   }
 
+  /// Saves the theme mode choice ('system', 'light', or 'dark').
+  Future<void> saveThemeMode(String mode) async {
+    _themeMode = mode;
+    _saveIndex();
+  }
+
   Future<void> load() async {
     _tracks.clear();
     final f = indexFile;
@@ -178,6 +189,7 @@ class TrackStore {
         _zoomSliderSide =
             (settings['zoomSliderSide'] as String?) ?? _zoomSliderSide;
         _language = (settings['language'] as String?) ?? _language;
+        _themeMode = (settings['themeMode'] as String?) ?? _themeMode;
       }
       final list = map['tracks'] as List;
       for (final raw in list) {
@@ -283,6 +295,7 @@ class TrackStore {
         'tint': _tint,
         'zoomSliderSide': _zoomSliderSide,
         'language': _language,
+        'themeMode': _themeMode,
       },
     };
     root.createSync(recursive: true);

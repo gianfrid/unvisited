@@ -95,6 +95,13 @@ abstract class AppStrings {
   String get systemLanguage;
   String get left;
   String get right;
+
+  // Theme.
+  String get theme;
+  String get themeSubtitle;
+  String get systemTheme;
+  String get lightTheme;
+  String get darkTheme;
   String get deleteAllTracks;
   String storedCount(int count);
   String get noStoredTracks;
@@ -219,6 +226,16 @@ class EnglishStrings extends AppStrings {
   String get left => 'Left';
   @override
   String get right => 'Right';
+  @override
+  String get theme => 'Theme';
+  @override
+  String get themeSubtitle => 'Appearance of the app';
+  @override
+  String get systemTheme => 'System';
+  @override
+  String get lightTheme => 'Light';
+  @override
+  String get darkTheme => 'Dark';
   @override
   String get deleteAllTracks => 'Delete all tracks';
   @override
@@ -369,6 +386,16 @@ class ItalianStrings extends AppStrings {
   String get left => 'Sinistra';
   @override
   String get right => 'Destra';
+  @override
+  String get theme => 'Tema';
+  @override
+  String get themeSubtitle => "Aspetto dell'app";
+  @override
+  String get systemTheme => 'Sistema';
+  @override
+  String get lightTheme => 'Chiaro';
+  @override
+  String get darkTheme => 'Scuro';
   @override
   String get deleteAllTracks => 'Elimina tutte le tracce';
   @override

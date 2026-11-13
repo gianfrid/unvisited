@@ -807,6 +807,95 @@ void main() {
     expect(model.zoomSliderSide, 'left');
   });
 
+  testWidgets('settings sheet picks the theme and persists it', (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Theme control may be off-screen; scroll to it
+    await tester.ensureVisible(find.text('Theme'));
+    await tester.pump();
+
+    // Tap the Theme row to open the picker dialog
+    await tester.tap(find.text('Theme'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Theme options are in the dialog
+    expect(find.text('Dark'), findsOneWidget);
+
+    // Tap Dark theme
+    await tester.tap(find.text('Dark'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.themeMode, 'dark');
+
+    // Verify persistence
+    final reloaded = TrackStore(root);
+    await reloaded.load();
+    expect(reloaded.themeMode, 'dark');
+  });
+
+  testWidgets('switching to Dark theme resolves to dark brightness',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    // Set theme to dark
+    await model.setThemeMode('dark');
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(
+        colorSchemeSeed: const Color(0xFF4363D8),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorSchemeSeed: const Color(0xFF4363D8),
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      ),
+      themeMode: model.themeModeValue,
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+      ),
+    ));
+    await tester.pump();
+
+    // Verify the resolved theme brightness is dark by checking a widget in the tree
+    final brightness = Theme.of(tester.element(find.byType(MapPage))).brightness;
+    expect(brightness, Brightness.dark);
+  });
+
   testWidgets('startup fit goes through the guarded initialCameraFit',
       (tester) async {
     final root = createRoot();

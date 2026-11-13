@@ -138,6 +138,12 @@ class UnvisitedApp extends StatelessWidget {
           colorSchemeSeed: const Color(0xFF4363D8),
           useMaterial3: true,
         ),
+        darkTheme: ThemeData(
+          colorSchemeSeed: const Color(0xFF4363D8),
+          brightness: Brightness.dark,
+          useMaterial3: true,
+        ),
+        themeMode: model.themeModeValue,
         // The app's own strings are looked up through AppStrings; the
         // delegate only makes MaterialApp resolve and expose the locale.
         // Material's built-in widget labels stay English (the app ships

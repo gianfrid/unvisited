@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -323,6 +324,9 @@ class AppModel extends ChangeNotifier {
   /// Which screen edge the zoom slider hugs: 'left' or 'right'.
   String get zoomSliderSide => store.zoomSliderSide;
 
+  /// Theme mode: 'system', 'light', or 'dark'.
+  String get themeMode => store.themeMode;
+
   /// Saves the exploration overlay tint; the map repaints via the usual
   /// notification.
   Future<void> setTrackTint(String key) async {
@@ -332,6 +336,12 @@ class AppModel extends ChangeNotifier {
 
   Future<void> setZoomSliderSide(String side) async {
     await store.saveZoomSliderSide(side);
+    notifyListeners();
+  }
+
+  /// Saves the theme mode; the app rebuilds via the usual notification.
+  Future<void> setThemeMode(String mode) async {
+    await store.saveThemeMode(mode);
     notifyListeners();
   }
 
@@ -348,6 +358,14 @@ class AppModel extends ChangeNotifier {
     if (code == 'system') return null;
     return AppStrings.supported.containsKey(code) ? Locale(code) : null;
   }
+
+  /// The ThemeMode the app should use. 'system' maps to ThemeMode.system,
+  /// 'light' to ThemeMode.light, 'dark' to ThemeMode.dark.
+  ThemeMode get themeModeValue => switch (themeMode) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
 
   Future<void> setLanguage(String code) async {
     await store.saveLanguage(code);
