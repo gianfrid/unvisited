@@ -80,9 +80,18 @@ class _MapPageState extends State<MapPage> {
     _mapEvents = _mapController.mapEventStream.listen((event) {
       final cell = fogCellSizeFor(
           zoom: event.camera.zoom, latitude: event.camera.center.latitude);
-      if (cell != _fogCellSize) {
-        setState(() => _fogCellSize = cell);
+      var dirty = cell != _fogCellSize;
+      if (!dirty && _locatedPosition != null) {
+        // The position marker shows the last fix; once the user pans away
+        // from it, it would sit somewhere they are not — drop it.
+        final moved = const Distance().distance(
+            event.camera.center, _locatedPosition!);
+        if (moved > _markerClearDistance) {
+          _locatedPosition = null;
+          dirty = true;
+        }
       }
+      if (dirty) setState(() => _fogCellSize = cell);
     });
     // Start silently with the last saved position (never prompting) and
     // let a live fix override it once it arrives. With no location
@@ -101,6 +110,15 @@ class _MapPageState extends State<MapPage> {
   /// seconds (longer on a cold GPS), so the button shows a spinner and
   /// ignores further taps instead of looking dead.
   bool _locating = false;
+
+  /// The last located fix, shown as a "you are here" marker. Ephemeral
+  /// UI state: cleared when the user pans away from it (see the map event
+  /// listener) so it never points at a spot the user has left behind.
+  LatLng? _locatedPosition;
+
+  /// How far the map center may drift from [_locatedPosition] before the
+  /// marker is dropped. Roughly half a city block at the locate zoom.
+  static const _markerClearDistance = 50.0; // meters
 
   /// Cached unlock centers keyed to the current overlay inputs (visible
   /// track ids + cell size), so pans and transient item rebuilds do not
@@ -191,6 +209,8 @@ class _MapPageState extends State<MapPage> {
   Future<void> _silentPositionUpdate() async {
     final pos = await widget.model.currentPosition(prompt: false);
     if (!mounted || pos == null) return;
+    // The startup fix is a real position: show the marker for it too.
+    setState(() => _locatedPosition = pos);
     // Saved tracks fit the whole catalog; only the empty map follows the
     // position so imports and track fits are never fought over.
     if (widget.model.visibleTracks.isNotEmpty) return;
@@ -214,9 +234,13 @@ class _MapPageState extends State<MapPage> {
       if (!mounted) return;
       final pos = result.position;
       if (pos == null) {
+        // No stale marker from an earlier fix: the user asked where they
+        // are and the answer is "unknown".
+        setState(() => _locatedPosition = null);
         _toast(_locateFailureMessage(strings, result.failure));
         return;
       }
+      setState(() => _locatedPosition = pos);
       // Never zoom out: a user already closer than the locate zoom keeps
       // their detail level.
       final zoom = _mapController.camera.zoom < _locateZoom
@@ -426,6 +450,24 @@ class _MapPageState extends State<MapPage> {
               CircleLayer(
                 circles: _buildFogCircles(mapTracks),
               ),
+              // "You are here" marker for the last located fix; absent
+              // until a fix exists and dropped when the user pans away.
+              if (_locatedPosition != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: _locatedPosition!,
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.topCenter,
+                      child: Icon(
+                        Icons.location_on,
+                        size: 40,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
               RichAttributionWidget(
                 // The default flutter_map logo badge is redundant next to
                 // the OSM attribution this app already shows.

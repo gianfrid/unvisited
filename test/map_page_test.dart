@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/ui/app_model.dart';
@@ -569,6 +570,63 @@ void main() {
     // The fix is saved for the next start.
     expect(model.savedPosition!.latitude, closeTo(48.8584, 1e-6));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a successful locate shows the position marker',
+      (tester) async {
+    // Mock only after the startup pump: the silent startup fix would
+    // otherwise already place the marker before the button is tapped.
+    await pumpMap(tester);
+    expect(find.byType(MarkerLayer), findsNothing);
+
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 48.8584,
+      'lon': 2.2945,
+    });
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final layers = tester.widgetList<MarkerLayer>(find.byType(MarkerLayer));
+    expect(layers, isNotEmpty);
+    expect(layers.first.markers.single.point.latitude, closeTo(48.8584, 1e-6));
+    expect(layers.first.markers.single.point.longitude, closeTo(2.2945, 1e-6));
+  });
+
+  testWidgets('a failed locate leaves no position marker', (tester) async {
+    // Permission denied: locate fails, and no stale marker may remain.
+    mockGeolocator(tester, permission: 1);
+    await pumpMap(tester);
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byType(MarkerLayer), findsNothing);
+  });
+
+  testWidgets('panning away from the fix drops the position marker',
+      (tester) async {
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 48.8584,
+      'lon': 2.2945,
+    });
+    await pumpMap(tester);
+
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(MarkerLayer), findsOneWidget);
+
+    // Pan far away (well past the 50 m clear threshold): the marker would
+    // sit somewhere the user has left behind.
+    final controller = tester
+        .widget<FlutterMap>(find.byType(FlutterMap))
+        .mapController!;
+    controller.move(const LatLng(52.5200, 13.4050), 16.0);
+    await tester.pump();
+
+    expect(find.byType(MarkerLayer), findsNothing);
   });
 
   testWidgets('locate shows a spinner while the fix is in flight',
