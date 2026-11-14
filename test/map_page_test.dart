@@ -10,6 +10,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/recording/position_source.dart'
     show PositionFix, PositionSource;
+import 'package:unvisited/recording/recording_session.dart'
+    show RecordingState;
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/tile_source.dart';
 import 'package:unvisited/ui/app_model.dart';
@@ -145,6 +147,127 @@ void main() {
     // widget-land assertions end here; the stop-through-import chain and
     // the import round-trip are covered by the model-level tests.
     expect(model.recording, isNotNull);
+  });
+
+  testWidgets('record mode trims the header and shows the speed readout',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    // Idle: the full header, no dashboard, no speed readout.
+    expect(find.text('Import'), findsOneWidget);
+    expect(find.text('Locate'), findsOneWidget);
+    expect(find.byKey(const ValueKey('recording-speed')), findsNothing);
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0, speed: 3.0);
+    fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201, speed: 3.0);
+    await tester.pump();
+    await tester.pump();
+
+    // Recording: Import and Fit/Locate are hidden (they fight the
+    // dashboard for space and attention); Stop and Pause stay. The live
+    // speed is the primary readout, big and bottom-center, from the
+    // engine's fix speed.
+    expect(find.text('Import'), findsNothing);
+    expect(find.text('Locate'), findsNothing);
+    expect(find.text('Stop'), findsOneWidget);
+    expect(find.text('Pause'), findsOneWidget);
+    final speedCard = find.byKey(const ValueKey('recording-speed'));
+    expect(speedCard, findsOneWidget);
+    expect(tester.getTopRight(speedCard).dy,
+        greaterThan(tester.getBottomRight(find.byType(FlutterMap)).dy - 100),
+        reason: 'the speed readout sits at the bottom of the map');
+    expect(find.text('10.8 km/h'), findsOneWidget);
+
+    // The stop's import again never settles in the fake-async zone, so
+    // it runs unawaited: stopRecording clears the session and notifies
+    // synchronously, which is all the UI restore needs.
+    model.stopRecording();
+    await tester.pump();
+
+    // All restored: the header is whole again and the readout is gone.
+    expect(find.text('Import'), findsOneWidget);
+    expect(find.text('Locate'), findsOneWidget);
+    expect(find.text('Pause'), findsNothing);
+    expect(find.byKey(const ValueKey('recording-speed')), findsNothing);
+  });
+
+  testWidgets('the pause action flips to resume and back', (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0, prevLat: 52.5200, lat: 52.5201);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Pause'), findsOneWidget);
+
+    // Pausing flips the action to Resume; the session's pause semantics
+    // (closed trkseg, silent fixes) are the engine's, covered upstream —
+    // here the UI wiring is what is under test. A paused session's dropped
+    // fix still cannot change distance.
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump();
+    expect(model.recording!.state, RecordingState.paused);
+    expect(find.text('Resume'), findsOneWidget);
+    expect(find.text('Pause'), findsNothing);
+    final distance = model.recording!.distanceMeters;
+
+    fakeFix(source, 5, prevLat: 52.5210, lat: 52.5220);
+    await tester.pump();
+    expect(model.recording!.distanceMeters, distance);
+
+    await tester.tap(find.byTooltip('Resume'));
+    await tester.pump();
+    expect(model.recording!.state, RecordingState.recording);
+    expect(find.text('Pause'), findsOneWidget);
+    expect(find.text('Resume'), findsNothing);
+
+    model.stopRecording();
+    await tester.pump();
   });
 
   testWidgets('a salvaged staged recording announces itself at startup',
@@ -283,10 +406,11 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('stats-panel')), findsOneWidget);
-    // The engine's numbers, in the panel's labels: current speed (the
-    // fix's own 1 m/s), the moving average over the walking fixes,
-    // distance, both durations and the altitude the fix reported.
-    expect(find.text('Speed'), findsOneWidget);
+    // The live speed is the primary readout — the big one below the map's
+    // top chip, showing the fix's own 1 m/s — no longer a panel row. The
+    // panel labels the averages, distance, both durations and the
+    // altitude the fix reported.
+    expect(find.text('Speed'), findsNothing);
     expect(find.text('3.6 km/h'), findsOneWidget);
     expect(find.text('Avg speed'), findsOneWidget);
     expect(find.text('40.0 km/h'), findsOneWidget);

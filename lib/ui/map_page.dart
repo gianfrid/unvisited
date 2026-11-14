@@ -407,6 +407,37 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
+  /// The dashboard's primary readout: the live speed, big and
+  /// bottom-center — the stem display a bike computer shows the rider.
+  /// Absent while no session runs; before the first fix and while paused
+  /// (paused sessions are silent) it shows a dash, like the stats panel's
+  /// not-yet-measured values.
+  Widget _recordingSpeed() {
+    final session = widget.model.recording;
+    if (session == null) return const SizedBox.shrink();
+    final speed = session.currentSpeed;
+    return Positioned(
+      bottom: 24,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Card(
+          key: const ValueKey('recording-speed'),
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Text(
+              speed == null
+                  ? '—'
+                  : '${(speed * 3.6).toStringAsFixed(1)} km/h',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// The recording marker: at the last accepted fix, rotating to its
   /// course so the nose points where the user is moving — course-up over
   /// the map's north-up camera (the tilt stays excluded; see SPEC). A fix
@@ -799,21 +830,25 @@ class _MapPageState extends State<MapPage> {
                 alignment: Alignment.topCenter,
                 child: _FloatingToolbar(
                   children: [
-                  _HeaderAction(
-                    icon: const Icon(Icons.add),
-                    label: strings.importLabel,
-                    tooltip: strings.importTooltip,
-                    onTap: _chooseImport,
-                  ),
-                  _HeaderAction(
-                    icon: const Icon(Icons.zoom_out_map),
-                    label: strings.fitLabel,
-                    tooltip: strings.fitTooltip,
-                    onTap: mapTracks.isEmpty ? null : _fitTracks,
-                  ),
-                  // A spinner replaces the icon while a fix is being
-                  // acquired; the caption says what is happening.
-                  if (widget.locationSupported)
+                  // Import and Fit/Locate fight the record-mode dashboard
+                  // for space and attention; while a session runs the
+                  // header keeps the essential actions only (Stop, Pause,
+                  // Tracks, Settings) and these come back after it.
+                  if (!widget.model.isRecording)
+                    _HeaderAction(
+                      icon: const Icon(Icons.add),
+                      label: strings.importLabel,
+                      tooltip: strings.importTooltip,
+                      onTap: _chooseImport,
+                    ),
+                  if (!widget.model.isRecording)
+                    _HeaderAction(
+                      icon: const Icon(Icons.zoom_out_map),
+                      label: strings.fitLabel,
+                      tooltip: strings.fitTooltip,
+                      onTap: mapTracks.isEmpty ? null : _fitTracks,
+                    ),
+                  if (widget.locationSupported && !widget.model.isRecording)
                     _HeaderAction(
                       icon: _locating
                           ? const SizedBox(
@@ -829,7 +864,8 @@ class _MapPageState extends State<MapPage> {
                   // Record: hidden where the platform cannot deliver a
                   // position (no host plugin, desktop Linux) — a session
                   // could never start there. While recording the same
-                  // slot stops it; the chip below shows the live stats.
+                  // slot stops it; the chip below shows the live stats
+                  // and a pause action sits beside it.
                   if (widget.locationSupported)
                     _HeaderAction(
                       icon: Icon(widget.model.isRecording
@@ -844,6 +880,25 @@ class _MapPageState extends State<MapPage> {
                       onTap: widget.model.isRecording
                           ? _stopRecording
                           : _startRecording,
+                    ),
+                  if (widget.model.isRecording)
+                    _HeaderAction(
+                      icon: Icon(widget.model.recording?.state ==
+                              RecordingState.paused
+                          ? Icons.play_arrow
+                          : Icons.pause),
+                      label: widget.model.recording?.state ==
+                              RecordingState.paused
+                          ? strings.resumeLabel
+                          : strings.pauseLabel,
+                      tooltip: widget.model.recording?.state ==
+                              RecordingState.paused
+                          ? strings.resumeLabel
+                          : strings.pauseLabel,
+                      onTap: widget.model.recording?.state ==
+                              RecordingState.paused
+                          ? widget.model.resumeRecording
+                          : widget.model.pauseRecording,
                     ),
                   Builder(
                     builder: (context) => _HeaderAction(
@@ -865,6 +920,7 @@ class _MapPageState extends State<MapPage> {
             ),
           ),
           _recordingDashboard(strings),
+          _recordingSpeed(),
           if (mapTracks.isEmpty)
             Center(
               child: _EmptyHint(strings: strings),
@@ -1558,10 +1614,8 @@ class _StatsPanel extends StatelessWidget {
     final avg =
         moving.inSeconds > 0 ? session.distanceMeters / moving.inSeconds : null;
     final rows = <(String, String)>[
-      (
-        strings.statSpeed,
-        kmh(session.currentSpeed),
-      ),
+      // The live speed is the primary readout — the big one below the
+      // map's top chip (see _recordingSpeed) — not a panel row.
       (strings.statAvgSpeed, kmh(avg)),
       (
         strings.statDistance,

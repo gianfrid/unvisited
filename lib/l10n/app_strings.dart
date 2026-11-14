@@ -55,9 +55,14 @@ abstract class AppStrings {
   /// did nothing.
   String get recordDeclined;
 
+  /// The record-mode dashboard's pause action; paired with [recordLabel]'s
+  /// slot. Pausing closes the current `<trkseg>` (the session's existing
+  /// semantics); resuming opens the next one.
+  String get pauseLabel;
+  String get resumeLabel;
+
   // Recording dashboard (labels of the stats panel; the values carry
   // their units code-side like the distances do).
-  String get statSpeed;
   String get statAvgSpeed;
   String get statDistance;
   String get statElapsed;
@@ -198,7 +203,10 @@ class EnglishStrings extends AppStrings {
   @override
   String get recordDeclined => 'Recording needs location permission';
   @override
-  String get statSpeed => 'Speed';
+  String get pauseLabel => 'Pause';
+  @override
+  String get resumeLabel => 'Resume';
+  @override
   @override
   String get statAvgSpeed => 'Avg speed';
   @override
@@ -409,7 +417,10 @@ class ItalianStrings extends AppStrings {
   @override
   String get recordDeclined => 'La registrazione richiede la posizione';
   @override
-  String get statSpeed => 'Velocità';
+  String get pauseLabel => 'Pausa';
+  @override
+  String get resumeLabel => 'Riprendi';
+  @override
   @override
   String get statAvgSpeed => 'Media';
   @override

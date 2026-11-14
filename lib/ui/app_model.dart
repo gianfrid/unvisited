@@ -598,6 +598,27 @@ class AppModel extends ChangeNotifier {
     if (file.existsSync()) file.deleteSync();
   }
 
+  /// Pauses the live session: the current `<trkseg>` closes, the paused
+  /// stretch changes neither distance nor moving time, and the resume —
+  /// the next accepted fix — opens a new segment. No-op when no session
+  /// runs or none is paused.
+  void pauseRecording() {
+    final session = _recording;
+    if (session == null) return;
+    session.pause();
+    notifyListeners();
+  }
+
+  /// Resumes a paused session (see [pauseRecording]): the next accepted
+  /// fix opens a new `<trkseg>`. No-op when no session runs or none is
+  /// paused.
+  void resumeRecording() {
+    final session = _recording;
+    if (session == null || session.state != RecordingState.paused) return;
+    session.resume();
+    notifyListeners();
+  }
+
   /// Un-finalized (or un-imported) recordings found and imported at
   /// startup — the staged files of killed sessions. The UI announces
   /// these once; the names are the catalog names the GPX carries, so
