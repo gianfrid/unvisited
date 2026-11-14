@@ -36,40 +36,34 @@ the rest of the backlog by intent):
    (an accented name from the stop dialog) lands corrupt. Use
    `utf8.encode`; add a unit test with a non-ASCII name; fix the same
    pattern in test/app_model_test.dart:837 while there.
-2. - [ ] Reconcile the bug bookkeeping: TODO bug 1 (the engine's
-   `currentHeading` vs `currentCourse` split + tests) is done and
-   committed in b6fdfe8 but is still listed open — remove it. Bug 2 stays
-   open: map_page.dart still rotates on `currentCourse` (no
-   `currentHeading` gate); note in the commit that b6fdfe8's message
-   overclaimed "gated course-up camera".
-3. - [ ] Docs drift refresh: README ("recording is being added") and
+2. - [ ] Docs drift refresh: README ("recording is being added") and
    ARCHITECTURE.md ("Recording (planned slices)") describe delivered
    slices 1-4 as pending; SPEC.md's established-package set omits
    geolocator (agreed in, shipped); fix the malformed `- []` backlog
    checkbox in TODO.md.
-4. - [ ] Split lib/ui/map_page.dart (2K lines, 14 classes) into `ui/`
+3. - [ ] Split lib/ui/map_page.dart (2K lines, 14 classes) into `ui/`
    modules: `_SettingsSheet`, `_StatsPanel`, the zoom slider, the drawer
    (make `TrackDrawer` private) + `_TrackTile`, the bottom-left action
    stack and toolbar widgets. No behavior change; widget tests assert by
    text/tooltip and must keep passing untouched.
-5. - [ ] Test harness extraction: `mockGeolocator` and the repeated
+4. - [ ] Test harness extraction: `mockGeolocator` and the repeated
    `createRoot` + temp-dir + `MaterialApp`/`MapPage` setup (43 copies in
    test/map_page_test.dart) become shared helpers in test/helpers.dart or
    a pump harness; shrinks the 2.4K-line test file materially.
-6. - [ ] Split lib/ui/app_model.dart (868 lines, 6 concerns): a recording
+5. - [ ] Split lib/ui/app_model.dart (868 lines, 6 concerns): a recording
    controller (start/stop-with-name/pause/salvage staging) and an import
    coordinator (the three near-parallel import paths collapsed onto one
    helper for the store+roads+cache+summary choreography), keeping
    settings/locate on the model.
-7. - [ ] Extract the duplicated haversine/bearing formulas (identical
+6. - [ ] Extract the duplicated haversine/bearing formulas (identical
    twins in lib/models/track.dart and lib/recording/recording_session.dart
    kept in step by comments only) into one shared pure-Dart geo module.
-8. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
+7. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
    whole tree at 1 Hz and `liveSegments` deep-copies every segment per
    rebuild — a scaling wall for long sessions. Give the recording live
    state its own Listenable (stats/trace/marker) so the fog overlay and
    toolbar rebuild channels stay untouched.
-9. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
+8. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
    the unused `cupertino_icons` dependency (zero CupertinoIcons usage —
    the cupertino.dart import in main.dart is the locale delegate and
    stays). Package removal per SPEC: confirm with owner in the plan step.
@@ -89,21 +83,22 @@ Track list — catalog UX:
 
 Bugs — high priority:
 
-1. - [ ] Course-up camera rotation is lagged and imprecise (owner report
-   after field use): the camera rides `RecordingSession.currentCourse`,
-   which at 1 Hz is mostly the per-fix bridged bearing — a short noisy
-   fix-to-fix window, re-spun for every wobble. First split the two
-   sources in the engine: expose whether the course is the device's own
-   reported heading or a bridged bearing (`currentHeading` vs
-   `currentCourse`), with unit tests both ways.
+1. - [ ] Test the engine's `currentHeading`/`currentCourse` split (the
+   state itself landed in b6fdfe8 with getter docs claiming "unit tests
+   both ways" — its diff touched no test file; the message overclaimed).
+   Unit tests for the two behaviors: a fix that carries a heading sets
+   both getters to it; a heading-less fix leaves `currentHeading` null
+   while `currentCourse` keeps bridging the bearing between fixes.
 2. - [ ] Gate the course-up camera rotation on the device-reported
    heading — the magnetometer-backed signal — so a sensor-less or
    bearing-only stream keeps the camera north-up with the marker still
-   rotating; and smooth what remains (apply the rotation only above a
-   course-delta threshold/hysteresis so per-fix jitter cannot spin the
-   camera). No new packages: a dedicated magnetometer plugin would be a
-   package decision beyond the established set — the gate rides the
-   heading the position fixes already report.
+   rotating; and smooth what remains (the course-delta hysteresis below
+   the threshold landed in b6fdfe8, but the rotation still rides
+   `currentCourse` — map_page.dart has no `currentHeading` gate, so a
+   bridged-bearing stream still spins the camera). No new packages: a
+   dedicated magnetometer plugin would be a package decision beyond the
+   established set — the gate rides the heading the position fixes
+   already report.
 
 Recording — live trace on the map:
 
