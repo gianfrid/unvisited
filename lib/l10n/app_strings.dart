@@ -197,6 +197,11 @@ abstract class AppStrings {
   String get selectionHideTooltip;
   String get selectionColorTooltip;
   String get selectionDismissTooltip;
+
+  // Per-track menu (⋮ on a track tile): Info / Delete / Export.
+  String get trackMenuTooltip;
+  String get trackMenuInfo;
+  String get trackMenuExport;
 }
 
 class EnglishStrings extends AppStrings {
@@ -215,6 +220,12 @@ class EnglishStrings extends AppStrings {
   String get selectionColorTooltip => 'Change the color';
   @override
   String get selectionDismissTooltip => 'Dismiss selection';
+  @override
+  String get trackMenuTooltip => 'Track actions';
+  @override
+  String get trackMenuInfo => 'Info';
+  @override
+  String get trackMenuExport => 'Export';
   @override
   String get locateLabel => 'Locate';
   @override
@@ -453,6 +464,12 @@ class ItalianStrings extends AppStrings {
   String get selectionColorTooltip => 'Cambia il colore';
   @override
   String get selectionDismissTooltip => 'Annulla la selezione';
+  @override
+  String get trackMenuTooltip => 'Azioni traccia';
+  @override
+  String get trackMenuInfo => 'Info';
+  @override
+  String get trackMenuExport => 'Esporta';
   @override
   String get locateLabel => 'Posizione';
   @override

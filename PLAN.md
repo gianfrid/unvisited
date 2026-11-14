@@ -1,74 +1,88 @@
-# Plan — aggregate tracks & selection (TODO.md "Map" section, 4 items)
+# Plan — track list catalog UX (TODO.md "Track list", units 1–5)
 
-Implemented as four vertical slices, each ending with tests and a commit.
+Five vertical slices; each ends with tests and a commit. New strings ship
+en + it with their slice; `app_strings_test.dart`'s coverage table grows in
+step.
 
-## Slice 1 — aggregate track model (pure Dart)
+## Slice 1 — the ⋮ menu (unit 1)
 
-New `lib/aggregate/aggregate_tracks.dart` behind a small interface (like the
-parsers):
+`lib/ui/track_list.dart` `_TrackTile`: replace the trailing delete
+IconButton with a ⋮ (`Icons.more_vert`) opening a `PopupMenuButton<String>`
+with Info / Delete / Export. Delete routes through the existing
+confirmation dialog (`_confirmDelete`); swipe-to-delete untouched.
 
-```dart
-abstract class AggregateIndex {
-  /// Clusters the given tracks' points into aggregates; points of different
-  /// tracks within [thresholdMeters] belong to the same aggregate.
-  List<AggregateTrack> build(Iterable<MapTrackLike> tracks, {double thresholdMeters});
-}
+Menu strings: `trackMenuTooltip` ('Track actions'), `trackMenuInfo`,
+`trackMenuExport` ('Export'), reuse `deleteTrack` for Delete.
 
-class AggregateTrack {
-  final List<String> trackIds;       // member catalog tracks
-  final List<LatLng> points;         // all member points
-  String get anchorId;               // earliest-starting member; the
-                                     // stable key for persisted overrides
-}
-```
+Widget tests: menu opens on tap; Delete tap shows the existing confirm
+dialog; every tile still toggles visibility via the checkbox.
 
-- Clustering: union-find over tracks, joined when any point pair is within
-  ~100 m (spatial hash at cell = threshold, 3×3 neighborhood query, same
-  trick as the road matcher's segment index — O(n) per area, not O(n²)).
-- Pure Dart, no Flutter imports; `MapTrackLike` = id + points + start time
-  so the model's `MapTrack` slots in unchanged and the anchor is computable.
-- Unit tests on synthetic fixtures in `test/aggregate_tracks_test.dart`:
-  chains (A–B–C via B), singletons, threshold edge cases (99 m joins,
-  101 m doesn't), empty input.
+## Slice 2 — the info dialog (unit 2)
 
-## Slice 2 — tap-to-select + selection bar
+`showDialog` from the Info menu entry: name (title), start date/time
+(model locale-formatted), format, point count, distance, duration,
+average speed — distance over duration, '—' when either is missing
+(never a fabricated 0). Reuse the shared `formatDistance`/
+`formatDuration`; date/time formatting must not hand-roll — use the
+existing pattern in `app_strings.dart` (parameterized getters only; the
+strings class never computes). New strings: `infoTitle(start)` (or plain
+'Info'), `infoPoints`, `infoDistance`, `infoDuration`, `infoAvgSpeed`,
+`infoStart`.
 
-- `AppModel` gains selection state: `AggregateTrack? selected`, computed
-  lazily from `visibleTracks` (cache keyed by visible-track id set).
-- Map tap handler: within tolerance (~screen-pixel equivalent at zoom, same
-  math family as the fog radius) of any aggregate point → select it; else
-  deselect.
-- Selection bar (bottom sheet / top bar while a selection is active):
-  Hide (sets each member track `visible=false` via the store, then
-  deselects), Change color, Fit. Visual highlight: the aggregate's circles
-  drawn in a brighter/opaque tint on top.
-- Per-aggregate color override persisted in `index.json`
-  (`aggregateColors: {anchorTrackId: tintKey}`). The key is the *anchor* —
-  the member track with the earliest start time — not a hash of the whole
-  member set: adding or removing other tracks leaves the anchor (and so
-  the persisted color) untouched. Only deleting the anchor re-keys the
-  aggregate (the next-oldest member becomes the anchor).
-- Widget tests in `test/map_page_test.dart`: tap selects, bar actions work,
-  deselect restores visibility.
+Widget test: from a fixture-imported catalog, open Info and find every
+field rendered; empty-duration track shows '—'.
 
-## Slice 3 — remove the global Fit button
+## Slice 3 — export (unit 3)
 
-- `map_actions.dart`/toolbar: drop the Fit action; startup camera fit
-  unchanged. Selection bar's Fit covers per-aggregate fitting.
+- **Desktop Linux**: `FilePicker.saveFile` (already a dependency) → copy
+  the stored file's bytes as-is to the returned path. Toast the result.
+- **Android**: new host-channel method `shareTrack(path, mime)` in
+  `MainActivity.kt` — an ACTION_SEND Intent fed by a `FileProvider`
+  (androidx.core is already in the app via Flutter embedding; add the
+  `file_paths.xml` + provider in the manifest). No new pub package.
+  Files live under the app-private storage root, so the provider scopes
+  exactly there.
+- **Model**: `ImportCoordinator` gains
+  `Future<String?> exportTrack(StoredTrack)`? No — export is UI glue:
+  put `exportTrack` on `AppModel` reading `store.trackFileFor(track)`
+  (a small accessor if the store doesn't expose one) and delegating to
+  the host channel / FilePicker per platform.
+- Strings: `exportDone` / `exportSuccess`, `exportFailed`, en + it.
+- Widget tests: menu Export tap invokes the platform glue (mocked host
+  channel answers, like the existing geolocator mocks); cancellation
+  imports/re-exports nothing.
 
-## Slice 4 — palette & colors
+## Slice 4 — aggregated tile colors (unit 4)
 
-- `track_colors.dart`: extend `explorationTints` beyond the four (add ~4
-  more), keep `defaultTintKey` for the main fog aggregate.
-- Aggregates render in palette colors by rank (main = default tint; others
-  next palette colors), overridable per selection (from slice 2).
-- Settings "track color" row now drives only the live recording trace color
-  (replacing the fixed `Colors.redAccent` in map_page) — a new
-  `settings.recordingTint`, persisted like the others, default red.
-- Strings en + it for the new selection bar labels; widget tests for
-  highlight/selection colors.
+`_TrackTile` gains a leading color dot rendered in the track's
+aggregate's resolved tint — read from the existing
+`model.aggregateTintKeys` (palette rank or override, exactly what the map
+draws), falling back to the default tint for hidden-but-listed tracks.
+The checkbox and subtitle stay as they are.
 
-## Verification per slice
+Model note: `aggregateTintKeys`/`aggregates` are built from
+`visibleTracks`; the list shows all tracks (including hidden) — hidden
+tracks fall back to the default tint (they leave no aggregate until
+re-shown).
 
-`flutter analyze` clean, `flutter test` green (all existing suites plus the
-new ones). TODO.md entries removed in the same commit as their slice.
+Widget tests: single track → default tint dot; tracks that cluster show
+the same color dot; (later) an override set via selection reflects in the
+list.
+
+## Slice 5 — tap a tile to fit its aggregate (unit 5)
+
+Tapping the tile body (not the checkbox, not the ⋮ menu): selects the
+track's aggregate (sets `selectedAnchor`) and asks the map to fit it — a
+`fitRequestEpoch` bumped on the model; `MapPage._onModelChanged` already
+compares import epochs the same way and gains the same handling for fit
+requests, fitting the selected aggregate's points via `_fitWhenSized`.
+The selection bar appears as a side effect (consistency: the user can
+immediately hide/recolor the aggregate).
+
+Widget tests: tap fits (camera center/zoom change to cover the
+aggregate) and the selection bar appears.
+
+## Order and commits
+
+Slices 1–5, each committed with PLAN.md current state and the TODO.md
+unit removed. `flutter analyze` clean + `flutter test` green per slice.

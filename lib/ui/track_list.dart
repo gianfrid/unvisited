@@ -153,16 +153,54 @@ class _TrackTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         // Discoverable next to the swipe-to-delete on touch devices;
-        // there is no swipe equivalent with a mouse on the desktop.
-        secondary: IconButton(
-          tooltip: strings.deleteTrack,
-          icon: const Icon(Icons.delete_outline),
-          visualDensity: VisualDensity.compact,
-          onPressed: () async {
-            if (await _confirmDelete(context, strings)) {
-              await model.delete(track);
+        // there is no swipe equivalent with a mouse on the desktop. The
+        // menu carries the rest of the per-track surface: Info and
+        // Export live there, Delete stays here (one confirmation flow
+        // for both the swipe and the entry — see [_confirmDelete]).
+        secondary: PopupMenuButton<String>(
+          key: ValueKey('track-menu-${track.id}'),
+          tooltip: strings.trackMenuTooltip,
+          icon: const Icon(Icons.more_vert),
+          onSelected: (entry) async {
+            switch (entry) {
+              case 'delete':
+                if (await _confirmDelete(context, strings)) {
+                  await model.delete(track);
+                }
             }
           },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'info',
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 18),
+                  const SizedBox(width: 10),
+                  Text(strings.trackMenuInfo),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  const Icon(Icons.delete_outline, size: 18),
+                  const SizedBox(width: 10),
+                  Text(strings.deleteTrack),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'export',
+              child: Row(
+                children: [
+                  const Icon(Icons.ios_share, size: 18),
+                  const SizedBox(width: 10),
+                  Text(strings.trackMenuExport),
+                ],
+              ),
+            ),
+          ],
         ),
         dense: true,
       ),

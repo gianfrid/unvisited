@@ -1135,7 +1135,7 @@ void main() {
     expect(find.byKey(const ValueKey('recording-chip')), findsOneWidget);
   });
 
-  testWidgets('track tile delete button removes the track', (tester) async {
+  testWidgets('track tile menu delete entry removes the track', (tester) async {
     final root = createRoot();
     final cache = createCache();
     final model = AppModel(TrackStore(root));
@@ -1154,24 +1154,57 @@ void main() {
     final tracksDir = Directory('${root.path}${Platform.pathSeparator}tracks');
     expect(tracksDir.listSync().length, 1);
 
-    await tester.tap(find.byTooltip('Delete track'));
-    await tester.pump();
+    Future<void> openMenu() async {
+      await tester.tap(find.byTooltip('Track actions'));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 300));
+    }
 
-    // The button's tap asks first: declining keeps track and file.
+    // The menu's delete entry asks first: declining keeps track and file.
+    await openMenu();
+    await tester.tap(find.text('Delete track'));
+    await tester.pump();
     expect(find.text('Delete "Morning walk"?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(model.tracks, isNotEmpty);
     expect(tracksDir.listSync(), isNotEmpty);
 
     // Confirming removes the track and its file.
-    await tester.tap(find.byTooltip('Delete track'));
+    await openMenu();
+    await tester.tap(find.text('Delete track'));
     await tester.pump();
     await tester.tap(find.text('Delete'));
     await tester.pump();
 
     expect(model.tracks, isEmpty);
     expect(tracksDir.listSync(), isEmpty);
+  });
+
+  testWidgets('the track menu carries Info, Delete and Export', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.byTooltip('Track actions'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Info'), findsOneWidget);
+    expect(find.text('Delete track'), findsOneWidget);
+    expect(find.text('Export'), findsOneWidget);
   });
 
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {
