@@ -37,8 +37,8 @@ enum FixDisposition { accepted, rejectedAccuracy, rejectedStale }
 ///
 /// Statistics measure only what was recorded: distance is the haversine
 /// sum within segments (a pause or fix loss is a jump, not distance),
-/// elapsed runs first to last accepted fix, and moving time accumulates
-/// only intervals whose speed reaches [movingSpeed].
+/// and the elapsed timer accrues only gaps that stay inside a segment —
+/// a paused minute ticks nowhere.
 class RecordingSession {
   RecordingSession({
     required this.stage,
@@ -72,10 +72,15 @@ class RecordingSession {
 
   /// First to last accepted fix, i.e. the recording duration; the stream
   /// may start earlier than the first fix (GPS cold start).
-  Duration get elapsed => _lastFix == null || _firstFix == null
-      ? Duration.zero
-      : _lastFix!.difference(_firstFix!);
-  DateTime? _firstFix;
+  Duration get elapsed => Duration(milliseconds: _elapsedMillis.round());
+
+  /// Accumulated accepted-fix gaps in milliseconds. A gap that crosses a
+  /// segment break (a pause or a fix loss) spans unrecorded time and
+  /// counts nowhere — same rule as the distance's "a pause or fix loss is
+  /// a jump, not distance". Pausing therefore freezes the timer with no
+  /// extra machinery: while paused nothing is accepted, nothing accrues.
+  double _elapsedMillis = 0;
+
   DateTime? _lastFix;
 
   Duration get movingTime => Duration(milliseconds: _movingMillis.round());
@@ -169,14 +174,19 @@ class RecordingSession {
               ? 0.0
               : step / (gap.inMilliseconds / 1000);
       _currentSpeed = fused;
-      if (fused >= movingSpeed) _movingMillis += gap.inMilliseconds;
+      // Dead time (the gap over a broken segment) counts nowhere: the
+      // timer does not tick the pause, and the resumed stretch is not
+      // moving time for having been away.
+      if (gap <= segmentGap) {
+        _elapsedMillis += gap.inMilliseconds;
+        if (fused >= movingSpeed) _movingMillis += gap.inMilliseconds;
+      }
     }
     // Course over ground: the device's own heading wins; otherwise the
     // bearing the fix's displacement bridges. Computed before the last
     // fix is overwritten below.
     _currentCourse = fix.heading ??
         (first ? null : _bearing(_lastLat!, _lastLon!, fix.lat, fix.lon));
-    if (first) _firstFix = fix.time;
     _lastFix = fix.time;
     _lastLat = fix.lat;
     _lastLon = fix.lon;

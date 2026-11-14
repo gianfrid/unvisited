@@ -116,6 +116,60 @@ void main() {
         reason: 'distance itself stays the haversine sum');
   });
 
+  test('a pause spans no timer: elapsed and moving time freeze and resume', () {
+    final session = newSession('Lunch stop')..start(FakeSource());
+    // One second of riding (moving speed).
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201));
+    expect(session.elapsed, const Duration(seconds: 1));
+    expect(session.movingTime, const Duration(seconds: 1));
+
+    session.pause();
+    // No timer machinery to stop: nothing is accepted, nothing accrues —
+    // the dashboard's readout must not tick while parked.
+    expect(session.elapsed, const Duration(seconds: 1));
+    session.processFix(fix(900)); // a paused fix: silently ignored
+
+    session.resume();
+    // The resumed fix's gap spans the pause: it contributed no run time
+    // (the pause ticks nowhere); only the second after it counts.
+    session.processFix(fix(901, lat: 52.5202));
+    session.processFix(fix(902, lat: 52.5203));
+    expect(session.elapsed, const Duration(seconds: 2),
+        reason: 'the parked 900 s tick nowhere');
+    expect(session.movingTime, const Duration(seconds: 2));
+  });
+
+  test('the timer freeze survives a second pause/resume', () {
+    final session = newSession('Errands')..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201));
+    session.pause();
+    session.resume();
+    // The resumed fix bridges the pause: dead time, only the next
+    // second accrues.
+    session.processFix(fix(600, lat: 52.5202));
+    session.processFix(fix(601, lat: 52.5203));
+    expect(session.elapsed, const Duration(seconds: 2));
+    session.pause();
+    session.resume();
+    session.processFix(fix(1200, lat: 52.5204));
+    session.processFix(fix(1201, lat: 52.5205));
+    expect(session.elapsed, const Duration(seconds: 3));
+  });
+
+  test('fix loss and pause read the same to the timer', () {
+    // A fix-loss gap also crosses a segment break: the dashboard's timer
+    // counts only the recorded time, not the drop-out.
+    final session = newSession('Tunnel')..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201));
+    session.processFix(fix(400, lat: 52.5202));
+    session.processFix(fix(401, lat: 52.5203));
+    expect(session.elapsed, const Duration(seconds: 2));
+    expect(session.movingTime, const Duration(seconds: 2));
+  });
+
   test('pause/resume breaks the track into two segments', () {
     final sink = MemoryStageSink();
     final session = RecordingSession(

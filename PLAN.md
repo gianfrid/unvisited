@@ -1,36 +1,43 @@
-# Slice 13 — deleting a track asks for confirmation
+# Slice 14 — a paused recording's timer must not count the pause
 
 ## Context
 
-A drawer swipe (`Dismissible`, end-to-start) or the delete `IconButton`
-calls `model.delete(track)` directly — one accidental swipe destroys the
-track (the file goes with it). Both paths must pass through a
-confirmation dialog that names the track.
+`RecordingSession.elapsed` is `lastAcceptedFix − firstAcceptedFix` on the
+fix timestamps. Paused fixes are ignored, so on resume the first accepted
+fix's gap spans the entire pause and the dashboard's elapsed jumps by
+every paused second. Moving time has the same hole for the resumed fix's
+gap. The engine doc already states the right semantics for distance — "a
+pause or fix loss is a jump, not distance"; elapsed and moving time must
+read the same way: time inside a gap that crosses a segment break counts
+nowhere.
 
 ## Steps
 
-1. `lib/l10n/app_strings.dart` — dialog strings, both languages:
-   - `deleteConfirmTitle(trackName)` — "Delete `name`?" / "Eliminare `name`?";
-   - `deleteConfirmBody` (en: "The track file is deleted with it. This
-     cannot be undone." / it equivalent);
-   - `deleteConfirmGo` (en "Delete", it "Elimina") and a "Cancel"
-     ("Annulla") — cancel reuses no existing getter, so add one.
-2. `lib/ui/map_page.dart` — `_TrackTile` gains a `_confirmDelete(model,
-   track, strings)` helper: `showDialog` with the strings above; only on
-   confirm, `model.delete(track)` runs. Both the `Dismissible`
-   `onDismissed` and the `IconButton` call the helper. Because the
-   dialog lives above the drawer, use the root navigator context
-   carefully: after the dialog closes the drawer may also need closing —
-   keep it simple, leave the drawer open (delete updates the list live).
-   A cancel (or bar dismissal) is a pure no-op.
-3. Widget tests (`test/map_page_test.dart`):
-   - swipe the tile → dialog appears naming the track; "Cancel" → the
-     track and its file survive;
-   - swipe again → "Delete" → track gone from the catalog and disk;
-   - the tile's delete button opens the same dialog.
+1. `lib/recording/recording_session.dart`:
+   - replace the `last − first` getter with an accumulator
+     `_elapsedMillis`, fed by each accepted non-first fix's gap;
+   - in `processFix`, determine whether the gap crosses a segment break
+     (`gap > segmentGap` — a pause is `breakSegment()`d immediately, a
+     fix-loss gap breaks by the same threshold); when it does, neither
+     elapsed nor moving time counts that gap;
+   - the paused session needs no timer: no fixes are accepted, the
+     accumulator sits still — freeze for free;
+   - drop the now-unused `_firstFix`/`last − first` machinery; update the
+     class doc's elapsed/moving-time sentence.
+   - distance keeps its existing behavior (the jump is counted as
+     traveled meters — explicitly out of this slice's scope).
+2. Tests (`test/recording_session_test.dart`):
+   - two fixes 1 s apart, a pause, a resume, then fixes timestamped after
+     the pause: elapsed stays the run time only (e.g. 2 s, not 62 s);
+     moving time likewise when the fixes move;
+   - elapsed freezes at the last value while paused (no ticking);
+   - a second pause/resume behaves the same;
+   - the existing pause/resume segment test keeps passing (only timer
+     semantics change there, and its final assertions don't read
+     elapsed).
 
 ## Verification
 
 - `flutter analyze` clean; `flutter test` all pass.
-- Commit includes PLAN.md and deletes the slice 13 TODO entry; PLAN.md
+- Commit includes PLAN.md and deletes the slice 14 TODO entry; PLAN.md
   carries over to the next task unmodified.

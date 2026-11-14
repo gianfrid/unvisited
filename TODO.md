@@ -31,11 +31,6 @@ Track list — catalog UX:
 
 Bugs — high priority:
 
-- [] slice 14 — a paused recording's elapsed timer keeps counting wall
-  clock: resume jumps by all the paused seconds. The session's elapsed
-  must accumulate only while running (freeze on pause, resume from the
-  accumulated value). Engine-level tests on pause/resume spans.
-
 Recording — live trace on the map:
 
 - [] slice 15 — an in-progress session's track is only in the staged GPX;
