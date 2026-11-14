@@ -766,6 +766,81 @@ void main() {
     expect(camera().center.latitude, closeTo(52.5201, 1e-6));
   });
 
+  testWidgets('locate and record live in the bottom-left stack, not the top bar',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    // GPS off at startup: no fix, so no Record — the stack is Locate only.
+    mockGeolocator(tester, permission: 3, serviceEnabled: false);
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    final mapRect = tester.getRect(find.byType(FlutterMap));
+    Rect rectOf(String tooltip) => tester.getRect(find.byTooltip(tooltip));
+
+    expect(find.text('Record'), findsNothing);
+    final locate = rectOf('Center on current position');
+    expect(locate.top, greaterThan(mapRect.height * 0.5),
+        reason: 'locate sits in the bottom half of the map');
+    expect(locate.left, closeTo(12.0, 1.0));
+    expect(mapRect.bottom - locate.bottom, closeTo(16.0, 1.0),
+        reason: 'locate clears the bottom safe-area inset');
+    // The top bar is untouched: Import and Fit stay up there.
+    expect(tester.getRect(find.text('Import')).top, lessThan(100));
+    expect(tester.getRect(find.text('Fit')).top, lessThan(100));
+
+    // A fix arrives through the locate tap: the Record button appears in
+    // the slot directly above Locate.
+    mockGeolocator(tester,
+        permission: 3, position: {'lat': 52.5200, 'lon': 13.4050});
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump();
+    final record = rectOf('Record');
+    final locateAfter = rectOf('Center on current position');
+    expect(record.bottom, closeTo(locateAfter.top, 1.0),
+        reason: 'record sits directly above locate');
+    expect(record.center.dx, closeTo(locateAfter.center.dx, 1.0));
+
+    // While recording the slot holds Pause (Stop above it), still in the
+    // bottom-left stack; the header keeps Tracks and Settings only.
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Record'), findsNothing);
+    final stop = rectOf('Stop');
+    final pause = rectOf('Pause');
+    final locateRec = rectOf('Center on current position');
+    expect(stop.top, greaterThan(mapRect.height * 0.5));
+    expect(pause.bottom, closeTo(locateRec.top, 1.0),
+        reason: 'pause occupies the record slot directly above locate');
+    expect(stop.bottom, closeTo(pause.top, 1.0),
+        reason: 'stop sits before the pause button in the stack');
+    expect(find.text('Import'), findsNothing);
+    expect(tester.getRect(find.text('Tracks')).top, lessThan(100));
+  });
+
   testWidgets('dark theme darkens the tiles client-side, light leaves them',
       (tester) async {
     final root = createRoot();

@@ -950,10 +950,9 @@ class _MapPageState extends State<MapPage> {
                 child: _FloatingToolbar(
                   children: [
                   // Import and Fit fight the record-mode dashboard for
-                  // space and attention — they and their comment above
-                  // return after the session. Locate stays: its tap is the
-                  // way back to the follow after panning away (see
-                  // [_locate]'s session branch).
+                  // space and attention; while a session runs the header
+                  // keeps Tracks and Settings only. Locate and Record live
+                  // in the bottom-left action stack below.
                   if (!widget.model.isRecording)
                     _HeaderAction(
                       icon: const Icon(Icons.add),
@@ -967,61 +966,6 @@ class _MapPageState extends State<MapPage> {
                       label: strings.fitLabel,
                       tooltip: strings.fitTooltip,
                       onTap: mapTracks.isEmpty ? null : _fitTracks,
-                    ),
-                  if (widget.locationSupported)
-                    _HeaderAction(
-                      icon: _locating
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.my_location),
-                      label: _locating ? strings.locating : strings.locateLabel,
-                      tooltip: strings.locateTooltip,
-                      onTap: _locating ? null : _locate,
-                    ),
-                  // Record: hidden where the platform cannot deliver a
-                  // position (no host plugin, desktop Linux) or none has
-                  // actually arrived yet (GPS off at startup — the silent
-                  // retry loop picks the button up once a fix exists) — a
-                  // session could never start there. While recording the
-                  // same slot stops it; the chip below shows the live
-                  // stats and a pause action sits beside it.
-                  if (widget.locationSupported &&
-                      (_gpsWorking || widget.model.isRecording))
-                    _HeaderAction(
-                      icon: Icon(widget.model.isRecording
-                          ? Icons.stop
-                          : Icons.fiber_manual_record),
-                      label: widget.model.isRecording
-                          ? strings.stopLabel
-                          : strings.recordLabel,
-                      tooltip: widget.model.isRecording
-                          ? strings.stopLabel
-                          : strings.recordLabel,
-                      onTap: widget.model.isRecording
-                          ? _stopRecording
-                          : _startRecording,
-                    ),
-                  if (widget.model.isRecording)
-                    _HeaderAction(
-                      icon: Icon(widget.model.recording?.state ==
-                              RecordingState.paused
-                          ? Icons.play_arrow
-                          : Icons.pause),
-                      label: widget.model.recording?.state ==
-                              RecordingState.paused
-                          ? strings.resumeLabel
-                          : strings.pauseLabel,
-                      tooltip: widget.model.recording?.state ==
-                              RecordingState.paused
-                          ? strings.resumeLabel
-                          : strings.pauseLabel,
-                      onTap: widget.model.recording?.state ==
-                              RecordingState.paused
-                          ? widget.model.resumeRecording
-                          : widget.model.pauseRecording,
                     ),
                   Builder(
                     builder: (context) => _HeaderAction(
@@ -1042,6 +986,76 @@ class _MapPageState extends State<MapPage> {
               ),
             ),
           ),
+          // Bottom-left action stack: the locate button hugs the map's
+          // bottom-left corner and the record slot sits directly above it.
+          // The record slot is hidden where the platform cannot deliver a
+          // position (no host plugin, desktop Linux) or none has actually
+          // arrived yet (GPS off at startup — the silent retry loop picks
+          // the button up once a fix exists) — a session could never start
+          // there. While recording the slot holds pause/resume and a stop
+          // action sits before it; the chip below the toolbar still shows
+          // the live stats. Locate stays usable during a session — its tap
+          // is the way back to the follow after panning away (see
+          // [_locate]'s session branch).
+          if (widget.locationSupported)
+            Positioned(
+              left: 12,
+              bottom: 0,
+              child: SafeArea(
+                minimum: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (widget.model.isRecording)
+                      _HeaderAction(
+                        icon: const Icon(Icons.stop),
+                        label: strings.stopLabel,
+                        tooltip: strings.stopLabel,
+                        onTap: _stopRecording,
+                      ),
+                    if (_gpsWorking || widget.model.isRecording)
+                      _HeaderAction(
+                        icon: Icon(widget.model.isRecording
+                            ? (widget.model.recording?.state ==
+                                    RecordingState.paused
+                                ? Icons.play_arrow
+                                : Icons.pause)
+                            : Icons.fiber_manual_record),
+                        label: widget.model.isRecording
+                            ? (widget.model.recording?.state ==
+                                    RecordingState.paused
+                                ? strings.resumeLabel
+                                : strings.pauseLabel)
+                            : strings.recordLabel,
+                        tooltip: widget.model.isRecording
+                            ? (widget.model.recording?.state ==
+                                    RecordingState.paused
+                                ? strings.resumeLabel
+                                : strings.pauseLabel)
+                            : strings.recordLabel,
+                        onTap: widget.model.isRecording
+                            ? (widget.model.recording?.state ==
+                                    RecordingState.paused
+                                ? widget.model.resumeRecording
+                                : widget.model.pauseRecording)
+                            : _startRecording,
+                      ),
+                    _HeaderAction(
+                      icon: _locating
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location),
+                      label: _locating ? strings.locating : strings.locateLabel,
+                      tooltip: strings.locateTooltip,
+                      onTap: _locating ? null : _locate,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           _recordingDashboard(strings),
           _recordingSpeed(),
           // The empty-state hint only for a genuinely empty, idle map:

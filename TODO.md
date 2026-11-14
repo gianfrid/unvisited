@@ -71,12 +71,7 @@ Recording — live trace on the map:
 
 Recording — map controls & camera (Android first):
 
-1. - [ ] Bottom-left action stack: move the locate button out of the top
-   toolbar to the bottom-left of the map; the record button sits directly
-   above it and is shown only once a position fix has been acquired; the
-   top bar keeps Import / Tracks / Settings only (Fit leaves it — see the
-   aggregate-track section below).
-2. - [ ] Pause/resume/stop at the record slot: while recording that slot
+1. - [ ] Pause/resume/stop at the record slot: while recording that slot
    shows pause; pressing it turns the button into resume and a stop
    button appears before it in the same stack; stop opens a name dialog
    defaulting to the current date-time timestamp and finalizes the session
