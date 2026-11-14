@@ -1804,9 +1804,6 @@ class _TrackTile extends StatelessWidget {
     final duration = track.durationSeconds == null
         ? '—'
         : _formatDuration(Duration(seconds: track.durationSeconds!.round()));
-    final date = track.startTimeUtc == null
-        ? ''
-        : ' · ${track.startTimeUtc!.toLocal().toIso8601String().split('T').first}';
     return Dismissible(
       key: ValueKey('track-${track.id}'),
       direction: DismissDirection.endToStart,
@@ -1827,26 +1824,13 @@ class _TrackTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        secondary: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                date.replaceAll(' · ', ''),
-                style: Theme.of(context).textTheme.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            // Discoverable next to the swipe-to-delete on touch devices;
-            // there is no swipe equivalent with a mouse on the desktop.
-            IconButton(
-              tooltip: strings.deleteTrack,
-              icon: const Icon(Icons.delete_outline),
-              visualDensity: VisualDensity.compact,
-              onPressed: () => model.delete(track),
-            ),
-          ],
+        // Discoverable next to the swipe-to-delete on touch devices;
+        // there is no swipe equivalent with a mouse on the desktop.
+        secondary: IconButton(
+          tooltip: strings.deleteTrack,
+          icon: const Icon(Icons.delete_outline),
+          visualDensity: VisualDensity.compact,
+          onPressed: () => model.delete(track),
         ),
         dense: true,
       ),

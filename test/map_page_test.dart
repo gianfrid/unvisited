@@ -813,6 +813,8 @@ void main() {
     expect(find.textContaining('· 04:00'), findsOneWidget);
     expect(find.textContaining('· —'), findsOneWidget,
         reason: 'the timestamp-less track reads a dash for duration');
+    // The filename usually carries the date; the tile does not repeat it.
+    expect(find.textContaining('2024-05-01'), findsNothing);
   });
 
   testWidgets('the track list is ordered most-recent-first, timeless last',

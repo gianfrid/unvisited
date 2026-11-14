@@ -31,10 +31,6 @@ Track list — catalog UX:
 
 Bugs — high priority:
 
-- [] slice 12 — the track tile's trailing date column takes too much
-  space and duplicates what the filename usually already carries: drop
-  the date from `_TrackTile` (subtitle keeps format · points · distance ·
-  duration). Widget test on the tile layout.
 - [] slice 13 — deleting a track from the drawer asks no confirmation.
   `Dismissible` swipes straight to `model.delete`; add a confirmation
   dialog before the delete runs, with the track name in the message.
