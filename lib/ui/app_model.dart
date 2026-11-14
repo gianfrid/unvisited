@@ -18,6 +18,7 @@ import '../road/road_bench.dart' show benchReport, runRoadBench;
 import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_matcher.dart';
 import '../road/road_store.dart';
+import 'recording_live.dart';
 import '../storage/track_store.dart';
 import '../recording/position_source.dart' show PositionSource;
 import '../recording/android_position_source.dart'
@@ -522,11 +523,16 @@ class AppModel extends ChangeNotifier {
   File? _recordingFile;
   bool get isRecording => _recording != null;
 
-  /// Repaints the UI for one delivered recording fix: the dashboard's
-  /// live stats and the follow-camera marker rebuild off the session's
-  /// intake, whose 1 Hz fixes are the tick they need. Wraps the protected
-  /// notification so listeners outside the model's own members stay legal.
-  void notifyRecordingFix() => notifyListeners();
+  /// The per-fix repaint channel: the session's 1 Hz fixes notify only
+  /// this, so the live HUD, marker and trace rebuild without dragging the
+  /// whole model tree (fog overlay, toolbar) along.
+  final recordingLive = RecordingLiveState();
+
+  /// Repaints the UI for one delivered recording fix: the recording live
+  /// subtree rebuilds off the session's intake, whose 1 Hz fixes are the
+  /// tick it needs. Wraps the live notifier's notification so listeners
+  /// outside the model's own members stay legal.
+  void notifyRecordingFix() => recordingLive.notify();
 
   /// Starts recording: the while-in-use permission is requested up front
   /// (same flow as the locate attempt — a session is never started from
@@ -866,4 +872,10 @@ class AppModel extends ChangeNotifier {
   /// All points of all visible tracks, for fitting the camera.
   List<LatLng> get allVisiblePoints =>
       visibleTracks.expand((t) => t.points).toList();
+
+  @override
+  void dispose() {
+    recordingLive.dispose();
+    super.dispose();
+  }
 }

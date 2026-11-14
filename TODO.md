@@ -8,11 +8,6 @@ the rest of the backlog by intent):
    coordinator (the three near-parallel import paths collapsed onto one
    helper for the store+roads+cache+summary choreography), keeping
    settings/locate on the model.
-2. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
-   whole tree at 1 Hz and `liveSegments` deep-copies every segment per
-   rebuild — a scaling wall for long sessions. Give the recording live
-   state its own Listenable (stats/trace/marker) so the fog overlay and
-   toolbar rebuild channels stay untouched.
 
 Track list — catalog UX:
 

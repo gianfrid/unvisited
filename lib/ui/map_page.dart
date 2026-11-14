@@ -89,6 +89,9 @@ class _MapPageState extends State<MapPage> {
       );
     }
     widget.model.addListener(_onModelChanged);
+    // The 1 Hz per-fix channel: only the live subtrees below listen to
+    // it — the fog overlay and toolbar rebuild on model changes only.
+    widget.model.recordingLive.addListener(_onRecordingFix);
     // Cross a zoom level: the fog coarseness is keyed to the zoom, so the
     // overlay must be rebuilt when the view moves between zoom levels
     // (the cell grid doubles per band — see fogCellSizeFor).
@@ -256,6 +259,7 @@ class _MapPageState extends State<MapPage> {
     _mapEvents?.cancel();
     _fixRetryTimer?.cancel();
     widget.model.removeListener(_onModelChanged);
+    widget.model.recordingLive.removeListener(_onRecordingFix);
     super.dispose();
   }
 
@@ -285,50 +289,53 @@ class _MapPageState extends State<MapPage> {
     // Applied best-effort from here and from the chip's toggle: the
     // window flag matters only while the dashboard is in front anyway.
     _applyScreenOn();
-    // The follow-camera rides each accepted fix while it is armed; the
-    // marker rebuilds off the session's own getters below either way.
-    if (recording && _followRecording) {
-      final session = widget.model.recording;
-      final lat = session?.currentLat;
-      final lon = session?.currentLon;
-      if (lat != null && lon != null) {
-        // Course-up: while the follow holds, the camera rotates to the
-        // current course so where the user is going stays ahead of them —
-        // course-up makes the motion read upward on screen. The rotation
-        // emits controller events (programmatic sources), so this never
-        // releases the follow; any hand gesture still does, and with it
-        // the rotation. nearestEquivalentRotation keeps the short arc
-        // where the course crosses 0/360. The rotation is gated on the
-        // device's *reported* heading, not the bridged course: a
-        // magnetometer-less or bearing-only fix stream keeps the camera
-        // north-up (the marker still rotates with the course), because a
-        // bearing between fixes says where the user was, not where they
-        // face. No heading yet — a first fix — leaves the camera
-        // rotation alone.
-        final heading = session?.currentHeading;
-        if (heading == null) {
-          _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
-        } else {
-          // With a reported heading, currentCourse is that same heading.
-          final courseDelta =
-              nearestEquivalentRotation(
-                heading,
-                _mapController.camera.rotation,
-              ) -
-              _mapController.camera.rotation;
-          if (courseDelta.abs() >= courseDeltaThreshold) {
-            _mapController.moveAndRotate(
-              LatLng(lat, lon),
-              _mapController.camera.zoom,
-              nearestEquivalentRotation(heading, _mapController.camera.rotation),
-            );
-          } else {
-            _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
-          }
-        }
+    setState(() {});
+  }
+
+  /// The follow-camera rides each accepted fix while it is armed; the
+  /// marker, HUD and trace rebuild off the session's own getters. No
+  /// setState: fixes arrive at 1 Hz, so the live subtrees rebuild through
+  /// the recording-live Listenable and the rest of the map stays still.
+  void _onRecordingFix() {
+    if (!mounted) return;
+    if (!widget.model.isRecording || !_followRecording) return;
+    final session = widget.model.recording;
+    final lat = session?.currentLat;
+    final lon = session?.currentLon;
+    if (lat == null || lon == null) return;
+    // Course-up: while the follow holds, the camera rotates to the
+    // current course so where the user is going stays ahead of them —
+    // course-up makes the motion read upward on screen. The rotation
+    // emits controller events (programmatic sources), so this never
+    // releases the follow; any hand gesture still does, and with it
+    // the rotation. nearestEquivalentRotation keeps the short arc
+    // where the course crosses 0/360. The rotation is gated on the
+    // device's *reported* heading, not the bridged course: a
+    // magnetometer-less or bearing-only fix stream keeps the camera
+    // north-up (the marker still rotates with the course), because a
+    // bearing between fixes says where the user was, not where they
+    // face. No heading yet — a first fix — leaves the camera
+    // rotation alone.
+    final heading = session?.currentHeading;
+    if (heading == null) {
+      _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
+    } else {
+      // With a reported heading, currentCourse is that same heading.
+      final courseDelta = nearestEquivalentRotation(
+            heading,
+            _mapController.camera.rotation,
+          ) -
+          _mapController.camera.rotation;
+      if (courseDelta.abs() >= courseDeltaThreshold) {
+        _mapController.moveAndRotate(
+          LatLng(lat, lon),
+          _mapController.camera.zoom,
+          nearestEquivalentRotation(heading, _mapController.camera.rotation),
+        );
+      } else {
+        _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
       }
     }
-    setState(() {});
   }
 
   /// Fits the camera, but only once it has a real size. At launch the map
@@ -430,7 +437,7 @@ class _MapPageState extends State<MapPage> {
 
   /// While recording, the dashboard: the HUD chip — the pulsing dot with
   /// its live duration and distance, tap to expand — and the stats panel
-  /// it opens, both re-rendering off the model's per-fix notifications
+  /// it opens, both re-rendering off the recording-live per-fix channel
   /// (the engine's numbers, not a straight-line snapshot). Absent while
   /// no session runs.
   Widget _recordingDashboard(AppStrings strings) {
@@ -549,35 +556,42 @@ class _MapPageState extends State<MapPage> {
   /// the course on screen — straight up while the follow-camera holds the
   /// camera on the course (these are not two settings: the rotation *is*
   /// the follow; any gesture releases both; see SPEC). A fix without a
-  /// heading and no bearing yet renders unrotated.
+  /// heading and no bearing yet renders unrotated. Rebuilt per fix through
+  /// the recording-live channel; still a direct child of the map's layer
+  /// stack, which its marker positioning depends on.
   List<Widget> _recordingMarkers() {
     final session = widget.model.recording;
     final lat = session?.currentLat;
     final lon = session?.currentLon;
     if (lat == null || lon == null) return const [];
     return [
-      MarkerLayer(
-        markers: [
-          Marker(
-            point: LatLng(lat, lon),
-            width: 44,
-            height: 44,
-            child: Transform.rotate(
-              key: const ValueKey('recording-marker-rotate'),
-              angle:
-                  ((session!.currentCourse ?? 0) -
-                      _mapController.camera.rotation) *
-                  math.pi /
-                  180,
-              child: Icon(
-                Icons.navigation,
-                size: 32,
-                color: Theme.of(context).colorScheme.primary,
-                shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
+      ListenableBuilder(
+        listenable: widget.model.recordingLive,
+        builder: (context, _) => MarkerLayer(
+          markers: [
+            Marker(
+              point: LatLng(lat, lon),
+              width: 44,
+              height: 44,
+              child: Transform.rotate(
+                key: const ValueKey('recording-marker-rotate'),
+                angle:
+                    ((session!.currentCourse ?? 0) -
+                        _mapController.camera.rotation) *
+                    math.pi /
+                    180,
+                child: Icon(
+                  Icons.navigation,
+                  size: 32,
+                  color: Theme.of(context).colorScheme.primary,
+                  shadows: const [
+                    Shadow(blurRadius: 4, color: Colors.black38)
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ];
   }
@@ -908,17 +922,22 @@ class _MapPageState extends State<MapPage> {
               // the catalog tint family, clearly in-progress. Above the
               // fog, below the course-up marker. Absent when no session
               // runs; after stop the finalized track is a catalog track.
+              // Scoped to the per-fix channel: a fix rebuilds this layer
+              // and nothing above it in this children list.
               if (widget.model.recording != null)
-                PolylineLayer(
-                  polylines: [
-                    for (final seg in widget.model.recording!.liveSegments)
-                      if (seg.length >= 2)
-                        Polyline(
-                          points: seg,
-                          color: Colors.redAccent.withValues(alpha: 0.65),
-                          strokeWidth: 4,
-                        ),
-                  ],
+                ListenableBuilder(
+                  listenable: widget.model.recordingLive,
+                  builder: (context, _) => PolylineLayer(
+                    polylines: [
+                      for (final seg in widget.model.recording!.liveSegments)
+                        if (seg.length >= 2)
+                          Polyline(
+                            points: seg,
+                            color: Colors.redAccent.withValues(alpha: 0.65),
+                            strokeWidth: 4,
+                          ),
+                    ],
+                  ),
                 ),
               // "You are here" marker for the last located fix; absent
               // until a fix exists and dropped when the user pans away.
@@ -1098,7 +1117,14 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
             ),
-          _recordingDashboard(strings),
+          // The HUD chip and stats panel rebuild per fix through the
+          // recording-live channel; the chip's tap-to-open toggles the
+          // panel through the model-wide setState, which rebuilds this
+          // builder too.
+          ListenableBuilder(
+            listenable: widget.model.recordingLive,
+            builder: (context, _) => _recordingDashboard(strings),
+          ),
           _recordingSpeed(),
           // The empty-state hint only for a genuinely empty, idle map:
           // while a session records (even with nothing plotted yet) and

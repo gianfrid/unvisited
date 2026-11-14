@@ -1,28 +1,64 @@
-# Plan — pubspec cleanup (TODO.md, technical debt item 3)
+# Plan — resolve technical debt (TODO.md technical debt, items 1 and 2)
 
-## Change
+## Phase A — recording live state gets its own Listenable (item 2)
 
-`pubspec.yaml` only:
+Problem: `AppModel.notifyRecordingFix` calls `notifyListeners()` on the whole
+model at 1 Hz; `MapPage._onModelChanged` then rebuilds the entire map tree,
+and `recording.liveSegments` deep-copies every segment on each rebuild.
 
-1. Drop the Flutter template comment block (versioning lecture, dependency
-   boilerplate, assets/fonts tutorial comments). Keep: name, description
-   rewritten from "A new Flutter project." → a real one-liner, publish_to,
-   version, environment, dependencies, dev_dependencies, the flutter
-   section with `uses-material-design: true`.
-2. Remove the unused `cupertino_icons` dependency — verified: no
-   CupertinoIcons usage anywhere in lib/ or test/; the
-   `package:flutter/cupertino.dart` import in main.dart is the locale
-   delegate and stays untouched.
+Change:
 
-Per SPEC, the package removal needs the owner's explicit confirmation in
-this plan step — that confirmation is being asked for now.
+1. New `RecordingLiveState extends ChangeNotifier` (lives in
+   `lib/ui/recording_live_state.dart` or next to the model) that owns the
+   per-fix payload the UI reads at 1 Hz: a reference to the current
+   `RecordingSession` (or its stats/segments/marker getters). The model
+   exposes it as `model.recordingLive`; `notifyRecordingFix()` notifies
+   only that notifier.
+2. `MapPage` keeps its existing `model.addListener(_onModelChanged)` for
+   structural changes (imports, visibility, settings, recording
+   start/stop) and adds a separate listener on `recordingLive` for the
+   per-fix path: follow-camera move/rotate, HUD chip, stats panel, marker,
+   live trace. Those subtrees wrap in `AnimatedBuilder`/`ListenableBuilder`
+   on `recordingLive` so the fog overlay and toolbar do not rebuild per fix.
+3. `liveSegments` in `RecordingSession` keeps returning copies (it must —
+   the writer mutates them), but they're now copied once per fix into the
+   live subtree's rebuild, not per model-wide rebuild.
 
-## Verification
+Tests: existing `map_page_test.dart` recording tests must pass unchanged
+(they assert chip/marker/camera behavior); add one test asserting the fog
+overlay widget does not rebuild on a fix (e.g. via a spy/counter or by
+checking `AnimatedBuilder` scoping) — at minimum the existing widget tests
+green proves no behavior regression.
 
-`flutter analyze` clean, `flutter test` green
-(`flutter pub get` re-resolves without cupertino_icons).
+## Phase B — split app_model.dart (item 1)
 
-## Commit
+Problem: 869 lines, 6 concerns in one ChangeNotifier.
 
-PLAN.md, pubspec.yaml, pubspec.lock, and TODO.md's item 3 removed (list
-renumbered) in one commit.
+Change (file layout):
+
+- `lib/ui/app_model.dart` — keeps `AppModel` (settings, locate, visibility,
+  delete, load), `MapTrack`, `ImportSummary`, `LocateResult`, and exposes
+  the two extracted collaborators as fields.
+- `lib/ui/recording_controller.dart` — `RecordingController extends
+  ChangeNotifier`: start/stop-with-name/pause/resume, staging path,
+  salvage on load, screen latch, battery advisory, `recordingName`. Holds a
+  back-reference to the model for the import-on-stop and road matching.
+- `lib/ui/import_coordinator.dart` — `ImportCoordinator`: one
+  `importBytes(bytes, filename, {source})` helper performing the shared
+  store+roads+cache+summary choreography (`_importBytes`,
+  `_noteImported`/`_recordNewImports`, `_matchRoads`/`_matchTrack`,
+  `notifyListeners`); `importFromFile`, `importFromDirectory`,
+  `importViaFilePicker`, `importViaDirectoryPicker`, `_importSafTree`
+  collapse onto it.
+- Call sites in `map_page.dart`, `track_list.dart`, `settings_sheet.dart`
+  updated to `model.recording.*` / `model.imports.*` where they belong.
+  Mechanical renames, no behavior change.
+
+Tests: full `flutter test` suite (app_model_test, map_page_test) must pass
+unchanged; analyze clean.
+
+## Order and commits
+
+Two commits: Phase A first (smaller, independently verifiable), then
+Phase B. PLAN.md committed with each; TODO.md debt items removed in the
+same commits.
