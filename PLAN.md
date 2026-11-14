@@ -1,44 +1,58 @@
-# PLAN — Test harness extraction (Technical debt 1)
+# Plan — shared geo math module (TODO.md, technical debt item 2)
 
-TODO unit: "Technical debt": `mockGeolocator` and the repeated
-createRoot/temp-dir/MaterialApp setup (43 copies) become shared helpers
-in `test/helpers.dart`.
+## Problem
 
-## Helpers (into test/helpers.dart)
+Haversine lives twice — `lib/models/track.dart` (`_haversine(TrackPoint,
+TrackPoint)`) and `lib/recording/recording_session.dart`
+(`_haversine(double, double, double, double)`) — byte-for-byte the same
+formula, kept in step only by comments. `recording_session.dart` also carries
+an initial-bearing `_bearing` that is the engine's course fallback and has no
+other home. Any numeric tweak must be hand-mirrored or engine and catalog
+distances silently disagree.
 
-- `createRoot()` / `createCache()` — temp directories with best-effort
-  teardown (the two cleanup blocks that repeat verbatim).
-- `createModel([root])` — `AppModel(TrackStore(root))` + `load()`,
-  shared by the widget and model tests.
-- `pumpMapPage(tester, {model, cache, locationSupported, buildTime})` —
-  the standard MaterialApp/MapPage pump with the fixed build time
-  (`testBuildTime`; one display test overrides it).
-- `FakePositionSource` — the fix stream the recording tests push
-  through, currently defined twice (map_page_test.dart, app_model_test.dart).
-- `mockGeolocator(tester, …)` — moves out of map_page_test's `main()`
-  (its body is unchanged).
+## Change
 
-## Implementation steps
+New pure-Dart module `lib/geo.dart` (no imports beyond `dart:math`,
+consistent with the portability rule), exposing:
 
-1. Add the helpers to `test/helpers.dart`; both big test files drop
-   their local copies (`createRoot`, `mockGeolocator`, `FakePositionSource`
-   ×2). parser tests keep importing only what they use.
-2. Collapse the boilerplate mechanically in `test/map_page_test.dart`:
-   the createRoot+AppModel+load pair → `createModel(root)`, the
-   cache block → `createCache()`, the pump block → `pumpMapPage(...)`.
-   Tests that interleave `importBytes` between model creation and
-   `load()`, and the two non-standard pumps (the buildTime-display test,
-   the desktop test), are updated by hand to keep the order semantics.
-3. Same follow-along in `test/app_model_test.dart` (createRoot/AppModel
-   pairs, FakePositionSource deletion).
+- `double haversineMeters(double lat1, double lon1, double lat2, double lon2)`
+- `double initialBearingDeg(double lat1, double lon1, double lat2, double lon2)`
+  (degrees clockwise from true north, as today)
+- No `TrackPoint`-taking wrapper: keep the API primitive-only; `track.dart`
+  calls it with `point.lat, point.lon`, one-line call sites.
 
-## Out of scope
+Then:
 
-No assertion changes, no reordering of pumps, no test renames; the
-point is the harness, not the tests' content.
+1. `track.dart` — delete `_earthRadius`/`_haversine`/`_rad`, call
+   `haversineMeters(...)` in `distanceMeters`; drop `dart:math` if now
+   unused.
+2. `recording_session.dart` — delete the local `_haversine`, `_bearing`,
+   `_earthRadius`; call the shared functions at the two existing call sites;
+   keep the existing doc comments on the call sites (the source of the
+   agreement rationale), drop the duplicated formula comments.
+3. Migrate `currentCourse`/marker behavior untouched — pure extraction, no
+   logic change.
+
+## Tests
+
+New `test/geo_test.dart` pinning the shared module against hand-computed
+values:
+
+- haversine: zero distance for identical points; a known short leg (~1 m
+  scale, 0.001° latitude ≈ 111.19 m) and a known equator longitude leg;
+  antipodal sanity.
+- bearing: due north, due east, due south, due west on simple legs; a
+  non-trivial leg checked against a precomputed value; result wraps into
+  [0, 360).
+- regression: existing `recording_session_test.dart` and parser/store tests
+  must pass unchanged (distance agreement between engine and catalog relies
+  on them).
 
 ## Verification
 
-`flutter analyze` clean; `flutter test` 239/239; the diff reviewed so
-that every hunk either replaces boilerplate with a helper call or
-deletes a local copy.
+`flutter analyze` clean, `flutter test` green.
+
+## Commit
+
+PLAN.md + the change + removal of TODO.md item 2 (technical debt list
+renumbered) in one commit.

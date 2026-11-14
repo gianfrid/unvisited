@@ -8,15 +8,12 @@ the rest of the backlog by intent):
    coordinator (the three near-parallel import paths collapsed onto one
    helper for the store+roads+cache+summary choreography), keeping
    settings/locate on the model.
-2. - [ ] Extract the duplicated haversine/bearing formulas (identical
-   twins in lib/models/track.dart and lib/recording/recording_session.dart
-   kept in step by comments only) into one shared pure-Dart geo module.
-3. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
+2. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
    whole tree at 1 Hz and `liveSegments` deep-copies every segment per
    rebuild — a scaling wall for long sessions. Give the recording live
    state its own Listenable (stats/trace/marker) so the fog overlay and
    toolbar rebuild channels stay untouched.
-4. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
+3. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
    the unused `cupertino_icons` dependency (zero CupertinoIcons usage —
    the cupertino.dart import in main.dart is the locale delegate and
    stays). Package removal per SPEC: confirm with owner in the plan step.

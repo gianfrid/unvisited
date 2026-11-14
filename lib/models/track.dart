@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import '../geo.dart';
 
 /// Core track domain model. Kept free of Flutter imports so that import
 /// parsing and storage remain unit-testable in plain Dart tests.
@@ -63,22 +63,9 @@ class TrackData {
   double get distanceMeters {
     double total = 0;
     for (var i = 1; i < points.length; i++) {
-      total += _haversine(points[i - 1], points[i]);
+      total += haversineMeters(
+          points[i - 1].lat, points[i - 1].lon, points[i].lat, points[i].lon);
     }
     return total;
   }
 }
-
-const _earthRadius = 6371000.0;
-
-double _haversine(TrackPoint a, TrackPoint b) {
-  final dLat = _rad(b.lat - a.lat);
-  final dLon = _rad(b.lon - a.lon);
-  final lat1 = _rad(a.lat);
-  final lat2 = _rad(b.lat);
-  final h = math.pow(math.sin(dLat / 2), 2) +
-      math.cos(lat1) * math.cos(lat2) * math.pow(math.sin(dLon / 2), 2);
-  return 2 * _earthRadius * math.asin(math.sqrt(h));
-}
-
-double _rad(double deg) => deg * (math.pi / 180);

@@ -7,10 +7,9 @@
 /// through one class, and no widget ever builds sentences from it.
 library;
 
-import 'dart:math' as math;
-
 import 'package:latlong2/latlong.dart';
 
+import '../geo.dart';
 import 'position_source.dart';
 import 'staging_gpx.dart';
 
@@ -195,7 +194,7 @@ class RecordingSession {
     stage.appendPoint(lat: fix.lat, lon: fix.lon, time: fix.time, ele: fix.ele);
 
     if (!first) {
-      final step = _haversine(_lastLat!, _lastLon!, fix.lat, fix.lon);
+      final step = haversineMeters(_lastLat!, _lastLon!, fix.lat, fix.lon);
       _distance += step;
       final fused = (fix.speed != null && fix.speed! >= 0)
           ? fix.speed!
@@ -215,7 +214,7 @@ class RecordingSession {
     // bearing the fix's displacement bridges. Computed before the last
     // fix is overwritten below.
     _currentCourse = fix.heading ??
-        (first ? null : _bearing(_lastLat!, _lastLon!, fix.lat, fix.lon));
+        (first ? null : initialBearingDeg(_lastLat!, _lastLon!, fix.lat, fix.lon));
     _currentHeading = fix.heading;
     _lastFix = fix.time;
     _lastLat = fix.lat;
@@ -229,28 +228,4 @@ class RecordingSession {
     processFix(fix);
     if (onFix != null) onFix!(fix);
   }
-}
-
-const _earthRadius = 6371000.0;
-
-/// Same formula `lib/models/track.dart` uses for import lengths, so a
-/// recorded track's engine-measured distance agrees with the catalog's.
-double _haversine(double lat1, double lon1, double lat2, double lon2) {
-  final rad = math.pi / 180;
-  final dLat = (lat2 - lat1) * rad;
-  final dLon = (lon2 - lon1) * rad;
-  final h = math.pow(math.sin(dLat / 2), 2) +
-      math.cos(lat1 * rad) * math.cos(lat2 * rad) * math.pow(math.sin(dLon / 2), 2);
-  return 2 * _earthRadius * math.asin(math.sqrt(h));
-}
-
-/// Initial bearing from one point to the next, in degrees clockwise
-/// from true north — the course over ground the fix's displacement
-/// bridges.
-double _bearing(double lat1, double lon1, double lat2, double lon2) {
-  final rad = math.pi / 180;
-  final y = math.sin((lon2 - lon1) * rad) * math.cos(lat2 * rad);
-  final x = math.cos(lat1 * rad) * math.sin(lat2 * rad) -
-      math.sin(lat1 * rad) * math.cos(lat2 * rad) * math.cos((lon2 - lon1) * rad);
-  return (math.atan2(y, x) / rad + 360) % 360;
 }
