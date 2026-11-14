@@ -453,8 +453,10 @@ class _MapPageState extends State<MapPage> {
   }
 
   /// Stop: asks what to call the track first (the dialog defaults to the
-  /// current date-time timestamp) and only finalizes on confirm — a
-  /// cancelled dialog leaves the session recording.
+  /// current date-time timestamp). Save finalizes and imports; Discard —
+  /// after a confirmation, it destroys the staged track irreversibly —
+  /// ends the session importing nothing; a cancelled dialog leaves the
+  /// session recording.
   Future<void> _stopRecording() async {
     final strings = AppStrings.ofContext(context);
     final defaultName = widget.model.recordingName(DateTime.now());
@@ -474,19 +476,57 @@ class _MapPageState extends State<MapPage> {
               onPressed: () => Navigator.of(context).pop(),
               child: Text(strings.cancel),
             ),
+            TextButton(
+              key: const ValueKey('stop-discard'),
+              // The empty string is the discard sentinel: it aliases the
+              // name field's "cleared" value, so it never collides with a
+              // name result.
+              onPressed: () => Navigator.of(context).pop(''),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: Text(strings.discardLabel),
+            ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(
                 controller.text.trim().isEmpty
                     ? defaultName
                     : controller.text.trim(),
               ),
-              child: Text(strings.stopLabel),
+              child: Text(strings.saveLabel),
             ),
           ],
         );
       },
     );
     if (!mounted || name == null) return; // Cancelled: keep recording.
+    if (name.isEmpty) {
+      // Discard is two-step: it destroys the session's whole track —
+      // ask before doing it.
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(strings.discardConfirmTitle),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              key: const ValueKey('stop-discard-confirm'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(strings.discardLabel),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+      await widget.model.discardRecording();
+      return;
+    }
     await widget.model.stopRecording(name: name);
   }
 

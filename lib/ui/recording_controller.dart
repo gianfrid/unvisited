@@ -132,6 +132,22 @@ class RecordingController {
     if (file.existsSync()) file.deleteSync();
   }
 
+  /// Discards a recording: the session stops and the staged file is
+  /// deleted without ever being read — nothing enters the catalog. The
+  /// deletion is the semantic point: startup salvage imports every
+  /// leftover staged file, so a surviving one would resurrect the
+  /// discarded track on the next launch.
+  Future<void> discardRecording() async {
+    final session = _recording;
+    final file = _recordingFile;
+    if (session == null || file == null) return;
+    _recording = null;
+    _recordingFile = null;
+    onChanged();
+    await session.stop();
+    if (file.existsSync()) file.deleteSync();
+  }
+
   /// Pauses the live session: the current `<trkseg>` closes, the paused
   /// stretch changes neither distance nor moving time, and the resume —
   /// the next accepted fix — opens a new segment. No-op when no session

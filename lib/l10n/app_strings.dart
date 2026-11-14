@@ -65,6 +65,13 @@ abstract class AppStrings {
   String get stopRecordingTitle;
   String get recordingNameLabel;
 
+  /// The stop dialog's actions: Save finalizes and imports the track;
+  /// Discard (two-step — [discardConfirmTitle] asks first) ends the
+  /// session and throws the staged track away.
+  String get saveLabel;
+  String get discardLabel;
+  String get discardConfirmTitle;
+
   // Recording dashboard (labels of the stats panel; the values carry
   // their units code-side like the distances do).
   String get statAvgSpeed;
@@ -287,6 +294,12 @@ class EnglishStrings extends AppStrings {
   String get stopRecordingTitle => 'Stop recording';
   @override
   String get recordingNameLabel => 'Track name';
+  @override
+  String get saveLabel => 'Save';
+  @override
+  String get discardLabel => 'Discard';
+  @override
+  String get discardConfirmTitle => 'Discard this recording?';
   @override
   @override
   String get statAvgSpeed => 'Avg speed';
@@ -556,6 +569,12 @@ class ItalianStrings extends AppStrings {
   String get stopRecordingTitle => 'Ferma la registrazione';
   @override
   String get recordingNameLabel => 'Nome della traccia';
+  @override
+  String get saveLabel => 'Salva';
+  @override
+  String get discardLabel => 'Scarta';
+  @override
+  String get discardConfirmTitle => 'Scartare questa registrazione?';
   @override
   @override
   String get statAvgSpeed => 'Media';

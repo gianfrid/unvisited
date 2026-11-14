@@ -841,6 +841,23 @@ void main() {
       },
     );
 
+    test('a discarded session imports nothing and cannot be salvaged', () async {
+      final source = FakePositionSource();
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
+      await Future<void>.delayed(Duration.zero);
+      await model.discardRecording();
+      expect(model.isRecording, isFalse);
+      expect(model.tracks, isEmpty);
+      // The staged file is not merely un-imported — it is gone. Startup
+      // salvage imports every leftover staged file, so a surviving one
+      // would resurrect the discarded track on the next launch.
+      final dir = Directory('${root.path}${Platform.pathSeparator}recording');
+      expect(dir.listSync(), isEmpty);
+      expect(model.salvagedRecordingNames, isEmpty);
+    });
+
     test('a stopped session also matches road corridors', () async {
       // The fake walk starts on Main Street (the roads fixture's way 1001
       // at 52.5200, 13.4050) and walks north.

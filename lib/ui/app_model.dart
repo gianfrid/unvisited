@@ -281,6 +281,7 @@ class AppModel extends ChangeNotifier {
       recorder.startRecording(source: source, permissionGate: permissionGate);
   Future<void> stopRecording({String? name}) =>
       recorder.stopRecording(name: name);
+  Future<void> discardRecording() => recorder.discardRecording();
   void pauseRecording() => recorder.pauseRecording();
   void resumeRecording() => recorder.resumeRecording();
   String recordingName(DateTime start) => recorder.recordingName(start);
