@@ -44,6 +44,13 @@ abstract class RoadMatcher {
   RoadMatchResult match(Iterable<LatLng> unlockCenters);
 }
 
+/// How much closer a rival way must be than the active one before an unlock
+/// center switches attribution. Wide enough to absorb GPS wobble between
+/// parallel ways (the measured hops sit at sub-5 m distance differences),
+/// small enough that genuinely moving onto another way (on-centerline, or a
+/// mid-block crossing) switches immediately.
+const switchMarginMeters = 5.0;
+
 /// Geometric matcher: every unlock center lights the road geometry within
 /// the unlock radius; the covered stretches accumulate per way.
 ///
@@ -52,6 +59,16 @@ abstract class RoadMatcher {
 /// the exact driven route", so there is no routing graph, no timestamps, no
 /// state machine — and a parallel service road over-unlocking is accepted as
 /// cosmetic, the same false positive the 15 m unlock circles already have.
+///
+/// Attribution (hybrid scoring, slice 7): each center's coverage goes to one
+/// way — the way matched at the previous center, as long as it stays within
+/// [switchMarginMeters] of the nearest candidate, otherwise the nearest way.
+/// Real tracks wobble sub-radius distances between parallel ways at every
+/// ambiguous point (measured: 17.6% of points across 24 real recordings,
+/// 401 attribution hops), which would otherwise split matched lengths and
+/// let an un-ridden parallel way complete on wobble alone. Rival ways keep
+/// their own covered-stretch accounting untouched; what changes is only
+/// which way a given center's neighborhood is credited to.
 ///
 /// Performance: the store's z12 buckets are far too coarse to query per
 /// point (a whole mid-sized city fits in a handful of them, so bucket
@@ -80,10 +97,40 @@ class GeometricRoadMatcher extends RoadMatcher {
     final index = _index!;
     // way id → covered intervals (start, end) in meters along the way.
     final covered = <String, List<List<double>>>{};
-
+    String? active;
     for (final center in unlockCenters) {
-      for (final seg in index.segmentsNear(center, radiusMeters)) {
-        _coverSegment(center, seg, covered.putIfAbsent(seg.wayId, () => []));
+      final candidates = index.segmentsNear(center, radiusMeters);
+
+      // Nearest distance per candidate way; the nearest way id overall.
+      final dists = <String, double>{};
+      var best = '';
+      var bestDist = double.infinity;
+      for (final seg in candidates) {
+        final d = seg.distanceTo(center);
+        if (d < (dists[seg.wayId] ?? double.infinity)) {
+          dists[seg.wayId] = d;
+        }
+        if (d < bestDist) {
+          bestDist = d;
+          best = seg.wayId;
+        }
+      }
+
+      // Stickiness: the active way keeps attribution unless the nearest
+      // rival is closer by more than [switchMarginMeters].
+      var chosen = best;
+      if (active != null) {
+        final activeDist = dists[active];
+        if (activeDist != null && activeDist <= bestDist + switchMarginMeters) {
+          chosen = active;
+        }
+      }
+      active = chosen;
+
+      for (final seg in candidates) {
+        if (seg.wayId == chosen) {
+          _coverSegment(center, seg, covered.putIfAbsent(chosen, () => []));
+        }
       }
     }
 
@@ -214,6 +261,22 @@ class _Segment {
         p.longitude * _metersPerDegreeLat * math.cos(_latRefRad),
         p.latitude * _metersPerDegreeLat,
       );
+
+  /// Meters from [p] to this segment: the clamped projection's distance,
+  /// the candidate distance the attribution rule compares across ways.
+  double distanceTo(LatLng p) {
+    final pm = toMeters(p);
+    final len = length;
+    var t = len == 0
+        ? 0.0
+        : ((pm.$1 - aM.$1) * (bM.$1 - aM.$1) +
+                (pm.$2 - aM.$2) * (bM.$2 - aM.$2)) /
+            (len * len);
+    t = t.clamp(0.0, 1.0);
+    final cx = aM.$1 + t * (bM.$1 - aM.$1);
+    final cy = aM.$2 + t * (bM.$2 - aM.$2);
+    return math.sqrt(_pow2(pm.$1 - cx) + _pow2(pm.$2 - cy));
+  }
 }
 
 /// Segment-level spatial hash index, built lazily per z12 bucket.

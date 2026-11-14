@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/road/road_matcher.dart';
@@ -63,15 +65,32 @@ void main() {
     }
   });
 
-  test('crossing a street unlocks part of it, not all', () {
-    // The Main Street walk crosses Cross Avenue (lon 13.4075) once.
+  test('crossing a street mid-block unlocks part of it', () {
+    // A lat line at 52.5210 (111 m north of Main Street, mid-block on Cross
+    // Avenue) crosses Cross Avenue at lon 13.4075. With no rival way in
+    // radius there, attribution switches to it and lights the slice walked.
     final result = matcher.match(
-        line(const LatLng(52.5200, 13.4050), const LatLng(52.5200, 13.4100)));
+        line(const LatLng(52.5210, 13.4050), const LatLng(52.5210, 13.4100)));
     final ratio = result.ratioFor('1002');
     expect(ratio, greaterThan(0.0),
-        reason: 'the intersection area must unlock');
+        reason: 'the crossing corridor must unlock');
     expect(ratio, lessThan(0.2),
         reason: 'only the corridor around the crossing unlocks');
+    expect(result.matchedMeters.containsKey('1001'), isFalse);
+  });
+
+  test('walking a street through a junction lights it, not the cross street', () {
+    // Straight through the Main Street × Cross Avenue junction on Cross
+    // Avenue: Main Street is never more than a wobble away from the active
+    // way at the junction itself, so attribution stays on the ridden street
+    // (the fog circles still light the junction area).
+    final result = matcher.match(
+        line(const LatLng(52.5218, 13.4075), const LatLng(52.5182, 13.4075)));
+    // 0.95, not 1.0: the single center sitting exactly on the junction
+    // (distance 0 to both centerlines) can go to either way, leaving a
+    // ~15 m hole on the ridden street — invisible under the fog circles.
+    expect(result.ratioFor('1002'), greaterThan(0.95));
+    expect(result.matchedMeters.containsKey('1001'), isFalse);
   });
 
   test('a parallel street 44 m away stays locked', () {
@@ -90,11 +109,45 @@ void main() {
     expect(result.matchedMeters.containsKey('1001'), isFalse);
   });
 
-  test('standing at an intersection unlocks all four arms a little', () {
-    // One point at the Main Street × Cross Avenue junction.
-    final result = matcher.match(const [LatLng(52.5200, 13.4075)]);
-    expect(result.ratioFor('1001'), greaterThan(0));
-    expect(result.ratioFor('1002'), greaterThan(0));
+  test('wobbling between Main Street and the service road stays on Main', () {
+    // Service Road runs 8 m north of Main Street (within the 15 m radius of
+    // every point). Riding Main Street with ±3 m GPS jitter must attribute
+    // every center to Main Street — sub-margin rival distance may not split
+    // the matched length onto the un-ridden way.
+    const jitter = 3.0 / 111320; // 3 m in degrees of latitude
+    final lonStep = 20 / (111320 * math.cos(52.52 * math.pi / 180));
+    final centers = <LatLng>[];
+    for (var i = 0; i <= 22; i++) {
+      final lon = 13.4050 + i * lonStep;
+      centers.add(LatLng(52.5200 + jitter, lon));
+      centers.add(LatLng(52.5200 - jitter, lon));
+    }
+    final result = matcher.match(centers);
+    expect(result.ratioFor('1001'), greaterThan(0.9));
+    expect(result.matchedMeters.containsKey('1004'), isFalse,
+        reason: 'the un-ridden parallel way must not complete on wobble');
+  });
+
+  test('riding onto the service road switches attribution to it', () {
+    // Jittered Main Street wobble for half the walk, then a genuine move
+    // onto the service road's centerline (8 m from Main — beyond the switch
+    // margin): attribution flips and the service road completes.
+    const serviceLat = 52.5200719;
+    const jitter = 3.0 / 111320;
+    final lonStep = 20 / (111320 * math.cos(52.52 * math.pi / 180));
+    final centers = <LatLng>[];
+    for (var i = 0; i <= 1; i++) {
+      final lon = 13.4050 + i * lonStep;
+      centers.add(LatLng(52.5200 + jitter, lon));
+      centers.add(LatLng(52.5200 - jitter, lon));
+    }
+    for (var i = 2; i <= 22; i++) {
+      centers.add(LatLng(serviceLat, 13.4050 + i * lonStep));
+    }
+    final result = matcher.match(centers);
+    expect(result.ratioFor('1004'), greaterThan(0.9));
+    expect(result.ratioFor('1001'), lessThan(0.9),
+        reason: 'Main Street stops accruing at the switch point');
   });
 
   test('matching parses only the buckets the track touches', () {

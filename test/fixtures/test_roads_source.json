@@ -17,6 +17,12 @@
       "class": "residential",
       "name": "Parallel Lane",
       "points": [[52.5204, 13.4050], [52.5204, 13.4100]]
+    },
+    {
+      "id": "1004",
+      "class": "service",
+      "name": "Service Road",
+      "points": [[52.5200719, 13.4050], [52.5200719, 13.4100]]
     }
   ]
 }

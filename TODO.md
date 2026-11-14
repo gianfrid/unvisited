@@ -11,10 +11,6 @@ bundled in the APK (regions are user-provided files); the build CLI's PBF
 reader is dev-tool-only (hand-written in `tool/`, no package dependency);
 unlock state persists as way ids + matched-length ratio in `index.json`.
 
-- [] slice 7 — hybrid scoring (optional, only if quality demands):
-  candidate preference for the previously active way to stop hopping
-  between parallel roads; fixture with a service road beside a main road.
-
 Recording + ride/walk dashboard — decided architecture (research report:
 docs/active-recording-for-unvisited-research-report.md; owner direction
 2026-11-13: recording is in scope, Android first, the app stops being
