@@ -35,6 +35,54 @@ void main() {
     return root;
   }
 
+  /// Mocks the geolocator host channel. [permission] is the int the plugin
+  /// uses for a LocationPermission; [position] is returned by
+  /// getCurrentPosition (null means the fix times out).
+  void mockGeolocator(
+    WidgetTester tester, {
+    required int permission,
+    bool serviceEnabled = true,
+    Map<String, double>? position,
+    Duration fixDelay = Duration.zero,
+  }) {
+    const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        geolocatorChannel, (call) async {
+      switch (call.method) {
+        case 'isLocationServiceEnabled':
+          return serviceEnabled;
+        case 'checkPermission':
+        case 'requestPermission':
+          return permission;
+        case 'getCurrentPosition':
+          // A real fix is never instant; a delay lets tests observe the
+          // in-flight state.
+          if (fixDelay > Duration.zero) await Future.delayed(fixDelay);
+          if (position == null) {
+            throw PlatformException(code: 'TIMEOUT', message: 'no fix');
+          }
+          return <String, dynamic>{
+            'latitude': position['lat'],
+            'longitude': position['lon'],
+            'timestamp': 0,
+            'accuracy': 5.0,
+            'altitude': 0.0,
+            'altitudeAccuracy': 0.0,
+            'heading': 0.0,
+            'speed': 0.0,
+            'speedAccuracy': 0.0,
+            'floor': null,
+            'isMocked': false,
+          };
+      }
+      fail('unexpected geolocator method ${call.method}');
+    });
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(geolocatorChannel, null);
+    });
+  }
+
   testWidgets('MapPage builds its tile layer without crashing', (tester) async {
     final root = createRoot();
     final cache = Directory.systemTemp.createTempSync('unvisited-cache');
@@ -112,6 +160,12 @@ void main() {
     final model = AppModel(TrackStore(root));
     await model.load();
     final source = FakePositionSource();
+    // The Record button is gated on a real fix (slice 6): grant the mock
+    // a position so the startup poll opens the gate.
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 52.5200,
+      'lon': 13.4050,
+    });
 
     await tester.pumpWidget(MaterialApp(
       home: MapPage(
@@ -121,6 +175,7 @@ void main() {
         locationSupported: true,
       ),
     ));
+    await tester.pump();
     await tester.pump();
 
     // Record tile visible, no chip yet: nothing records until the tap.
@@ -931,53 +986,6 @@ void main() {
     expect(center.longitude, closeTo(151.2093, 1e-9));
   });
 
-  /// Mocks the geolocator host channel. [permission] is the int the plugin
-  /// uses for a LocationPermission; [position] is returned by
-  /// getCurrentPosition (null means the fix times out).
-  void mockGeolocator(
-    WidgetTester tester, {
-    required int permission,
-    bool serviceEnabled = true,
-    Map<String, double>? position,
-    Duration fixDelay = Duration.zero,
-  }) {
-    const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        geolocatorChannel, (call) async {
-      switch (call.method) {
-        case 'isLocationServiceEnabled':
-          return serviceEnabled;
-        case 'checkPermission':
-        case 'requestPermission':
-          return permission;
-        case 'getCurrentPosition':
-          // A real fix is never instant; a delay lets tests observe the
-          // in-flight state.
-          if (fixDelay > Duration.zero) await Future.delayed(fixDelay);
-          if (position == null) {
-            throw PlatformException(code: 'TIMEOUT', message: 'no fix');
-          }
-          return <String, dynamic>{
-            'latitude': position['lat'],
-            'longitude': position['lon'],
-            'timestamp': 0,
-            'accuracy': 5.0,
-            'altitude': 0.0,
-            'altitudeAccuracy': 0.0,
-            'heading': 0.0,
-            'speed': 0.0,
-            'speedAccuracy': 0.0,
-            'floor': null,
-            'isMocked': false,
-          };
-      }
-      fail('unexpected geolocator method ${call.method}');
-    });
-    addTearDown(() {
-      tester.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(geolocatorChannel, null);
-    });
-  }
 
   /// Pumps a MapPage wide enough that every header action is tappable.
   Future<AppModel> pumpMap(
@@ -1019,9 +1027,62 @@ void main() {
 
     expect(find.text('Locate'), findsNothing);
     expect(find.byTooltip('Center on current position'), findsNothing);
+    expect(find.text('Record'), findsNothing,
+        reason: 'no location support means no fix can ever arrive');
     // The rest of the toolbar is untouched.
     expect(find.text('Import'), findsOneWidget);
     expect(find.text('Fit'), findsOneWidget);
+  });
+
+  testWidgets('no fix yet means no Record button; a later fix reveals it',
+      (tester) async {
+    // GPS off at startup: the one-shot poll fails, the button must be
+    // hidden — dead, never tappable — and stay hidden until a fix
+    // actually arrives through the retry loop.
+    mockGeolocator(tester, permission: 3, serviceEnabled: false);
+    await pumpMap(tester);
+    expect(find.text('Record'), findsNothing);
+
+    // GPS comes on and delivers a fix: the next silent retry (30 s)
+    // picks it up and the button appears with no restart.
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 52.5200,
+      'lon': 13.4050,
+    });
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(find.text('Record'), findsOneWidget);
+  });
+
+  testWidgets('a fix at startup shows the Record button immediately',
+      (tester) async {
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 52.5200,
+      'lon': 13.4050,
+    });
+    await pumpMap(tester);
+    // The startup silent poll's fix already opened the gate: no wait for
+    // the retry loop.
+    expect(find.text('Record'), findsOneWidget);
+  });
+
+  testWidgets('a successful locate opens the Record button without waiting',
+      (tester) async {
+    // No fix at startup; the user asks the Locate button, which prompts.
+    mockGeolocator(tester, permission: 1); // denied: silently not asked yet
+    await pumpMap(tester);
+    expect(find.text('Record'), findsNothing);
+
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 48.8584,
+      'lon': 2.2945,
+    });
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Record'), findsOneWidget,
+        reason: 'a real fix landed, via Locate rather than the retry');
   });
 
   testWidgets('locate centers on the fix and zooms in', (tester) async {

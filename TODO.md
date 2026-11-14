@@ -27,11 +27,6 @@ course-up marker). Background location is deliberately never requested
 staged file as a partial track on next start. Desktop recording is backlog
 (no Linux location plugin).
 
-- [] slice 6 — Record button only when a position is actually obtained:
-  today it shows whenever the platform supports location; gate it on a fix
-  (poll once at startup / listen to the position stream) so GPS-off shows
-  no dead Record button. Desktop Linux stays hidden outright.
-
 Track list — catalog UX:
 
 - [] slice 7 — duration in the track list: `TrackData` gains

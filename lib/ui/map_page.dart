@@ -123,6 +123,7 @@ class _MapPageState extends State<MapPage> {
     // permission granted yet this is a no-op — only the locate button
     // asks.
     _silentPositionUpdate();
+    _startFixRetryTimer();
     _announceSalvagedRecordings();
   }
 
@@ -159,6 +160,32 @@ class _MapPageState extends State<MapPage> {
   /// How far the map center may drift from [_locatedPosition] before the
   /// marker is dropped. Roughly half a city block at the locate zoom.
   static const _markerClearDistance = 50.0; // meters
+
+  /// Whether a real position fix has actually been obtained. Distinct
+  /// from [_locatedPosition] — which pan-drop clears — so panning away
+  /// from the fix never hides a working Record button. Only a real fix
+  /// (the silent poll or the Locate button) sets it; where no fix can
+  /// come (GPS off, no plugin) it stays false and Record stays hidden
+  /// instead of sitting there as a dead button.
+  bool _gpsWorking = false;
+
+  /// How long the page waits before another silent fix attempt while
+  /// [_gpsWorking] is still false: GPS may have been off or cold at
+  /// startup; once it comes up, the button must appear without the user
+  /// restarting the app.
+  static const _fixRetryInterval = Duration(seconds: 30);
+  Timer? _fixRetryTimer;
+
+  /// Arms the silent retry loop. The startup poll and the retries share
+  /// [_silentPositionUpdate]; every caller that sees a fix cancels the
+  /// loop — no retries once a fix exists.
+  void _startFixRetryTimer() {
+    if (!widget.locationSupported) return;
+    _fixRetryTimer?.cancel();
+    if (_gpsWorking) return;
+    _fixRetryTimer =
+        Timer.periodic(_fixRetryInterval, (_) => _silentPositionUpdate());
+  }
 
   /// Whether the map follows the recording fixes (the dashboard's
   /// follow-camera): a new session arms it, a user pan releases it —
@@ -225,6 +252,7 @@ class _MapPageState extends State<MapPage> {
   @override
   void dispose() {
     _mapEvents?.cancel();
+    _fixRetryTimer?.cancel();
     widget.model.removeListener(_onModelChanged);
     super.dispose();
   }
@@ -478,8 +506,10 @@ class _MapPageState extends State<MapPage> {
   Future<void> _silentPositionUpdate() async {
     final pos = await widget.model.currentPosition(prompt: false);
     if (!mounted || pos == null) return;
-    // The startup fix is a real position: show the marker for it too.
+    // The fix is real: it opens the Record button and shows the marker.
     setState(() => _locatedPosition = pos);
+    _gpsWorking = true;
+    _fixRetryTimer?.cancel();
     // Saved tracks fit the whole catalog; only the empty map follows the
     // position so imports and track fits are never fought over.
     if (widget.model.visibleTracks.isNotEmpty) return;
@@ -510,6 +540,10 @@ class _MapPageState extends State<MapPage> {
         return;
       }
       setState(() => _locatedPosition = pos);
+      // A deliberated locate is also evidence the GPS works: it opens the
+      // Record button, no silent retry needed.
+      _gpsWorking = true;
+      _fixRetryTimer?.cancel();
       // Never zoom out: a user already closer than the locate zoom keeps
       // their detail level.
       final zoom = _mapController.camera.zoom < _locateZoom
@@ -862,11 +896,14 @@ class _MapPageState extends State<MapPage> {
                       onTap: _locating ? null : _locate,
                     ),
                   // Record: hidden where the platform cannot deliver a
-                  // position (no host plugin, desktop Linux) — a session
-                  // could never start there. While recording the same
-                  // slot stops it; the chip below shows the live stats
-                  // and a pause action sits beside it.
-                  if (widget.locationSupported)
+                  // position (no host plugin, desktop Linux) or none has
+                  // actually arrived yet (GPS off at startup — the silent
+                  // retry loop picks the button up once a fix exists) — a
+                  // session could never start there. While recording the
+                  // same slot stops it; the chip below shows the live
+                  // stats and a pause action sits beside it.
+                  if (widget.locationSupported &&
+                      (_gpsWorking || widget.model.isRecording))
                     _HeaderAction(
                       icon: Icon(widget.model.isRecording
                           ? Icons.stop
