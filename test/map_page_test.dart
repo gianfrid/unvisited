@@ -751,9 +751,8 @@ void main() {
         closeTo(16.0, 1.0),
         reason: 'locate clears the bottom safe-area inset',
       );
-      // The top bar is untouched: Import and Fit stay up there.
+      // The top bar is untouched: Import stays up there.
       expect(tester.getRect(find.text('Import')).top, lessThan(100));
-      expect(tester.getRect(find.text('Fit')).top, lessThan(100));
 
       // A fix arrives through the locate tap: the Record button appears in
       // the slot directly above Locate.
@@ -1339,8 +1338,9 @@ void main() {
         reason: 'the $label action must be captioned',
       );
     }
-    // Fit is disabled on the empty map, but still shows its label.
-    expect(find.text('Fit'), findsOneWidget);
+    // The global Fit button is gone; fitting is per aggregate via
+    // selection.
+    expect(find.text('Fit'), findsNothing);
   });
 
   testWidgets('the UI renders in Italian when the locale is Italian', (
@@ -1378,7 +1378,6 @@ void main() {
     // Toolbar captions.
     for (final label in const [
       'Importa',
-      'Inquadra',
       'Posizione',
       'Tracce',
       'Impostazioni',
@@ -1721,7 +1720,6 @@ void main() {
     );
     // The rest of the toolbar is untouched.
     expect(find.text('Import'), findsOneWidget);
-    expect(find.text('Fit'), findsOneWidget);
   });
 
   testWidgets('no fix yet means no Record button; a later fix reveals it', (

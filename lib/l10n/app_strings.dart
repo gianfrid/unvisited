@@ -36,7 +36,6 @@ abstract class AppStrings {
   // Header actions (captions are short: the toolbar is 48 px per action).
   String get importLabel;
   String get importTooltip;
-  String get fitLabel;
   String get fitTooltip;
   String get locateLabel;
   String get locateTooltip;
@@ -208,7 +207,6 @@ class EnglishStrings extends AppStrings {
   @override
   String get importTooltip => 'Import tracks';
   @override
-  String get fitLabel => 'Fit';
   @override
   String get fitTooltip => 'Fit tracks';
   @override
@@ -442,7 +440,6 @@ class ItalianStrings extends AppStrings {
   @override
   String get importTooltip => 'Importa tracce';
   @override
-  String get fitLabel => 'Inquadra';
   @override
   String get fitTooltip => 'Inquadra le tracce';
   @override

@@ -400,14 +400,6 @@ class _MapPageState extends State<MapPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => attempt());
   }
 
-  void _fitTracks() {
-    final pts = widget.model.allVisiblePoints;
-    if (pts.isEmpty) return;
-    _fitWhenSized(
-      CameraFit.coordinates(coordinates: pts, padding: _fitPadding),
-    );
-  }
-
   Future<void> _pickFolder() async {
     final strings = AppStrings.ofContext(context);
     try {
@@ -1128,13 +1120,6 @@ class _MapPageState extends State<MapPage> {
                         label: strings.importLabel,
                         tooltip: strings.importTooltip,
                         onTap: _chooseImport,
-                      ),
-                    if (!widget.model.isRecording)
-                      HeaderAction(
-                        icon: const Icon(Icons.zoom_out_map),
-                        label: strings.fitLabel,
-                        tooltip: strings.fitTooltip,
-                        onTap: mapTracks.isEmpty ? null : _fitTracks,
                       ),
                     Builder(
                       builder: (context) => HeaderAction(

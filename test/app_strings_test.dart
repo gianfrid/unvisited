@@ -8,7 +8,6 @@ import 'package:unvisited/l10n/app_strings.dart';
 Map<String, String> allStrings(AppStrings s) => {
       'importLabel': s.importLabel,
       'importTooltip': s.importTooltip,
-      'fitLabel': s.fitLabel,
       'fitTooltip': s.fitTooltip,
       'locateLabel': s.locateLabel,
       'locateTooltip': s.locateTooltip,
