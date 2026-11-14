@@ -713,21 +713,24 @@ class _MapPageState extends State<MapPage> {
               ),
             ],
           ),
-          // Lateral zoom control on the configured edge (settings).
-          // SafeArea: without an app bar the window insets (notches,
-          // status bar) are the map's top edge now. On the right it starts
-          // below the toolbar band, so the two never overlap on narrow
-          // screens (the toolbar is centered and can reach the edges).
+          // Lateral zoom control on the configured edge (settings),
+          // vertically centered in the free band between the toolbar and
+          // the bottom. SafeArea keeps the band inset-aware; the right
+          // side still starts below the toolbar band, so the two never
+          // overlap on narrow screens (the toolbar is centered and can
+          // reach the edges) — the left side has no toolbar there.
           Positioned(
             top: 0,
+            bottom: 0,
             left: widget.model.zoomSliderSide == 'left' ? 12 : null,
             right: widget.model.zoomSliderSide == 'left' ? null : 12,
             child: SafeArea(
               minimum: EdgeInsets.only(
                   top: widget.model.zoomSliderSide == 'left'
                       ? 16
-                      : kToolbarHeight + 24),
-              child: _ZoomSlider(controller: _mapController),
+                      : kToolbarHeight + 24,
+                  bottom: 16),
+              child: Center(child: _ZoomSlider(controller: _mapController)),
             ),
           ),
           // Compact floating toolbar, centered across the top instead of
