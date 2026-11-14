@@ -202,6 +202,18 @@ abstract class AppStrings {
   String get trackMenuTooltip;
   String get trackMenuInfo;
   String get trackMenuExport;
+
+  // The track info dialog's labels (values are plain numbers/formats).
+  String get infoTitle;
+  String get infoStart;
+  String get infoFormat;
+  String get infoPoints;
+  String get infoDistance;
+  String get infoDuration;
+  String get infoAvgSpeed;
+
+  /// A track's start date/time, locale-formatted for the info dialog.
+  String trackStart(DateTime start);
 }
 
 class EnglishStrings extends AppStrings {
@@ -226,6 +238,27 @@ class EnglishStrings extends AppStrings {
   String get trackMenuInfo => 'Info';
   @override
   String get trackMenuExport => 'Export';
+  @override
+  String get infoTitle => 'Track info';
+  @override
+  String get infoStart => 'Started';
+  @override
+  String get infoFormat => 'Format';
+  @override
+  String get infoPoints => 'Points';
+  @override
+  String get infoDistance => 'Distance';
+  @override
+  String get infoDuration => 'Duration';
+  @override
+  String get infoAvgSpeed => 'Average speed';
+  @override
+  String trackStart(DateTime start) =>
+      '${start.year.toString().padLeft(4, '0')}-'
+      '${start.month.toString().padLeft(2, '0')}-'
+      '${start.day.toString().padLeft(2, '0')} '
+      '${start.hour.toString().padLeft(2, '0')}:'
+      '${start.minute.toString().padLeft(2, '0')}';
   @override
   String get locateLabel => 'Locate';
   @override
@@ -470,6 +503,27 @@ class ItalianStrings extends AppStrings {
   String get trackMenuInfo => 'Info';
   @override
   String get trackMenuExport => 'Esporta';
+  @override
+  String get infoTitle => 'Info traccia';
+  @override
+  String get infoStart => 'Iniziata';
+  @override
+  String get infoFormat => 'Formato';
+  @override
+  String get infoPoints => 'Punti';
+  @override
+  String get infoDistance => 'Distanza';
+  @override
+  String get infoDuration => 'Durata';
+  @override
+  String get infoAvgSpeed => 'Velocità media';
+  @override
+  String trackStart(DateTime start) =>
+      '${start.day.toString().padLeft(2, '0')}/'
+      '${start.month.toString().padLeft(2, '0')}/'
+      '${start.year.toString().padLeft(4, '0')} '
+      '${start.hour.toString().padLeft(2, '0')}:'
+      '${start.minute.toString().padLeft(2, '0')}';
   @override
   String get locateLabel => 'Posizione';
   @override

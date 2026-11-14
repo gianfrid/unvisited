@@ -1207,6 +1207,51 @@ void main() {
     expect(find.text('Export'), findsOneWidget);
   });
 
+  testWidgets('track info dialog shows the catalog metadata', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.byTooltip('Track actions'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Info'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The dialog title is the track name; every metadata row renders.
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Morning walk'), findsAtLeastNWidgets(1));
+    expect(find.text('Started'), findsOneWidget);
+    expect(find.text('Format'), findsOneWidget);
+    expect(find.text('Points'), findsOneWidget);
+    expect(find.text('Distance'), findsOneWidget);
+    expect(find.text('Duration'), findsOneWidget);
+    expect(find.text('Average speed'), findsOneWidget);
+    // The fixture carries a start time and duration, so no '—' anywhere.
+    expect(find.text('—'), findsNothing);
+
+    // Closing brings the drawer back unchanged (the dialog's exit
+    // animation takes the usual 300 ms out of the sheet too).
+    await tester.tap(find.byType(TextButton));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(model.tracks, isNotEmpty);
+  });
+
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {
     final root = createRoot();
     final cache = createCache();

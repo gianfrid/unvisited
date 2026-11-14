@@ -1,5 +1,6 @@
 /// The tracks drawer: the catalog ordered most-recent-first, its tiles
-/// with visibility, swipe/button delete.
+/// with visibility, an aggregated color dot, the ⋮ menu (Info / Delete /
+/// Export) and swipe delete.
 library;
 
 import 'package:flutter/material.dart';
@@ -122,6 +123,78 @@ class _TrackTile extends StatelessWidget {
         true;
   }
 
+  /// The average speed as distance over duration in km/h, or null when
+  /// either side is unknown or zero (never a fabricated 0 or infinity).
+  double? _avgSpeed() {
+    final seconds = track.durationSeconds;
+    if (seconds == null || seconds <= 0) return null;
+    return track.distanceMeters / seconds * 3.6;
+  }
+
+  /// The info dialog: start date/time, format, point count, distance,
+  /// duration and the average speed over the measured duration — values
+  /// the catalog already carries, never recomputed from the file on disk
+  /// (that would re-read and re-parse just to draw a dialog). The close
+  /// label reuses the existing Cancel string.
+  void _showInfo(BuildContext context, AppStrings strings) {
+    final duration = track.durationSeconds;
+    final avg = _avgSpeed() == null
+        ? '—'
+        : '${_avgSpeed()!.toStringAsFixed(1)} km/h';
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(track.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _infoRow(
+              strings.infoStart,
+              track.startTimeUtc == null
+                  ? '—'
+                  : strings.trackStart(track.startTimeUtc!),
+            ),
+            _infoRow(strings.infoFormat, track.format),
+            _infoRow(strings.infoPoints, track.pointCount.toString()),
+            _infoRow(
+                strings.infoDistance, formatDistance(track.distanceMeters)),
+            _infoRow(
+              strings.infoDuration,
+              duration == null
+                  ? '—'
+                  : formatDuration(Duration(seconds: duration.round())),
+            ),
+            _infoRow(strings.infoAvgSpeed, avg),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(strings.deleteConfirmCancel),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(label,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+          ),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
@@ -163,6 +236,8 @@ class _TrackTile extends StatelessWidget {
           icon: const Icon(Icons.more_vert),
           onSelected: (entry) async {
             switch (entry) {
+              case 'info':
+                _showInfo(context, strings);
               case 'delete':
                 if (await _confirmDelete(context, strings)) {
                   await model.delete(track);
