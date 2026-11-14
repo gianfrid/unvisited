@@ -81,6 +81,11 @@ class _MapPageState extends State<MapPage> {
   /// around the user, far enough to keep their bearings.
   static const _locateZoom = 16.0;
 
+  /// Hysteresis for the course-up camera rotation: only rotate the
+  /// camera when the course delta vs its current rotation reaches this
+  /// many degrees; below, leave the rotation untouched.
+  static const double courseDeltaThreshold = 1.0;
+
   @override
   void initState() {
     super.initState();
@@ -311,11 +316,19 @@ class _MapPageState extends State<MapPage> {
           _mapController.move(
               LatLng(lat, lon), _mapController.camera.zoom);
         } else {
-          _mapController.moveAndRotate(
-              LatLng(lat, lon),
-              _mapController.camera.zoom,
-              nearestEquivalentRotation(
-                  course, _mapController.camera.rotation));
+          final courseDelta =
+              nearestEquivalentRotation(course, _mapController.camera.rotation) -
+                  _mapController.camera.rotation;
+          if (courseDelta.abs() >= courseDeltaThreshold) {
+            _mapController.moveAndRotate(
+                LatLng(lat, lon),
+                _mapController.camera.zoom,
+                nearestEquivalentRotation(
+                    course, _mapController.camera.rotation));
+          } else {
+            _mapController.move(
+                LatLng(lat, lon), _mapController.camera.zoom);
+          }
         }
       }
     }

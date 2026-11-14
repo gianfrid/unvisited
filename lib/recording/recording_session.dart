@@ -114,6 +114,14 @@ class RecordingSession {
   double? get currentCourse => _currentCourse;
   double? _currentCourse;
 
+  /// The device's own reported heading from the last accepted fix, kept
+  /// separate from the bridged-bearing `currentCourse` (bug 1): a fix
+  /// that carries a heading sets both to the same value, a fix that
+  /// does not leaves `currentHeading` null while `currentCourse` falls
+  /// back to the bearing between fixes.
+  double? get currentHeading => _currentHeading;
+  double? _currentHeading;
+
   double? _lastLat;
   double? _lastLon;
 
@@ -208,6 +216,7 @@ class RecordingSession {
     // fix is overwritten below.
     _currentCourse = fix.heading ??
         (first ? null : _bearing(_lastLat!, _lastLon!, fix.lat, fix.lon));
+    _currentHeading = fix.heading;
     _lastFix = fix.time;
     _lastLat = fix.lat;
     _lastLon = fix.lon;
