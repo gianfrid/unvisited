@@ -28,9 +28,9 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md).
 - Every non-trivial change — a TODO.md unit or not — goes through PLAN.md:
   1. Create PLAN.md with concrete implementation steps for the change.
   2. Show the plan and wait for explicit confirmation before touching code. Investigation (reading files, searching, read-only checks) needs no confirmation, and there is no pre-authorization: "keep working on TODO.md" does not skip this step.
-  3. On confirmation, implement, run tests, and commit with a message describing what was done.
-  4. After a successful commit, truncate PLAN.md to an empty header. A completed TODO.md unit's entry is removed in the same commit as the work — never delete a TODO.md entry for work that failed or was not committed.
-- Commit messages are the permanent record; write them as if PLAN.md will be erased, because it will be.
+  3. On confirmation, implement, run tests, and commit with a message describing what was done. PLAN.md itself is part of that commit — the plan is committed with the change it implements, together with the removal of the completed TODO.md entry when it is one.
+  4. After a successful commit, truncate PLAN.md to an empty header; its full text lives on in the implementing commit's history. Never delete a TODO.md entry for work that failed or was not committed.
+- Commit messages are the permanent record; write them as if PLAN.md will be erased, because only the header remains after the commit.
 
 ## Agent guidelines
 
