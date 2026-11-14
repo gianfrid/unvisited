@@ -13,5 +13,3 @@ Recording dashboard UX (triage):
 4. - [ ] Bottom buttons need a background — a bar like the top one or the
    zoom slider (`lib/ui/zoom_slider.dart`) — they are not readable on the
    map. Styling of the bottom action bar in `lib/ui/map_page.dart`.
-5. - [ ] Aggregate track menu is too large; integrate its buttons into the
-   top bar instead (`lib/ui/map_page.dart` / `lib/ui/map_actions.dart`).

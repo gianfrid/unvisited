@@ -24,6 +24,7 @@ import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/tile_source.dart';
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/fog_of_war.dart';
+import 'package:unvisited/ui/map_actions.dart';
 import 'package:unvisited/ui/map_page.dart';
 import 'package:unvisited/ui/track_colors.dart';
 
@@ -1019,6 +1020,13 @@ void main() {
     expect(model.selectedAggregate!.trackIds,
         [model.tracks.single.id]);
     expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+    // The selection actions live inside the top toolbar pill now.
+    expect(
+        find.ancestor(
+          of: find.byKey(const ValueKey('selection-hide')),
+          matching: find.byType(FloatingToolbar),
+        ),
+        findsOneWidget);
     // The highlight rides a second circle layer above the fog.
     expect(tester.widgetList<CircleLayer>(find.byType(CircleLayer)),
         hasLength(2));

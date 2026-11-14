@@ -1,73 +1,44 @@
-# Plan — rename app package com.example.unvisited → io.github.gianfrid.unvisited, display name → "UnVisited" (TODO.md "Packaging", item 1)
+# Plan — aggregate selection actions into the top bar (TODO.md "Recording dashboard UX (triage)", unit 5)
 
-Single unit, single commit. The TODO says "everywhere it appears", so the
-cosmetic `com.example` strings (Windows `CompanyName`/`LegalCopyright`,
-macOS `PRODUCT_COPYRIGHT`) are swept in the same commit rather than left
-behind.
-
-Target id: `io.github.gianfrid.unvisited`
+The aggregate selection currently renders as a large bottom-center card
+(`_selectionBar` in `lib/ui/map_page.dart:655`, shown via the `Positioned`
+at `map_page.dart:1257-1265`). Move its four actions — hide, color, fit,
+dismiss — into the existing top `FloatingToolbar` pill, shown only while an
+aggregate is selected, and delete the bottom bar.
 
 ## Steps
 
-1. **Android**
-   - `android/app/build.gradle.kts`: `namespace` and `applicationId` → target id.
-   - `git mv android/app/src/main/kotlin/com/example/unvisited/MainActivity.kt`
-     → `android/app/src/main/kotlin/io/github/gianfrid/unvisited/MainActivity.kt`
-     (create parent dirs first), and update the `package` declaration in the file.
-   - `AndroidManifest.xml` needs no change (uses `.MainActivity` and
-     `${applicationName}`).
+1. In `map_page.dart`, extract the selection actions (hide / color /
+   fit / dismiss) from `_selectionBar` into a small widget (e.g.
+   `_selectionActions(strings)`) returning the `Row` of action buttons,
+   keeping every existing `ValueKey` (`selection-hide`, `selection-color`,
+   `selection-fit`, `selection-dismiss`) and tooltips unchanged. The
+   container keeps the `ValueKey('selection-bar')` so presence-based
+   widget tests still work.
+2. Append those actions to the `FloatingToolbar.children` list, guarded by
+   `if (widget.model.selectedAnchor != null)`, after the Settings action.
+   Use plain icon buttons (same icons, same callbacks) so the pill stays
+   compact; the color action remains a `PopupMenuButton` with the same
+   `explorationTints` items.
+3. Remove the bottom `Positioned` + `SafeArea` + `_selectionBar` block and
+   the now-unused `_selectionBar` method (the `Card`/padding wrapper goes
+   away entirely — the pill provides the background).
+4. Comment updates: the toolbar comment at ~1147 and the selection-bar
+   comment at ~1251 describe the old layout; adjust to the new one.
+5. Tests (`test/map_page_test.dart`): the existing selection tests tap the
+   action keys and assert `selection-bar` presence — they should pass
+   unchanged since keys are preserved. Add one assertion that the
+   selection actions appear inside the toolbar (e.g. `find.ancestor` of
+   `selection-hide` with `FloatingToolbar`) and that the bottom bar is
+   gone. Run `flutter analyze` + `flutter test`.
+6. Commit with this PLAN.md and remove unit 5 from TODO.md in the same
+   commit.
 
-2. **Linux**
-   - `linux/CMakeLists.txt`: `APPLICATION_ID` (line 10), the comment on line 132,
-     and the `file(COPY ...)` source path on line 143.
-   - `git mv linux/com.example.unvisited.desktop`
-     → `linux/io.github.gianfrid.unvisited.desktop`; update `StartupWMClass`
-     and the comment inside it.
-   - `linux/desktop-entry.sh`: both references on lines 25–26.
+## Notes
 
-3. **iOS**
-   - `ios/Runner.xcodeproj/project.pbxproj`: 3 × `PRODUCT_BUNDLE_IDENTIFIER =
-     com.example.unvisited` → target id; 3 × `...RunnerTests` →
-     `io.github.gianfrid.unvisited.RunnerTests`.
-
-4. **macOS**
-   - `macos/Runner/Configs/AppInfo.xcconfig`: `PRODUCT_BUNDLE_IDENTIFIER` →
-     target id; `PRODUCT_COPYRIGHT` `com.example` → `io.github.gianfrid`.
-   - `macos/Runner.xcodeproj/project.pbxproj`: 3 × `...RunnerTests` entries.
-
-5. **Windows (cosmetic sweep)**
-   - `windows/runner/Runner.rc`: `CompanyName` and `LegalCopyright`.
-
-6. **Display name → "UnVisited"** (display strings only; binary/executable
-   names stay lowercase — they are identifiers, not names)
-   - `android/app/src/main/AndroidManifest.xml`: `android:label` → `UnVisited`.
-   - `ios/Runner/Info.plist`: `CFBundleDisplayName` `Unvisited` → `UnVisited`;
-     `CFBundleName` `unvisited` → `UnVisited`.
-   - `macos/Runner/Configs/AppInfo.xcconfig`: `PRODUCT_NAME` → `UnVisited`
-     (macOS `CFBundleName` is `$(PRODUCT_NAME)`).
-   - `linux/io.github.gianfrid.unvisited.desktop` (renamed in step 2):
-     `Name=Unvisited` → `UnVisited`. `Exec`/`Icon` stay `unvisited`.
-   - `windows/runner/Runner.rc`: `FileDescription`, `InternalName`,
-     `ProductName` → `UnVisited`. `OriginalFilename` `unvisited.exe` stays.
-
-7. **Verify**
-   - `grep -rn "com.example"` over the repo (excluding `build/`, `.dart_tool/`,
-     `.gradle/`, `.git/`) returns only this plan, TODO.md, and git history.
-   - `grep -rn "Unvisited\|\"unvisited\""` on the touched platform files shows
-     only the intended `UnVisited` display strings.
-   - `flutter analyze` — clean.
-   - `flutter test` — pass.
-   - `flutter build apk --debug` — succeeds (exercises namespace + Kotlin
-     package + manifest merge together).
-
-8. **Commit** all of the above plus this PLAN.md, and remove the completed
-   Packaging item from TODO.md in the same commit.
-
-## Notes / assumptions
-
-- `applicationId` change means an already-installed debug build installs as a
-  fresh app rather than upgrading in place — irrelevant for development.
-- Linux desktop build (`flutter build linux`) is not run here; the CMake
-  install path coupling is covered by the grep check and a manual build if
-  desired.
-- No Dart code references the package id (verified: `lib/` is clean).
+- While recording, the toolbar holds only Tracks/Settings; selection
+  actions would join them there too if an aggregate is selected mid-session
+  (selection is possible then via track-tile tap). Kept for consistency;
+  revisit if it crowds.
+- Bottom-left record/locate stack is untouched — this unit only moves the
+  aggregate selection actions.

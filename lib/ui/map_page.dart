@@ -342,10 +342,8 @@ class _MapPageState extends State<MapPage> {
       _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
     } else {
       // With a reported heading, currentCourse is that same heading.
-      final courseDelta = nearestEquivalentRotation(
-            heading,
-            _mapController.camera.rotation,
-          ) -
+      final courseDelta =
+          nearestEquivalentRotation(heading, _mapController.camera.rotation) -
           _mapController.camera.rotation;
       if (courseDelta.abs() >= courseDeltaThreshold) {
         _mapController.moveAndRotate(
@@ -388,15 +386,18 @@ class _MapPageState extends State<MapPage> {
     if (selected == null) return const [];
     final key = widget.model.aggregateTintKeys[selected.anchorId];
     final tint = exploredAreaColor(key ?? defaultTintKey);
-    final highlight = tint.withValues(
-      alpha: (tint.a + 0.55).clamp(0.0, 1.0),
-    );
+    final highlight = tint.withValues(alpha: (tint.a + 0.55).clamp(0.0, 1.0));
     return [
       for (final c in unlockCenters(
         selected.points,
         cellSizeMeters: _fogCellSize,
       ))
-        CircleMarker(point: c, color: highlight, radius: unlockRadiusForCell(_fogCellSize), useRadiusInMeter: true),
+        CircleMarker(
+          point: c,
+          color: highlight,
+          radius: unlockRadiusForCell(_fogCellSize),
+          useRadiusInMeter: true,
+        ),
     ];
   }
 
@@ -638,9 +639,7 @@ class _MapPageState extends State<MapPage> {
                   Icons.navigation,
                   size: 32,
                   color: Theme.of(context).colorScheme.primary,
-                  shadows: const [
-                    Shadow(blurRadius: 4, color: Colors.black38)
-                  ],
+                  shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
                 ),
               ),
             ),
@@ -650,69 +649,64 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
-  /// The bar shown while an aggregate is selected: hide / color / fit,
-  /// in a compact card so it reads as a temporary state, not a toolbar.
-  Widget _selectionBar(AppStrings strings) {
-    return Card(
+  /// The aggregate selection's actions, shown inside the top toolbar while
+  /// an aggregate is selected: hide / color / fit / dismiss.
+  Widget _selectionActions(AppStrings strings) {
+    return Row(
       key: const ValueKey('selection-bar'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              key: const ValueKey('selection-hide'),
-              tooltip: strings.selectionHideTooltip,
-              icon: const Icon(Icons.visibility_off),
-              onPressed: () async {
-                await widget.model.hideSelectedAggregate();
-              },
-            ),
-            PopupMenuButton<String>(
-              key: const ValueKey('selection-color'),
-              tooltip: strings.selectionColorTooltip,
-              icon: const Icon(Icons.palette_outlined),
-              onSelected: (key) => widget.model.setAggregateColor(key),
-              itemBuilder: (context) => [
-                for (final entry in explorationTints.entries)
-                  PopupMenuItem(
-                    value: entry.key,
-                    child: Row(
-                      children: [
-                        Icon(Icons.circle, color: entry.value, size: 18),
-                        const SizedBox(width: 8),
-                        Text(AppStrings.ofContext(context).tintName(entry.key)),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            IconButton(
-              key: const ValueKey('selection-fit'),
-              tooltip: strings.fitTooltip,
-              icon: const Icon(Icons.zoom_out_map),
-              onPressed: () {
-                final selected = widget.model.selectedAggregate;
-                if (selected == null || selected.points.isEmpty) return;
-                _fitWhenSized(
-                  CameraFit.coordinates(
-                    coordinates: selected.points,
-                    padding: _fitPadding,
-                  ),
-                );
-              },
-            ),
-            IconButton(
-              key: const ValueKey('selection-dismiss'),
-              tooltip: strings.selectionDismissTooltip,
-              icon: const Icon(Icons.close),
-              onPressed: () => setState(() {
-                widget.model.selectedAnchor = null;
-              }),
-            ),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          key: const ValueKey('selection-hide'),
+          tooltip: strings.selectionHideTooltip,
+          icon: const Icon(Icons.visibility_off),
+          onPressed: () async {
+            await widget.model.hideSelectedAggregate();
+          },
+        ),
+        PopupMenuButton<String>(
+          key: const ValueKey('selection-color'),
+          tooltip: strings.selectionColorTooltip,
+          icon: const Icon(Icons.palette_outlined),
+          onSelected: (key) => widget.model.setAggregateColor(key),
+          itemBuilder: (context) => [
+            for (final entry in explorationTints.entries)
+              PopupMenuItem(
+                value: entry.key,
+                child: Row(
+                  children: [
+                    Icon(Icons.circle, color: entry.value, size: 18),
+                    const SizedBox(width: 8),
+                    Text(AppStrings.ofContext(context).tintName(entry.key)),
+                  ],
+                ),
+              ),
           ],
         ),
-      ),
+        IconButton(
+          key: const ValueKey('selection-fit'),
+          tooltip: strings.fitTooltip,
+          icon: const Icon(Icons.zoom_out_map),
+          onPressed: () {
+            final selected = widget.model.selectedAggregate;
+            if (selected == null || selected.points.isEmpty) return;
+            _fitWhenSized(
+              CameraFit.coordinates(
+                coordinates: selected.points,
+                padding: _fitPadding,
+              ),
+            );
+          },
+        ),
+        IconButton(
+          key: const ValueKey('selection-dismiss'),
+          tooltip: strings.selectionDismissTooltip,
+          icon: const Icon(Icons.close),
+          onPressed: () => setState(() {
+            widget.model.selectedAnchor = null;
+          }),
+        ),
+      ],
     );
   }
 
@@ -909,14 +903,14 @@ class _MapPageState extends State<MapPage> {
     final out = <CircleMarker>[];
     final radius = unlockRadiusForCell(_fogCellSize);
     for (final a in widget.model.aggregates) {
-      final key = '${[for (final t in a.members) t.id].join('|')}@$_fogCellSize';
+      final key =
+          '${[for (final t in a.members) t.id].join('|')}@$_fogCellSize';
       var centers = _fogCentersByAnchor[key];
       if (centers == null) {
         centers = unlockCenters(a.points, cellSizeMeters: _fogCellSize);
         _fogCentersByAnchor[key] = centers;
       }
-      final tint =
-          exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
+      final tint = exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
       out.addAll([
         for (final c in centers)
           CircleMarker(
@@ -1071,7 +1065,8 @@ class _MapPageState extends State<MapPage> {
                           Polyline(
                             points: seg,
                             color: recordingTraceColor(
-                                widget.model.recordingTint),
+                              widget.model.recordingTint,
+                            ),
                             strokeWidth: 4,
                           ),
                     ],
@@ -1169,6 +1164,10 @@ class _MapPageState extends State<MapPage> {
                       tooltip: strings.settingsLabel,
                       onTap: _openSettings,
                     ),
+                    // The aggregate selection's actions join the pill while
+                    // an aggregate is selected: hide, color, fit, dismiss.
+                    if (widget.model.selectedAnchor != null)
+                      _selectionActions(strings),
                   ],
                 ),
               ),
@@ -1246,19 +1245,6 @@ class _MapPageState extends State<MapPage> {
                     ),
                   ],
                 ),
-              ),
-            ),
-          // The selection bar: while an aggregate is selected it offers
-          // hide (deselect = member tracks' visible=false), a color
-          // override (persisted under the anchor id) and fit to selection.
-          if (widget.model.selectedAnchor != null)
-            Positioned(
-              left: 120,
-              right: 120,
-              bottom: 0,
-              child: SafeArea(
-                minimum: const EdgeInsets.only(bottom: 16),
-                child: _selectionBar(strings),
               ),
             ),
           // The HUD chip and stats panel rebuild per fix through the
