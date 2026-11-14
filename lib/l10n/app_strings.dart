@@ -274,8 +274,9 @@ class EnglishStrings extends AppStrings {
   String get settingsTitle => 'Settings';
   @override
   String get aboutDescription =>
-      'Local-only track recording and exploration on OpenStreetMap '
-      '(GPX, FIT, KMZ and TCX).';
+      'Track recording and exploration on OpenStreetMap (GPX, FIT, KMZ '
+      'and TCX). Imports and recordings stay on your device; only the '
+      'map tiles are fetched.';
   @override
   String buildDate(String date) => 'Build date: $date';
   @override
@@ -495,8 +496,9 @@ class ItalianStrings extends AppStrings {
   String get settingsTitle => 'Impostazioni';
   @override
   String get aboutDescription =>
-      'Registrazione ed esplorazione di tracce solo in locale su '
-      'OpenStreetMap (GPX, FIT, KMZ e TCX).';
+      'Registrazione ed esplorazione di tracce su OpenStreetMap (GPX, '
+      'FIT, KMZ e TCX). Importazioni e registrazioni restano sul tuo '
+      'dispositivo; solo i riquadri della mappa vengono scaricati.';
   @override
   String buildDate(String date) => 'Data di build: $date';
   @override

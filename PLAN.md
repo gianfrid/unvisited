@@ -1,30 +1,29 @@
-# Slice 8 — track list ordered most-recent-first
+# Slice 9 — drop the local-only claim from the Settings About card
 
 ## Context
 
-The tracks drawer builds its `ListView` straight off `model.tracks`, i.e.
-import order. It should read most-recent-first: `startTimeUtc` descending,
-timestamp-less tracks last, stable (original catalog order) within each
-group. Dart's `List.sort` is not guaranteed stable, so the comparator must
-tiebreak on the original position.
+`aboutDescription` reads "Local-only track recording and exploration on
+OpenStreetMap" (en) / "Registrazione ed esplorazione di tracce solo in
+locale su OpenStreetMap" (it). Map tiles are fetched from the OSM tile
+service, so local-only is false. What is true: imports, the JSON index
+and recordings are stored on-device; only the tile fetch uses the
+network. No test asserts the exact text (only the strings-coverage
+enumeration), so the change is two string literals.
 
 ## Steps
 
-1. `lib/ui/map_page.dart` — in the tracks drawer, display order only:
-   build the list for the `ListView.builder` by pairing each track with
-   its position in `model.tracks` and sorting by `startTimeUtc`
-   descending, nulls last, original position as the tiebreak. The
-   catalog itself (`model.tracks`), the index file and the map overlays
-   are untouched — this is presentation order.
-2. Widget test (`test/map_page_test.dart`): imports in mixed order —
-   `recorded_ride.gpx` (2024-05-01 18:00), `morning_walk.gpx` (07:05),
-   `activity_ride.gpx` (08:00), plus an inline timestamp-less GPX — open
-   the drawer, then read the displayed order from the tiles'
-   `ValueKey('track-<id>')` (on the `Dismissible`s) and assert
-   recorded → ride → walk → timeless.
+1. `lib/l10n/app_strings.dart`, English:
+   `aboutDescription` → "Track recording and exploration on OpenStreetMap
+   (GPX, FIT, KMZ and TCX). Imports and recordings stay on your device;
+   only the map tiles are fetched."
+2. Italian: "Registrazione ed esplorazione di tracce su OpenStreetMap
+   (GPX, FIT, KMZ e TCX). Importazioni e registrazioni restano sul tuo
+   dispositivo; solo i riquadri della mappa vengono scaricati."
+3. The strings-coverage test needs no change (getter still exists and is
+   enumerated); no other tests reference the text.
 
 ## Verification
 
 - `flutter analyze` clean; `flutter test` all pass.
-- Commit includes PLAN.md and deletes the slice 8 TODO entry; PLAN.md
+- Commit includes PLAN.md and deletes the slice 9 TODO entry; PLAN.md
   carries over to the next task unmodified.
