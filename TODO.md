@@ -41,6 +41,16 @@ Track list — catalog UX:
   within each group); widget test on ordering after imports recorded in
   mixed order.
 
+Settings about text — accuracy fix:
+
+- [] slice 9 — drop the local-only claim from the Settings About card:
+  `aboutDescription` says "Local-only track recording and exploration on
+  OpenStreetMap" (en) / "…solo in locale" (it), but map tiles are fetched
+  from the OSM tile service, so the app is not local-only. Reword both
+  languages (keep what stays true — imports, index and recordings are
+  stored on-device; only the tile fetch goes to the network); update the
+  strings/language tests that assert the text.
+
 - [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
   (owner decision 2026-11-13), revisit when flutter_map's pitch support
   releases (`MapOptions.maxPitch` — fog circles/corridors are ground
