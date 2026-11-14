@@ -13,17 +13,6 @@ Track list — catalog UX:
    tracks export as the GPX they were finalized into. Widget tests for the
    menu wiring; strings en + it.
 
-Map — aggregate tracks & selection:
-
-1. - [ ] Remove the global Fit button from the top toolbar — fitting is per
-   aggregate via selection now; the startup camera fit is unchanged.
-2. - [ ] Colors: extend the tint palette beyond the current four; aggregates
-   render in palette colors — the main fog aggregate keeps the fixed
-   default color, distant aggregates take the next palette colors,
-   overridable per selection. The Settings "track color" row now drives
-   only the live recording trace color (replacing the fixed red). Strings
-   en + it; widget tests for selection and highlight.
-
 Packaging:
 
 1. - [ ] Rename the app package com.example.unvisited →
