@@ -105,11 +105,3 @@ Packaging:
    source dir, Linux APPLICATION_ID + desktop file + desktop-entry.sh,
    iOS/macOS PRODUCT_BUNDLE_IDENTIFIER. Verify with flutter analyze,
    flutter test and an Android debug build.
-
-Working-tree cleanup:
-
-1. - [ ] Discard the orphaned scratch edits left by the stop-with-name
-   session — the garbled PLAN.md overwrite and the unwired
-   `renameGpxTrack` helper in `lib/recording/staging_gpx.dart` — with
-   `git checkout -- PLAN.md lib/recording/staging_gpx.dart` once the
-   owning task for the rename flow is confirmed. No new packages.
