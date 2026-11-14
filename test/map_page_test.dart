@@ -667,6 +667,85 @@ void main() {
     expect(model.allTracksVisible, isTrue);
   });
 
+  testWidgets('the empty-state hint hides when tracks exist, selected or not',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    // Empty catalog, idle: the hint is the map's whole message.
+    expect(find.text('No tracks yet'), findsOneWidget);
+
+    // Tracks imported but all deselected: no hint — it would lie about
+    // the catalog.
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    await model.setAllVisible(false);
+    await tester.pump();
+    expect(find.text('No tracks yet'), findsNothing);
+    await model.setAllVisible(true);
+    await tester.pump();
+    expect(find.text('No tracks yet'), findsNothing,
+        reason: 'a plotted track replaces the hint');
+  });
+
+  testWidgets('the empty-state hint hides while a session records',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('No tracks yet'), findsOneWidget,
+        reason: 'a genuinely empty map keeps the hint');
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0);
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('No tracks yet'), findsNothing,
+        reason: 'recording must not have the hint on top of the dashboard');
+    expect(find.byKey(const ValueKey('recording-chip')), findsOneWidget);
+  });
+
   testWidgets('track tile delete button removes the track',
       (tester) async {
     final root = createRoot();

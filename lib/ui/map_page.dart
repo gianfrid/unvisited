@@ -966,7 +966,11 @@ class _MapPageState extends State<MapPage> {
           ),
           _recordingDashboard(strings),
           _recordingSpeed(),
-          if (mapTracks.isEmpty)
+          // The empty-state hint only for a genuinely empty, idle map:
+          // while a session records (even with nothing plotted yet) and
+          // while the catalog has tracks — selected or not — it would
+          // just sit on top of the dashboard or lie about the catalog.
+          if (widget.model.tracks.isEmpty && !widget.model.isRecording)
             Center(
               child: _EmptyHint(strings: strings),
             ),

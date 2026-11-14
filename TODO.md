@@ -31,12 +31,6 @@ Track list — catalog UX:
 
 Bugs — high priority:
 
-- [] slice 11 — the "No tracks yet" empty-state hint blocks the view while
-  recording (it shows whenever no *visible* track plots) and also when
-  tracks are imported but all deselected. It must not appear in either
-  case: suppress it while a recording session runs and whenever the
-  catalog is non-empty (even if nothing is selected); the empty map with
-  an empty catalog keeps it. Widget tests for all three states.
 - [] slice 12 — the track tile's trailing date column takes too much
   space and duplicates what the filename usually already carries: drop
   the date from `_TrackTile` (subtitle keeps format · points · distance ·

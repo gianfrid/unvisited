@@ -1,47 +1,33 @@
-# Slice 10 — soft POST_NOTIFICATIONS ask; open-decisions defaults closed out
+# Slice 11 — "No tracks yet" hint must not block the view
 
 ## Context
 
-TODO's open-decisions line confirms five defaults; four are already
-delivered (1 s interval in `AndroidPositionSource`, the soft battery
-advisory in Settings, manual pause from slice 5, salvage-as-import from
-the robustness slice). The one gap is the research report's permission
-table: `POST_NOTIFICATIONS` (API 33+) is in the manifest but never
-requested — "soft, never blocking recording". geolocator has no
-notification-permission API, so the ask rides the existing
-`unvisited/host` channel (same pattern as the battery advisory), handset
-API 33 gating: below 33 the permission does not exist and the answer is
-granted.
+The map's empty-state card shows when `mapTracks.isEmpty`, i.e. when no
+*visible* track plots. Two bug reports:
+1. While a recording session runs, the hint sits on top of the dashboard
+   (map has no plotted track yet) — blocking the view.
+2. With tracks imported but all deselected, `mapTracks` is empty, so the
+   hint claims "No tracks yet" even though the catalog is full.
 
 ## Steps
 
-1. `MainActivity.kt` — new host-channel method
-   `requestPostNotifications`:
-   - granted immediately when the permission exists not at all (< API 33)
-     or is already held;
-   - otherwise fires `requestPermissions` once and answers with the
-     grant result via `onRequestPermissionsResult` (pending-result
-     pattern like `pickDirectory`, with `already_active` re-entry guard).
-2. `lib/ui/app_model.dart` — `Future<bool?> requestPostNotifications()`:
-   invokes the method, returns null (or false) on any
-   MissingPluginException/PlatformException — desktop and tests fall
-   back cleanly, mirroring `batteryOptimizationExcluded`.
-3. `lib/ui/map_page.dart` — `_startRecording` fires the request without
-   awaiting it (`unawaited`) right before the session starts: the ask is
-   soft (one system dialog at the first tap, no second popup that same
-   run since Android remembers), refusal never blocks or fails the
-   session, and the FGS proceeds mute as the confirmed default says.
-   Honor a one-shot-per-run flag so repeated Record taps do not nag.
-4. Tests (`test/app_model_test.dart`, host-channel mock pattern):
-   - model method surfaces the channel's grant result (true / false);
-   - a `notImplemented` host answers null (no crash on desktop);
-   - a widget-level tap of Record issues the request alongside the
-     session start (map-page test with the channel mocked, recording
-     still starts when the mock answers false).
+1. `lib/ui/map_page.dart` — the hint's gate becomes:
+   `model.tracks.isEmpty && !model.isRecording`
+   (the drawer's `nothingImportedYet` label is a different widget — the
+   drawer list — and stays as-is; it correctly says the catalog is empty).
+   The map hint then shows only on a genuinely empty, non-recording map.
+   The Fit action's `mapTracks.isEmpty` disable stays as it is — deselected
+   tracks correctly disable Fit, that is not part of the bug.
+2. Tests (`test/map_page_test.dart`):
+   - with one imported track visible → no hint;
+   - same track deselected (toggle its checkbox in the drawer or
+     `model.setVisible(track, false)` + pump) → no hint on the map;
+   - empty catalog, not recording → hint visible;
+   - empty catalog while recording (start a fake-sourced session) → no
+     hint, dashboard chip present.
 
 ## Verification
 
 - `flutter analyze` clean; `flutter test` all pass.
-- Commit includes PLAN.md, deletes the open-decisions TODO entry (its
-  five defaults are then all delivered in code), and carries PLAN.md
-  over unmodified.
+- Commit includes PLAN.md and deletes the slice 11 TODO entry; PLAN.md
+  carries over to the next task unmodified.
