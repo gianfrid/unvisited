@@ -699,6 +699,43 @@ void main() {
     expect(tracksDir.listSync(), isEmpty);
   });
 
+  testWidgets('the track tile shows the point-timestamp duration',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    // A track without timestamps shows a dash where a duration would be.
+    const timeless = '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<gpx version="1.1" creator="unvisited" '
+        'xmlns="http://www.topografix.com/GPX/1/1">\n'
+        '<trk><name>No time</name>\n<trkseg>\n'
+        '<trkpt lat="52.5200" lon="13.4050"><ele>38.5</ele></trkpt>\n'
+        '<trkpt lat="52.5210" lon="13.4060"><ele>39.0</ele></trkpt>\n'
+        '</trkseg></trk></gpx>\n';
+    model.store.importBytes(timeless.codeUnits, filename: 'no-time.gpx');
+
+    await tester.pumpWidget(
+      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // 07:05:00 → 07:09:00, formatted by the one zero-padded duration.
+    expect(find.textContaining('· 04:00'), findsOneWidget);
+    expect(find.textContaining('· —'), findsOneWidget,
+        reason: 'the timestamp-less track reads a dash for duration');
+  });
+
   testWidgets('header actions carry labels naming what they do',
       (tester) async {
     final root = createRoot();

@@ -41,6 +41,24 @@ class TrackData {
     return null;
   }
 
+  /// The last point carrying a timestamp, or null when none does.
+  DateTime? get endTime {
+    for (final p in points.reversed) {
+      if (p.time != null) return p.time;
+    }
+    return null;
+  }
+
+  /// End minus start in seconds; null when the track carries no usable
+  /// timestamps (both ends are needed) or the span is negative (corrupt).
+  double? get durationSeconds {
+    final start = startTime;
+    final end = endTime;
+    if (start == null || end == null) return null;
+    final seconds = end.difference(start).inMilliseconds / 1000;
+    return seconds < 0 ? null : seconds;
+  }
+
   /// Rough length in meters computed over consecutive points (haversine).
   double get distanceMeters {
     double total = 0;

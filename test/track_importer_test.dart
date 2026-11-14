@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -191,6 +192,43 @@ void main() {
       final reopened = TrackStore(tmp);
       await reopened.load();
       expect(reopened.tracks.first.visible, isFalse);
+    });
+
+    test('duration of the point timestamps persists and round-trips', () async {
+      final r = store.importBytes(fixture('morning_walk.gpx'),
+          filename: 'morning_walk.gpx');
+      // 07:05:00 → 07:09:00.
+      expect(r.track!.durationSeconds, 240);
+      final reopened = TrackStore(tmp);
+      await reopened.load();
+      expect(reopened.tracks.first.durationSeconds, 240);
+    });
+
+    test('a recorded track carries its staging-GPX duration', () {
+      // The stage writer emits <time> per point; the import pipeline
+      // turns it into a duration like any GPX.
+      final r = store.importBytes(fixture('recorded_ride.gpx'),
+          filename: 'recorded_ride.gpx');
+      expect(r.imported, isTrue);
+      // 18:00:00.000 → 18:00:08.000.
+      expect(r.track!.durationSeconds, 8);
+    });
+
+    test('an index written before durationSeconds still loads', () async {
+      store.importBytes(fixture('morning_walk.gpx'),
+          filename: 'morning_walk.gpx');
+      // Simulate an old index: strip the field the old writer never had.
+      final f = File('${tmp.path}/index.json');
+      final entries = (jsonDecode(f.readAsStringSync())
+          as Map<String, dynamic>)['tracks'] as List;
+      for (final m in entries) {
+        (m as Map).remove('durationSeconds');
+      }
+      f.writeAsStringSync(jsonEncode({'tracks': entries}));
+      final reopened = TrackStore(tmp);
+      await reopened.load();
+      expect(reopened.tracks.first.durationSeconds, isNull);
+      expect(reopened.tracks.first.distanceMeters, greaterThan(0));
     });
   });
 }

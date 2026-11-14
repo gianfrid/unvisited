@@ -23,6 +23,7 @@ class StoredTrack {
     required this.pointCount,
     required this.distanceMeters,
     this.startTimeUtc,
+    this.durationSeconds,
     this.visible = true,
   });
 
@@ -33,6 +34,11 @@ class StoredTrack {
   final int pointCount;
   final double distanceMeters;
   final DateTime? startTimeUtc;
+
+  /// Moving-elapsed span of the point timestamps, in seconds. Older
+  /// indexes (and tracks without timestamps) carry none.
+  final double? durationSeconds;
+
   bool visible;
 
   /// Road unlock state: OSM way id → the matched corridor sub-polylines
@@ -50,6 +56,7 @@ class StoredTrack {
         'pointCount': pointCount,
         'distanceMeters': distanceMeters,
         'startTimeUtc': startTimeUtc?.toIso8601String(),
+        'durationSeconds': durationSeconds,
         'visible': visible,
         // Written only when non-empty: indexes from before road matching
         // (and tracks imported without road data) stay unchanged.
@@ -74,6 +81,9 @@ class StoredTrack {
         startTimeUtc: m['startTimeUtc'] == null
             ? null
             : DateTime.tryParse(m['startTimeUtc'] as String),
+        durationSeconds: m['durationSeconds'] == null
+            ? null
+            : (m['durationSeconds'] as num).toDouble(),
         visible: m['visible'] as bool? ?? true,
       )
         ..unlockedWays = _unlockedWaysFrom(m['unlockedWays']);
@@ -342,6 +352,7 @@ class TrackStore {
       pointCount: data.points.length,
       distanceMeters: data.distanceMeters,
       startTimeUtc: data.startTime?.toUtc(),
+      durationSeconds: data.durationSeconds,
     );
     final target = File(_pathFor(stored));
     target.createSync(recursive: true);

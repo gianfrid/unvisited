@@ -1769,6 +1769,9 @@ class _TrackTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
     final distance = _formatDistance(track.distanceMeters);
+    final duration = track.durationSeconds == null
+        ? '—'
+        : _formatDuration(Duration(seconds: track.durationSeconds!.round()));
     final date = track.startTimeUtc == null
         ? ''
         : ' · ${track.startTimeUtc!.toLocal().toIso8601String().split('T').first}';
@@ -1788,7 +1791,7 @@ class _TrackTile extends StatelessWidget {
         title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           '${track.format} · ${strings.pointCount(track.pointCount)} · '
-          '$distance',
+          '$distance · $duration',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

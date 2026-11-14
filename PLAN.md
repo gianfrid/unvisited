@@ -1,42 +1,41 @@
-# Slice 6 — Record button only when a position is actually obtained
+# Slice 7 — duration in the track list
 
 ## Context
 
-Today the Record button shows whenever `locationSupported` is true, before
-any fix exists — GPS-off leaves a dead button. The gate must be a real
-position (poll once at startup / listen), not permission state. Wrinkle
-found in the code: `_locatedPosition` is dropped when the user pans away
-from the fix, so it cannot be the gate; the button needs its own state.
+`TrackData` already computes `startTime` (first point with a timestamp)
+and `distanceMeters`; `StoredTrack` persists `startTimeUtc` in
+`index.json`; the track tile subtitle shows `format · points · distance`
+with the date in the trailing slot. Recorded GPX carries point times, so
+a recorded ride gets duration for free once the pipeline carries it.
 
 ## Steps
 
-1. `lib/ui/map_page.dart` — new `_gpsWorking` state on the state class:
-   - set true whenever the silent poll returns a position and whenever the
-     explicit Locate succeeds (both call `setState`);
-   - never cleared by panning (only `_locatedPosition` is).
-2. `lib/ui/map_page.dart` — silent retry loop: a `Timer.periodic`
-   (`_fixRetryTimer`, 30 s) started when `locationSupported`, calling
-   `_silentPositionUpdate()` only while `_gpsWorking` is still false;
-   canceled in `dispose()` and once a fix arrives. No polling on desktop
-   (`locationSupported == false`) — no host plugin, so no fixes ever.
-3. `lib/ui/map_page.dart` — gate the header action: the Record/slot shows
-   only when `widget.locationSupported && (_gpsWorking ||
-   widget.model.isRecording)`; while recording the Stop stays regardless
-   (a session implicitly began from a gated button).
-4. Tests (`test/map_page_test.dart`, via the existing `mockGeolocator`
-   helper), `pumpMap`-style setup with `locationSupported: true`:
-   - GPS off (`serviceEnabled: false`): no Record button; after the mock
-     turns GPS on with a position and the test pumps past one 30 s retry,
-     the Record button appears (the startup poll's fix also shows it
-     immediately, without waiting);
-   - locate succeeding sets the gate too, so Record appears without
-     waiting for a retry;
-   - a Record button that appeared keeps its slice 5 behavior untouched.
-   - desktop (`locationSupported: false`): no Record button, covered by
-     assertions alongside the existing locate-is-not-offered test.
+1. `lib/models/track.dart` — `TrackData` gains `endTime` (last point
+   carrying a timestamp) and `durationSeconds` (end − start in seconds,
+   null when either end is missing; negative span clamped to null).
+2. `lib/storage/track_store.dart` — `StoredTrack` gains
+   `double? durationSeconds`, persisted as `durationSeconds` in
+   `index.json` next to `distanceMeters`; `fromMap` treats it as optional
+   so old indexes keep loading; the import path sets it from
+   `data.durationSeconds`.
+3. `lib/ui/map_page.dart` — `_TrackTile` subtitle becomes
+   `format · points · distance · duration` using the existing
+   `_formatDuration` helper, with a dash (not a stray value) when the
+   track has no timestamps. The date stays in the trailing slot — only
+   duration moves into the subtitle.
+4. Tests:
+   - model/store round-trip: import a GPX fixture with timestamps via
+     `TrackStore.importBytes`, assert `durationSeconds` on the stored
+     track, reload the store from disk, assert it round-trips; an old
+     index without the field loads as null;
+   - widget test: a track tile shows the formatted duration between
+     distance and date;
+   - recorded-track coverage comes via the staging GPX path (the stage
+     writer already emits `<time>`), asserted at the model level by
+     importing the staged bytes.
 
 ## Verification
 
 - `flutter analyze` clean; `flutter test` all pass.
-- Commit includes PLAN.md and the slice 6 TODO entry's deletion; PLAN.md
-  truncated to an empty header after the commit lands.
+- Commit includes PLAN.md and deletes the slice 7 TODO entry; PLAN.md
+  carries over to the next task unmodified.
