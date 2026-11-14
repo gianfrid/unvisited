@@ -1703,6 +1703,20 @@ class TrackDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
+    // Display order: most recent first (startTimeUtc descending,
+    // timestamp-less tracks last), original catalog position breaking
+    // ties so same-start tracks keep their import order.
+    final orderedTracks =
+        [for (var i = 0; i < model.tracks.length; i++) (i, model.tracks[i])];
+    orderedTracks.sort((a, b) {
+      final aStart = a.$2.startTimeUtc;
+      final bStart = b.$2.startTimeUtc;
+      if (aStart == null && bStart == null) return a.$1.compareTo(b.$1);
+      if (aStart == null) return 1;
+      if (bStart == null) return -1;
+      final byTime = bStart.compareTo(aStart);
+      return byTime != 0 ? byTime : a.$1.compareTo(b.$1);
+    });
     return Drawer(
       width: 360,
       child: SafeArea(
@@ -1741,9 +1755,15 @@ class TrackDrawer extends StatelessWidget {
               child: model.tracks.isEmpty
                   ? Center(child: Text(strings.nothingImportedYet))
                   : ListView.builder(
-                      itemCount: model.tracks.length,
+                      // Most recent first: startTimeUtc descending,
+                      // timestamp-less tracks last. The original catalog
+                      // position breaks ties — List.sort gives no
+                      // stability guarantee, and same-start tracks must
+                      // keep their import order. Display order only; the
+                      // catalog and the index stay as imported.
+                      itemCount: orderedTracks.length,
                       itemBuilder: (context, i) {
-                        final t = model.tracks[i];
+                        final t = orderedTracks[i].$2;
                         return _TrackTile(
                           model: model,
                           track: t,

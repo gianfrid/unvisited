@@ -29,11 +29,6 @@ staged file as a partial track on next start. Desktop recording is backlog
 
 Track list — catalog UX:
 
-- [] slice 8 — track list ordered most-recent-first: sort by
-  `startTimeUtc` descending, tracks without a start time last (stable
-  within each group); widget test on ordering after imports recorded in
-  mixed order.
-
 Settings about text — accuracy fix:
 
 - [] slice 9 — drop the local-only claim from the Settings About card:

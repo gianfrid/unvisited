@@ -736,6 +736,57 @@ void main() {
         reason: 'the timestamp-less track reads a dash for duration');
   });
 
+  testWidgets('the track list is ordered most-recent-first, timeless last',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    // Imports in deliberately mixed chronological order: 07:05, 18:00,
+    // 08:00, then a timestamp-less track.
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    model.store.importBytes(fixture('recorded_ride.gpx'));
+    model.store.importBytes(fixture('activity_ride.gpx'));
+    const timeless = '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<gpx version="1.1" creator="unvisited" '
+        'xmlns="http://www.topografix.com/GPX/1/1">\n'
+        '<trk><name>No time</name>\n<trkseg>\n'
+        '<trkpt lat="52.5200" lon="13.4050"><ele>38.5</ele></trkpt>\n'
+        '<trkpt lat="52.5210" lon="13.4060"><ele>39.0</ele></trkpt>\n'
+        '</trkseg></trk></gpx>\n';
+    model.store.importBytes(timeless.codeUnits, filename: 'no-time.gpx');
+
+    await tester.pumpWidget(
+      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The tiles' callbacks expose their tracks; read them in the order
+    // they are displayed.
+    final displayed = tester
+        .widgetList<Dismissible>(find.byType(Dismissible))
+        .map((d) => (d.key as ValueKey).value as String)
+        .map((key) => model.store.tracks
+            .firstWhere((t) => key == 'track-${t.id}')
+            .name)
+        .toList();
+    expect(displayed, [
+      'Evening walk', // 18:00 — the recorded ride
+      'Morning ride', // 08:00
+      'Morning walk', // 07:05
+      'No time', // no timestamps at all: last regardless of import order
+    ]);
+  });
+
   testWidgets('header actions carry labels naming what they do',
       (tester) async {
     final root = createRoot();
