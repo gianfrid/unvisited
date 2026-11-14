@@ -284,6 +284,25 @@ class TrackStore {
     _saveIndex();
   }
 
+  /// Per-aggregate color overrides, keyed by the aggregate's anchor track
+  /// id (the earliest-starting member — stable when other tracks join or
+  /// leave, so the override survives membership changes). Persisted in the
+  /// index like the tint: a user preference, and the track ids are content
+  /// hashes that survive re-imports.
+  final Map<String, String> aggregateColors = {};
+
+  String? aggregateColor(String anchorId) => aggregateColors[anchorId];
+
+  /// Saves the color override for the aggregate anchored at [anchorId].
+  Future<void> saveAggregateColor(String anchorId, String tintKey) async {
+    if (tintKey.isEmpty) {
+      aggregateColors.remove(anchorId);
+    } else {
+      aggregateColors[anchorId] = tintKey;
+    }
+    _saveIndex();
+  }
+
   Future<void> load() async {
     _tracks.clear();
     final f = indexFile;
@@ -305,6 +324,10 @@ class TrackStore {
         _themeMode = (settings['themeMode'] as String?) ?? _themeMode;
         _tileLayer = (settings['tileLayer'] as String?) ?? _tileLayer;
         _roadsFile = settings['roadsFile'] as String?;
+        aggregateColors
+          ..clear()
+          ..addAll((settings['aggregateColors'] as Map<String, dynamic>? ?? {})
+              .map((k, v) => MapEntry(k, v as String)));
       }
       final list = map['tracks'] as List;
       for (final raw in list) {
@@ -471,6 +494,8 @@ class TrackStore {
         'themeMode': _themeMode,
         'tileLayer': _tileLayer,
         if (_roadsFile != null) 'roadsFile': _roadsFile,
+        if (aggregateColors.isNotEmpty)
+          'aggregateColors': Map<String, String>.of(aggregateColors),
       },
     };
     root.createSync(recursive: true);

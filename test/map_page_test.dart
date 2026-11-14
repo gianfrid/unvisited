@@ -949,6 +949,125 @@ void main() {
     expect(model.allTracksVisible, isTrue);
   });
 
+  testWidgets('a map tap selects the aggregate over it, the bar dismisses', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
+
+    // Tap on a real track point: tapAt refreshes the global position of
+    // the tester, so convert the point through the live camera first.
+    final camera =
+        MapCamera.of(tester.element(find.byType(TileLayer)));
+    // latLngToScreenOffset is map-local; tapAt is viewport-global — the
+    // map starts below the toolbar, so add its origin.
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    final point = model.visibleTracks.single.points.first;
+    await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(point));
+    // Double-tap zoom is on, so the tap detector waits out the double-tap
+    // window (real time) before firing onTap.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+
+    expect(model.selectedAggregate, isNotNull);
+    expect(model.selectedAggregate!.trackIds,
+        [model.tracks.single.id]);
+    expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+    // The highlight rides a second circle layer above the fog.
+    expect(tester.widgetList<CircleLayer>(find.byType(CircleLayer)),
+        hasLength(2));
+  });
+
+  testWidgets('the selection bar changes the color and hides the aggregate', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    final camera =
+        MapCamera.of(tester.element(find.byType(TileLayer)));
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    await tester.tapAt(mapOrigin +
+        camera.latLngToScreenOffset(
+            model.visibleTracks.single.points.first));
+    // Double-tap zoom delays the tap; see the select test above.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+
+    // The color menu picks a persisted override...
+    await tester.tap(find.byKey(const ValueKey('selection-color')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Blue'));
+    await tester.pump();
+    expect(
+      model.store.aggregateColor(model.selectedAnchor!),
+      'blue',
+    );
+
+    // ...hide deselects and hides the member tracks...
+    await tester.tap(find.byKey(const ValueKey('selection-hide')));
+    await tester.pump();
+    expect(model.store.tracks.single.visible, isFalse);
+    expect(model.selectedAggregate, isNull);
+    expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
+  });
+
+  testWidgets('the bar dismiss drops the selection, the tracks stay visible', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    final camera =
+        MapCamera.of(tester.element(find.byType(TileLayer)));
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    await tester.tapAt(mapOrigin +
+        camera.latLngToScreenOffset(
+            model.visibleTracks.single.points.first));
+    // Double-tap zoom delays the tap; see the select test above.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('selection-dismiss')));
+    await tester.pump();
+    expect(model.selectedAggregate, isNull);
+    expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
+    expect(model.store.tracks.single.visible, isTrue);
+  });
+
   testWidgets('the empty-state hint hides when tracks exist, selected or not', (
     tester,
   ) async {

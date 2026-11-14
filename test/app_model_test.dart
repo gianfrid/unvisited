@@ -17,6 +17,7 @@ import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
@@ -990,6 +991,88 @@ void main() {
         expect(dir.listSync(), isEmpty);
       },
     );
+  });
+
+  group('aggregates & selection', () {
+    Future<String> importGpx(
+      String name, {
+      required double lat,
+      required double lon,
+      required DateTime time,
+    }) async {
+      // A single-point track stamped with [time]; 0.0002 deg of latitude
+      // is ~22 m, well inside the 100 m default threshold.
+      final gpx = '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<gpx version="1.1" creator="test"><trk><trkseg>'
+          '<trkpt lat="$lat" lon="$lon"><time>${time.toIso8601String()}</time></trkpt>'
+          '</trkseg></trk></gpx>\n';
+      final file = File('${root.path}${Platform.pathSeparator}$name');
+      await file.writeAsBytes(utf8.encode(gpx));
+      final before = model.tracks.map((t) => t.id).toSet();
+      await model.importFromFile(file.path);
+      return model.tracks
+          .map((t) => t.id)
+          .where((id) => !before.contains(id))
+          .first;
+    }
+
+    test('tracks within the threshold join one aggregate with anchors', () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      final a = await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      final b = await importGpx(
+        'b.gpx',
+        lat: 45.0002,
+        lon: 9.0,
+        time: start.add(const Duration(days: 3)),
+      );
+      final aggregates = model.aggregates;
+      expect(aggregates, hasLength(1));
+      expect(aggregates.single.trackIds, containsAllInOrder([a, b]));
+      expect(aggregates.single.anchorId, a, reason: 'a starts first');
+    });
+
+    test('tap-to-select, hide, and color override persistence', () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      final a = await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      final b = await importGpx(
+        'b.gpx',
+        lat: 45.0,
+        lon: 9.0002,
+        time: start.add(const Duration(days: 3)),
+      );
+
+      expect(model.selectAggregateAt(const LatLng(45.0, 9.0),
+          toleranceMeters: 100), isTrue);
+      expect(model.selectedAggregate?.trackIds, containsAll([a, b]));
+
+      // Color override keys by the anchor and survives a store reload.
+      await model.setAggregateColor('blue');
+      expect(model.selectedAggregateColor, 'blue');
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.store.aggregateColor(a), 'blue');
+
+      // Hide deselects and hides every member track.
+      await model.hideSelectedAggregate();
+      expect(model.selectedAggregate, isNull);
+      expect(model.store.tracks.every((t) => !t.visible), isTrue);
+      expect(model.aggregates, isEmpty);
+
+      // Re-showing: aggregates recompute from the visible set again.
+      await model.setAllVisible(true);
+      expect(model.aggregates.single.trackIds, containsAll([a, b]));
+    });
+
+    test('a tap too far from every aggregate point deselects', () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      model.selectAggregateAt(const LatLng(45.0, 9.0), toleranceMeters: 100);
+      expect(model.selectedAnchor, isNotNull);
+
+      // ~11 km away: no hit, and the existing selection clears.
+      model.selectAggregateAt(const LatLng(45.1, 9.0), toleranceMeters: 100);
+      expect(model.selectedAnchor, isNull);
+    });
   });
 }
 

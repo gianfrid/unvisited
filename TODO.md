@@ -15,14 +15,9 @@ Track list — catalog UX:
 
 Map — aggregate tracks & selection:
 
-1. - [ ] Tap-to-select: tapping the map within tolerance of an aggregate's
-   points selects it (visual highlight); a selection bar offers hide
-   (deselect = underlying tracks visible=false), change color
-   (per-aggregate override persisted in index.json) and fit screen to the
-   aggregate.
-2. - [ ] Remove the global Fit button from the top toolbar — fitting is per
+1. - [ ] Remove the global Fit button from the top toolbar — fitting is per
    aggregate via selection now; the startup camera fit is unchanged.
-3. - [ ] Colors: extend the tint palette beyond the current four; aggregates
+2. - [ ] Colors: extend the tint palette beyond the current four; aggregates
    render in palette colors — the main fog aggregate keeps the fixed
    default color, distant aggregates take the next palette colors,
    overridable per selection. The Settings "track color" row now drives

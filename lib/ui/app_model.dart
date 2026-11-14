@@ -9,6 +9,9 @@ import 'package:flutter/widgets.dart' show Locale;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../aggregate/aggregate_tracks.dart'
+    show AggregateInput, AggregateTrack, AggregateIndex, UnionFindAggregateIndex;
+import '../geo.dart' show haversineMeters;
 import '../l10n/app_strings.dart';
 import '../road/road_bench.dart' show benchReport, runRoadBench;
 import '../road/road_format.dart' show RoadFormatException;
@@ -469,6 +472,103 @@ class AppModel extends ChangeNotifier {
   /// All points of all visible tracks, for fitting the camera.
   List<LatLng> get allVisiblePoints =>
       visibleTracks.expand((t) => t.points).toList();
+
+  // --- Aggregates & selection ---------------------------------------------
+
+  /// Clusters visible tracks into aggregates (points of different tracks
+  /// within ~100 m — transitively — belong together). Recomputed lazily
+  /// whenever the visible set changes; cached otherwise.
+  static const AggregateIndex _aggregateIndex = UnionFindAggregateIndex();
+  String? _aggregatesKey;
+  List<AggregateTrack> _aggregates = const [];
+
+  List<AggregateTrack> get aggregates {
+    final visible = visibleTracks;
+    final key = [for (final t in visible) t.meta.id].join('|');
+    if (key != _aggregatesKey) {
+      _aggregatesKey = key;
+      _aggregates = _aggregateIndex.build([
+        for (final t in visible)
+          AggregateInput(
+            id: t.meta.id,
+            points: t.points,
+            startTimeUtc: t.meta.startTimeUtc,
+          ),
+      ]);
+    }
+    return _aggregates;
+  }
+
+  /// The selected aggregate's anchor id (see [AggregateTrack.anchorId]),
+  /// or null. Selection is by anchor so it survives the aggregates being
+  /// recomputed as the visible set or the zoom changes.
+  String? selectedAnchor;
+
+  AggregateTrack? get selectedAggregate {
+    final anchor = selectedAnchor;
+    if (anchor == null) return null;
+    for (final a in aggregates) {
+      if (a.anchorId == anchor) return a;
+    }
+    // The aggregate is gone (hidden, deleted): drop the selection.
+    selectedAnchor = null;
+    return null;
+  }
+
+  /// Selects the aggregate with a point within [toleranceMeters] of
+  /// [tap]; deselects when [clearIfMiss] and nothing matches. Returns
+  /// whether a selection is active afterwards.
+  bool selectAggregateAt(
+    LatLng tap, {
+    required double toleranceMeters,
+    bool clearIfMiss = true,
+  }) {
+    for (final a in aggregates) {
+      for (final p in a.points) {
+        if (haversineMeters(tap.latitude, tap.longitude, p.latitude,
+                p.longitude) <=
+            toleranceMeters) {
+          selectedAnchor = a.anchorId;
+          notifyListeners();
+          return true;
+        }
+      }
+    }
+    if (clearIfMiss && selectedAnchor != null) {
+      selectedAnchor = null;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  /// Hides the selected aggregate's member tracks (deselect = the
+  /// underlying tracks leave the map) and drops the selection.
+  Future<void> hideSelectedAggregate() async {
+    final selected = selectedAggregate;
+    if (selected == null) return;
+    selectedAnchor = null;
+    for (final id in selected.trackIds) {
+      final matches = store.tracks.where((s) => s.id == id);
+      final t = matches.isEmpty ? null : matches.first;
+      if (t != null && t.visible) await store.setVisible(t, false);
+    }
+    notifyListeners();
+  }
+
+  /// The selected aggregate's color override key, or null for the palette
+  /// rank default. Persisted under the aggregate's anchor id, so it
+  /// survives membership changes.
+  String? get selectedAggregateColor =>
+      selectedAnchor == null ? null : store.aggregateColor(selectedAnchor!);
+
+  /// Saves (an empty [tintKey] clears) the selected aggregate's color
+  /// override, keyed by its anchor.
+  Future<void> setAggregateColor(String tintKey) async {
+    final anchor = selectedAnchor;
+    if (anchor == null) return;
+    await store.saveAggregateColor(anchor, tintKey);
+    notifyListeners();
+  }
 
   @override
   void dispose() {

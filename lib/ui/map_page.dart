@@ -338,6 +338,45 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  /// Tap tolerance for aggregate selection: ~24 screen px worth of meters
+  /// at the tap's zoom.
+  double _hitToleranceMeters(LatLng tap) {
+    final zoom = _mapController.camera.zoom;
+    const metersPerPixelAtEquatorZoom0 = 156543.03392;
+    return 24 *
+        metersPerPixelAtEquatorZoom0 *
+        math.cos(tap.latitude * math.pi / 180) /
+        math.pow(2, zoom);
+  }
+
+  void _onMapTap(LatLng tap) {
+    if (widget.model.isRecording) return; // the recording UI owns taps then
+    widget.model.selectAggregateAt(
+      tap,
+      toleranceMeters: _hitToleranceMeters(tap),
+      clearIfMiss: widget.model.selectedAnchor != null,
+    );
+  }
+
+  /// The selected aggregate's highlight: the same cells the fog grid draws,
+  /// computed over just the selection's points, in an opaque-er tint so the
+  /// selection reads on top of the shared overlay.
+  List<CircleMarker> _selectionHighlight() {
+    final selected = widget.model.selectedAggregate;
+    if (selected == null) return const [];
+    final tint = exploredAreaColor(widget.model.trackTint);
+    final highlight = tint.withValues(
+      alpha: (tint.a + 0.55).clamp(0.0, 1.0),
+    );
+    return [
+      for (final c in unlockCenters(
+        selected.points,
+        cellSizeMeters: _fogCellSize,
+      ))
+        CircleMarker(point: c, color: highlight, radius: unlockRadiusForCell(_fogCellSize), useRadiusInMeter: true),
+    ];
+  }
+
   /// Fits the camera, but only once it has a real size. At launch the map
   /// can still be laid out against zero-sized constraints (the window
   /// surface is not ready yet on Android or Wayland); fitting against that
@@ -596,8 +635,73 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
-  /// Centers the map on the last saved position while waiting for a live
-  /// fix (and moves onto the fix once it arrives). Never asks for
+  /// The bar shown while an aggregate is selected: hide / color / fit,
+  /// in a compact card so it reads as a temporary state, not a toolbar.
+  Widget _selectionBar(AppStrings strings) {
+    return Card(
+      key: const ValueKey('selection-bar'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              key: const ValueKey('selection-hide'),
+              tooltip: strings.selectionHideTooltip,
+              icon: const Icon(Icons.visibility_off),
+              onPressed: () async {
+                await widget.model.hideSelectedAggregate();
+              },
+            ),
+            PopupMenuButton<String>(
+              key: const ValueKey('selection-color'),
+              tooltip: strings.selectionColorTooltip,
+              icon: const Icon(Icons.palette_outlined),
+              onSelected: (key) => widget.model.setAggregateColor(key),
+              itemBuilder: (context) => [
+                for (final entry in explorationTints.entries)
+                  PopupMenuItem(
+                    value: entry.key,
+                    child: Row(
+                      children: [
+                        Icon(Icons.circle, color: entry.value, size: 18),
+                        const SizedBox(width: 8),
+                        Text(AppStrings.ofContext(context).tintName(entry.key)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            IconButton(
+              key: const ValueKey('selection-fit'),
+              tooltip: strings.fitTooltip,
+              icon: const Icon(Icons.zoom_out_map),
+              onPressed: () {
+                final selected = widget.model.selectedAggregate;
+                if (selected == null || selected.points.isEmpty) return;
+                _fitWhenSized(
+                  CameraFit.coordinates(
+                    coordinates: selected.points,
+                    padding: _fitPadding,
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              key: const ValueKey('selection-dismiss'),
+              tooltip: strings.selectionDismissTooltip,
+              icon: const Icon(Icons.close),
+              onPressed: () => setState(() {
+                widget.model.selectedAnchor = null;
+              }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Centers the map on the last saved position while waiting for a live  /// fix (and moves onto the fix once it arrives). Never asks for
   /// permission; when none is granted or the platform has no location
   /// support (desktop Linux) this leaves the camera where it was.
   Future<void> _silentPositionUpdate() async {
@@ -874,6 +978,10 @@ class _MapPageState extends State<MapPage> {
                   autofocus: true,
                 ),
               ),
+              // Tap within tolerance of an aggregate's points selects it
+              // (the selection bar appears below); a tap on empty map
+              // deselects, which is the bar's way away too.
+              onTap: (tapDetail, tap) => _onMapTap(tap),
             ),
             children: [
               TileLayer(
@@ -917,6 +1025,10 @@ class _MapPageState extends State<MapPage> {
               // Unlocked road corridors (fog-of-war for streets), above
               // the circles so the corridor reads on top of the blobs.
               if (corridors.isNotEmpty) PolylineLayer(polylines: corridors),
+              // The selected aggregate's highlight, above corridors so the
+              // selection reads on top of the overlay.
+              if (widget.model.selectedAnchor != null)
+                CircleLayer(circles: _selectionHighlight()),
               // The live recording trace: the session's accepted fixes as
               // polylines, translucent in a fixed recording red — outside
               // the catalog tint family, clearly in-progress. Above the
@@ -1115,6 +1227,19 @@ class _MapPageState extends State<MapPage> {
                     ),
                   ],
                 ),
+              ),
+            ),
+          // The selection bar: while an aggregate is selected it offers
+          // hide (deselect = member tracks' visible=false), a color
+          // override (persisted under the anchor id) and fit to selection.
+          if (widget.model.selectedAnchor != null)
+            Positioned(
+              left: 120,
+              right: 120,
+              bottom: 0,
+              child: SafeArea(
+                minimum: const EdgeInsets.only(bottom: 16),
+                child: _selectionBar(strings),
               ),
             ),
           // The HUD chip and stats panel rebuild per fix through the

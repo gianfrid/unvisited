@@ -193,6 +193,11 @@ abstract class AppStrings {
 
   // Tint swatch names (keys live in track_colors.dart).
   String tintName(String key);
+
+  // Selection bar (aggregate tracks and selection): hide, recolor, dismiss.
+  String get selectionHideTooltip;
+  String get selectionColorTooltip;
+  String get selectionDismissTooltip;
 }
 
 class EnglishStrings extends AppStrings {
@@ -206,6 +211,12 @@ class EnglishStrings extends AppStrings {
   String get fitLabel => 'Fit';
   @override
   String get fitTooltip => 'Fit tracks';
+  @override
+  String get selectionHideTooltip => 'Hide this area';
+  @override
+  String get selectionColorTooltip => 'Change the color';
+  @override
+  String get selectionDismissTooltip => 'Dismiss selection';
   @override
   String get locateLabel => 'Locate';
   @override
@@ -434,6 +445,12 @@ class ItalianStrings extends AppStrings {
   String get fitLabel => 'Inquadra';
   @override
   String get fitTooltip => 'Inquadra le tracce';
+  @override
+  String get selectionHideTooltip => 'Nascondi quest\'area';
+  @override
+  String get selectionColorTooltip => 'Cambia il colore';
+  @override
+  String get selectionDismissTooltip => 'Annulla la selezione';
   @override
   String get locateLabel => 'Posizione';
   @override
