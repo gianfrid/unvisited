@@ -27,6 +27,53 @@ course-up marker). Background location is deliberately never requested
 staged file as a partial track on next start. Desktop recording is backlog
 (no Linux location plugin).
 
+Technical debt — high priority (owner-approved 2026-11-14; findings above
+the rest of the backlog by intent):
+
+1. - [ ] Fix the startup-salvage UTF-8 corruption: `_salvageRecordings`
+   re-encodes the read GPX with `gpx.codeUnits` (lib/ui/app_model.dart:666)
+   — UTF-16, not UTF-8 — so any non-ASCII character in a staged track name
+   (an accented name from the stop dialog) lands corrupt. Use
+   `utf8.encode`; add a unit test with a non-ASCII name; fix the same
+   pattern in test/app_model_test.dart:837 while there.
+2. - [ ] Reconcile the bug bookkeeping: TODO bug 1 (the engine's
+   `currentHeading` vs `currentCourse` split + tests) is done and
+   committed in b6fdfe8 but is still listed open — remove it. Bug 2 stays
+   open: map_page.dart still rotates on `currentCourse` (no
+   `currentHeading` gate); note in the commit that b6fdfe8's message
+   overclaimed "gated course-up camera".
+3. - [ ] Docs drift refresh: README ("recording is being added") and
+   ARCHITECTURE.md ("Recording (planned slices)") describe delivered
+   slices 1-4 as pending; SPEC.md's established-package set omits
+   geolocator (agreed in, shipped); fix the malformed `- []` backlog
+   checkbox in TODO.md.
+4. - [ ] Split lib/ui/map_page.dart (2K lines, 14 classes) into `ui/`
+   modules: `_SettingsSheet`, `_StatsPanel`, the zoom slider, the drawer
+   (make `TrackDrawer` private) + `_TrackTile`, the bottom-left action
+   stack and toolbar widgets. No behavior change; widget tests assert by
+   text/tooltip and must keep passing untouched.
+5. - [ ] Test harness extraction: `mockGeolocator` and the repeated
+   `createRoot` + temp-dir + `MaterialApp`/`MapPage` setup (43 copies in
+   test/map_page_test.dart) become shared helpers in test/helpers.dart or
+   a pump harness; shrinks the 2.4K-line test file materially.
+6. - [ ] Split lib/ui/app_model.dart (868 lines, 6 concerns): a recording
+   controller (start/stop-with-name/pause/salvage staging) and an import
+   coordinator (the three near-parallel import paths collapsed onto one
+   helper for the store+roads+cache+summary choreography), keeping
+   settings/locate on the model.
+7. - [ ] Extract the duplicated haversine/bearing formulas (identical
+   twins in lib/models/track.dart and lib/recording/recording_session.dart
+   kept in step by comments only) into one shared pure-Dart geo module.
+8. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
+   whole tree at 1 Hz and `liveSegments` deep-copies every segment per
+   rebuild — a scaling wall for long sessions. Give the recording live
+   state its own Listenable (stats/trace/marker) so the fog overlay and
+   toolbar rebuild channels stay untouched.
+9. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
+   the unused `cupertino_icons` dependency (zero CupertinoIcons usage —
+   the cupertino.dart import in main.dart is the locale delegate and
+   stays). Package removal per SPEC: confirm with owner in the plan step.
+
 Track list — catalog UX:
 
 1. - [ ] Per-track menu: a ⋮ button on each track tile opening a menu with
