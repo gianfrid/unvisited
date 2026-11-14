@@ -22,13 +22,23 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md).
 - Keep import parsing decoupled from UI widgets and portable (pure Dart, behind the `TrackParser` interface) — a Rust core behind Dart FFI is planned but must sit behind the same interface.
 - Nothing beyond the SPEC scope without agreement: no route planning, no turn-by-turn navigation, no per-service integrations, no cloud, no accounts. (Recording was out of scope before; it is an agreed feature now, Android first — recording *start* is never background-initiated and never uses background-location permission. See SPEC.md.)
 
+## Task workflow
+
+- When asked to add an item to TODO.md, decompose it into units of work (each completable and committable independently) and append them as numbered checklist entries under the item.
+- Every non-trivial change — a TODO.md unit or not — goes through PLAN.md:
+  1. Create PLAN.md with concrete implementation steps for the change.
+  2. Show the plan and wait for explicit confirmation before touching code. Investigation (reading files, searching, read-only checks) needs no confirmation, and there is no pre-authorization: "keep working on TODO.md" does not skip this step.
+  3. On confirmation, implement, run tests, and commit with a message describing what was done.
+  4. After a successful commit, truncate PLAN.md to an empty header. A completed TODO.md unit's entry is removed in the same commit as the work — never delete a TODO.md entry for work that failed or was not committed.
+- Commit messages are the permanent record; write them as if PLAN.md will be erased, because it will be.
+
 ## Agent guidelines
 
-0. Plan before acting: for any non-trivial change, present a short implementation plan first and wait for the user's confirmation before editing or running write actions. Investigation (reading files, searching, read-only checks) needs no confirmation. TODO.md items the user explicitly queued are the exception — "keep working on TODO.md" pre-authorizes the listed slices.
+0. Plan before acting: every non-trivial change follows the Task workflow above — PLAN.md first, then explicit confirmation before editing or running any write action.
 1. Read [SPEC.md](SPEC.md) before starting any change; read [ARCHITECTURE.md](ARCHITECTURE.md) before structural or cross-component changes.
 2. Keep changes minimal and vertical: one slice, with its tests, per change.
 3. Always commit successful changes once a slice is verified (analyze clean, tests pass). Do not leave completed work sitting uncommitted; leave the working tree clean at the end of a task.
 4. Before finishing a slice, run `flutter analyze` (must be clean) and `flutter test`.
 5. When a binary fixture must change, regenerate it with `dart tool/make_fixtures.dart` and commit it — never hand-edit binary fixtures. The same goes for app icons: edit `assets/icon/icon.svg`, then run `dart tool/make_icons.dart`.
 6. Preserve the separation of concerns in these docs when updating them: user-facing info in README.md, design in ARCHITECTURE.md, rules and conventions in SPEC.md.
-7. TODO.md holds open work only. When a task is done, delete its entry in the same commit that completes it — do not tick it, annotate it or leave it as history. What was built belongs in the commit message and in ARCHITECTURE.md/SPEC.md; git history is the record.
+7. TODO.md holds open work only, as plain entries or numbered units of work (the decomposition from the Task workflow). Remove a completed unit's entry in the same commit that completes it — never for work that failed or was not committed. Do not mark entries with status ticks or progress annotations, and do not leave completed entries as history. What was built belongs in the commit message and in ARCHITECTURE.md/SPEC.md; git history is the record.
