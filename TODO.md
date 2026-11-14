@@ -27,6 +27,18 @@ course-up marker). Background location is deliberately never requested
 staged file as a partial track on next start. Desktop recording is backlog
 (no Linux location plugin).
 
+- [] slice 5 — record-mode UI as a bike-computer dashboard: while a session
+  runs, hide the Import and Fit/Locate header actions (they fight the
+  dashboard for space and attention), keep Stop, and add a Pause action
+  (wired to the session's existing pause → new trkseg semantics). Live
+  speed becomes the primary readout, big and bottom-center; the expandable
+  chip keeps distance/duration/avg. Widget tests: actions hidden and speed
+  placement while recording, all restored after stop.
+- [] slice 6 — Record button only when a position is actually obtained:
+  today it shows whenever the platform supports location; gate it on a fix
+  (poll once at startup / listen to the position stream) so GPS-off shows
+  no dead Record button. Desktop Linux stays hidden outright.
+
 - [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
   (owner decision 2026-11-13), revisit when flutter_map's pitch support
   releases (`MapOptions.maxPitch` — fog circles/corridors are ground
