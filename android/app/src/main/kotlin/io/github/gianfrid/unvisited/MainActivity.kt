@@ -1,4 +1,4 @@
-package com.example.unvisited
+package io.github.gianfrid.unvisited
 
 import android.Manifest
 import android.app.Activity

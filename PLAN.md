@@ -1,88 +1,73 @@
-# Plan — track list catalog UX (TODO.md "Track list", units 1–5)
+# Plan — rename app package com.example.unvisited → io.github.gianfrid.unvisited, display name → "UnVisited" (TODO.md "Packaging", item 1)
 
-Five vertical slices; each ends with tests and a commit. New strings ship
-en + it with their slice; `app_strings_test.dart`'s coverage table grows in
-step.
+Single unit, single commit. The TODO says "everywhere it appears", so the
+cosmetic `com.example` strings (Windows `CompanyName`/`LegalCopyright`,
+macOS `PRODUCT_COPYRIGHT`) are swept in the same commit rather than left
+behind.
 
-## Slice 1 — the ⋮ menu (unit 1)
+Target id: `io.github.gianfrid.unvisited`
 
-`lib/ui/track_list.dart` `_TrackTile`: replace the trailing delete
-IconButton with a ⋮ (`Icons.more_vert`) opening a `PopupMenuButton<String>`
-with Info / Delete / Export. Delete routes through the existing
-confirmation dialog (`_confirmDelete`); swipe-to-delete untouched.
+## Steps
 
-Menu strings: `trackMenuTooltip` ('Track actions'), `trackMenuInfo`,
-`trackMenuExport` ('Export'), reuse `deleteTrack` for Delete.
+1. **Android**
+   - `android/app/build.gradle.kts`: `namespace` and `applicationId` → target id.
+   - `git mv android/app/src/main/kotlin/com/example/unvisited/MainActivity.kt`
+     → `android/app/src/main/kotlin/io/github/gianfrid/unvisited/MainActivity.kt`
+     (create parent dirs first), and update the `package` declaration in the file.
+   - `AndroidManifest.xml` needs no change (uses `.MainActivity` and
+     `${applicationName}`).
 
-Widget tests: menu opens on tap; Delete tap shows the existing confirm
-dialog; every tile still toggles visibility via the checkbox.
+2. **Linux**
+   - `linux/CMakeLists.txt`: `APPLICATION_ID` (line 10), the comment on line 132,
+     and the `file(COPY ...)` source path on line 143.
+   - `git mv linux/com.example.unvisited.desktop`
+     → `linux/io.github.gianfrid.unvisited.desktop`; update `StartupWMClass`
+     and the comment inside it.
+   - `linux/desktop-entry.sh`: both references on lines 25–26.
 
-## Slice 2 — the info dialog (unit 2)
+3. **iOS**
+   - `ios/Runner.xcodeproj/project.pbxproj`: 3 × `PRODUCT_BUNDLE_IDENTIFIER =
+     com.example.unvisited` → target id; 3 × `...RunnerTests` →
+     `io.github.gianfrid.unvisited.RunnerTests`.
 
-`showDialog` from the Info menu entry: name (title), start date/time
-(model locale-formatted), format, point count, distance, duration,
-average speed — distance over duration, '—' when either is missing
-(never a fabricated 0). Reuse the shared `formatDistance`/
-`formatDuration`; date/time formatting must not hand-roll — use the
-existing pattern in `app_strings.dart` (parameterized getters only; the
-strings class never computes). New strings: `infoTitle(start)` (or plain
-'Info'), `infoPoints`, `infoDistance`, `infoDuration`, `infoAvgSpeed`,
-`infoStart`.
+4. **macOS**
+   - `macos/Runner/Configs/AppInfo.xcconfig`: `PRODUCT_BUNDLE_IDENTIFIER` →
+     target id; `PRODUCT_COPYRIGHT` `com.example` → `io.github.gianfrid`.
+   - `macos/Runner.xcodeproj/project.pbxproj`: 3 × `...RunnerTests` entries.
 
-Widget test: from a fixture-imported catalog, open Info and find every
-field rendered; empty-duration track shows '—'.
+5. **Windows (cosmetic sweep)**
+   - `windows/runner/Runner.rc`: `CompanyName` and `LegalCopyright`.
 
-## Slice 3 — export (unit 3)
+6. **Display name → "UnVisited"** (display strings only; binary/executable
+   names stay lowercase — they are identifiers, not names)
+   - `android/app/src/main/AndroidManifest.xml`: `android:label` → `UnVisited`.
+   - `ios/Runner/Info.plist`: `CFBundleDisplayName` `Unvisited` → `UnVisited`;
+     `CFBundleName` `unvisited` → `UnVisited`.
+   - `macos/Runner/Configs/AppInfo.xcconfig`: `PRODUCT_NAME` → `UnVisited`
+     (macOS `CFBundleName` is `$(PRODUCT_NAME)`).
+   - `linux/io.github.gianfrid.unvisited.desktop` (renamed in step 2):
+     `Name=Unvisited` → `UnVisited`. `Exec`/`Icon` stay `unvisited`.
+   - `windows/runner/Runner.rc`: `FileDescription`, `InternalName`,
+     `ProductName` → `UnVisited`. `OriginalFilename` `unvisited.exe` stays.
 
-- **Desktop Linux**: `FilePicker.saveFile` (already a dependency) → copy
-  the stored file's bytes as-is to the returned path. Toast the result.
-- **Android**: new host-channel method `shareTrack(path, mime)` in
-  `MainActivity.kt` — an ACTION_SEND Intent fed by a `FileProvider`
-  (androidx.core is already in the app via Flutter embedding; add the
-  `file_paths.xml` + provider in the manifest). No new pub package.
-  Files live under the app-private storage root, so the provider scopes
-  exactly there.
-- **Model**: `ImportCoordinator` gains
-  `Future<String?> exportTrack(StoredTrack)`? No — export is UI glue:
-  put `exportTrack` on `AppModel` reading `store.trackFileFor(track)`
-  (a small accessor if the store doesn't expose one) and delegating to
-  the host channel / FilePicker per platform.
-- Strings: `exportDone` / `exportSuccess`, `exportFailed`, en + it.
-- Widget tests: menu Export tap invokes the platform glue (mocked host
-  channel answers, like the existing geolocator mocks); cancellation
-  imports/re-exports nothing.
+7. **Verify**
+   - `grep -rn "com.example"` over the repo (excluding `build/`, `.dart_tool/`,
+     `.gradle/`, `.git/`) returns only this plan, TODO.md, and git history.
+   - `grep -rn "Unvisited\|\"unvisited\""` on the touched platform files shows
+     only the intended `UnVisited` display strings.
+   - `flutter analyze` — clean.
+   - `flutter test` — pass.
+   - `flutter build apk --debug` — succeeds (exercises namespace + Kotlin
+     package + manifest merge together).
 
-## Slice 4 — aggregated tile colors (unit 4)
+8. **Commit** all of the above plus this PLAN.md, and remove the completed
+   Packaging item from TODO.md in the same commit.
 
-`_TrackTile` gains a leading color dot rendered in the track's
-aggregate's resolved tint — read from the existing
-`model.aggregateTintKeys` (palette rank or override, exactly what the map
-draws), falling back to the default tint for hidden-but-listed tracks.
-The checkbox and subtitle stay as they are.
+## Notes / assumptions
 
-Model note: `aggregateTintKeys`/`aggregates` are built from
-`visibleTracks`; the list shows all tracks (including hidden) — hidden
-tracks fall back to the default tint (they leave no aggregate until
-re-shown).
-
-Widget tests: single track → default tint dot; tracks that cluster show
-the same color dot; (later) an override set via selection reflects in the
-list.
-
-## Slice 5 — tap a tile to fit its aggregate (unit 5)
-
-Tapping the tile body (not the checkbox, not the ⋮ menu): selects the
-track's aggregate (sets `selectedAnchor`) and asks the map to fit it — a
-`fitRequestEpoch` bumped on the model; `MapPage._onModelChanged` already
-compares import epochs the same way and gains the same handling for fit
-requests, fitting the selected aggregate's points via `_fitWhenSized`.
-The selection bar appears as a side effect (consistency: the user can
-immediately hide/recolor the aggregate).
-
-Widget tests: tap fits (camera center/zoom change to cover the
-aggregate) and the selection bar appears.
-
-## Order and commits
-
-Slices 1–5, each committed with PLAN.md current state and the TODO.md
-unit removed. `flutter analyze` clean + `flutter test` green per slice.
+- `applicationId` change means an already-installed debug build installs as a
+  fresh app rather than upgrading in place — irrelevant for development.
+- Linux desktop build (`flutter build linux`) is not run here; the CMake
+  install path coupling is covered by the grep check and a manual build if
+  desired.
+- No Dart code references the package id (verified: `lib/` is clean).

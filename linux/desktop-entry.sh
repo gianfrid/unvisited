@@ -22,8 +22,8 @@ else
   exit 1
 fi
 
-desktop=$data_home/applications/com.example.unvisited.desktop
-entry=$root/linux/com.example.unvisited.desktop
+desktop=$data_home/applications/io.github.gianfrid.unvisited.desktop
+entry=$root/linux/io.github.gianfrid.unvisited.desktop
 
 case $mode in
   install)

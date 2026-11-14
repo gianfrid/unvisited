@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=Unvisited
+Name=UnVisited
 Comment=Fog-of-war exploration overlay for GPS tracks, on OpenStreetMap
 Exec=unvisited
 Icon=unvisited
 Terminal=false
 # The session resolves the running window's icon by matching this entry's
-# name against the application id / WM_CLASS (com.example.unvisited).
+# name against the application id / WM_CLASS (io.github.gianfrid.unvisited).
 # Exec is best-effort: the dev bundle is not installed on PATH; this entry
 # exists so the dash and taskbar can resolve the icon of the running app.
-StartupWMClass=com.example.unvisited
+StartupWMClass=io.github.gianfrid.unvisited
