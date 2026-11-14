@@ -75,6 +75,7 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     _seenImportEpoch = widget.model.importEpoch;
+    _seenFitRequestEpoch = widget.model.fitRequestEpoch;
     // Probe-and-create the cache directory up front. The caching provider
     // sets itself up in a fire-and-forget block: if directory creation
     // fails there, its initializer never completes and every tile read
@@ -198,6 +199,10 @@ class _MapPageState extends State<MapPage> {
   bool _followRecording = false;
   bool _wasRecording = false;
 
+  /// The fit-request epoch MapPage handled last (see the import epoch):
+  /// a track-tile tap asks for a fit to its aggregate.
+  int _seenFitRequestEpoch = 0;
+
   /// Whether the recording dashboard's stats panel is expanded; the
   /// HUD chip toggles it.
   bool _dashboardOpen = false;
@@ -274,6 +279,21 @@ class _MapPageState extends State<MapPage> {
         // Center on what was just imported.
         _fitWhenSized(
           CameraFit.coordinates(coordinates: pts, padding: _fitPadding),
+        );
+      }
+    }
+    // A track-tile tap selects its aggregate and asks for a fit to it
+    // (the plain select path — a map tap — never sets the epoch).
+    final fitEpoch = widget.model.fitRequestEpoch;
+    if (fitEpoch != _seenFitRequestEpoch) {
+      _seenFitRequestEpoch = fitEpoch;
+      final selected = widget.model.selectedAggregate;
+      if (selected != null && selected.points.isNotEmpty) {
+        _fitWhenSized(
+          CameraFit.coordinates(
+            coordinates: selected.points,
+            padding: _fitPadding,
+          ),
         );
       }
     }

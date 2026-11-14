@@ -673,6 +673,25 @@ class AppModel extends ChangeNotifier {
     return defaultTintKey;
   }
 
+  /// Bumped whenever a fit-to-aggregate request fires; MapPage compares
+  /// against the value it last handled (the importEpoch pattern).
+  int fitRequestEpoch = 0;
+
+  /// Selects the aggregate the track belongs to and requests a camera fit
+  /// to its points (the selection bar appears with it). No-op with no
+  /// aggregate (a hidden track has none until it is re-shown).
+  void selectAndFitAggregate(StoredTrack t) {
+    if (!t.visible) return;
+    for (final a in aggregates) {
+      if (a.trackIds.contains(t.id)) {
+        selectedAnchor = a.anchorId;
+        fitRequestEpoch++;
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
   @override
   void dispose() {
     recorder.recordingLive.dispose();

@@ -1373,6 +1373,47 @@ void main() {
     expect(dotColor(ids[2]), exploredAreaColor('blue').withValues(alpha: 1));
   });
 
+  testWidgets('tapping a track tile selects and fits its aggregate', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    model.store.importBytes(fixture('eiffel_ride.tcx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
+    expect(model.selectedAnchor, isNull);
+
+    double zoom() => MapCamera.of(tester.element(find.byType(TileLayer))).zoom;
+
+    // The startup camera fits both distant aggregates; tapping one tile
+    // fits just that aggregate — a tighter zoom — and selects it.
+    final before = zoom();
+    await tester.tap(find.text('Morning walk'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(model.selectedAnchor, isNotNull);
+    expect(
+      model.selectedAggregate!.trackIds,
+      contains(model.tracks.singleWhere((t) => t.name == 'Morning walk').id),
+    );
+    expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+    expect(zoom(), greaterThan(before),
+        reason: 'fitting one aggregate zooms in over the Europe-wide fit');
+  });
+
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {
     final root = createRoot();
     final cache = createCache();
