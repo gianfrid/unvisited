@@ -15,6 +15,7 @@ import 'package:file_picker/file_picker.dart'
         WindowsOptions;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
@@ -50,11 +51,13 @@ base class FakePickedFile extends PlatformFile {
 }
 
 /// A FilePickerPlatform whose file picker always "picks" [picked]
-/// (null = the user cancelled).
+/// (null = the user cancelled), and whose save dialog "writes" the bytes
+/// to [savedTo] (also null = cancel).
 class FakeFilePicker extends FilePickerPlatform {
-  FakeFilePicker(this.picked);
+  FakeFilePicker(this.picked, {this.savedTo});
 
   final PlatformFile? picked;
+  final String? savedTo;
 
   @override
   Future<PlatformFile?> pickFile({
@@ -70,6 +73,24 @@ class FakeFilePicker extends FilePickerPlatform {
     LinuxOptions linuxOptions = const LinuxOptions(),
     WebOptions webOptions = const WebOptions(),
   }) async => picked;
+
+  @override
+  Future<Uri?> saveFile({
+    required String fileName,
+    required Uint8List bytes,
+    String mimeType = 'application/octet-stream',
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileSaving,
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    final target = savedTo;
+    if (target == null) return null;
+    File(target).writeAsBytesSync(bytes);
+    return Uri.file(target);
+  }
 }
 
 void main() {
@@ -1072,6 +1093,45 @@ void main() {
       // ~11 km away: no hit, and the existing selection clears.
       model.selectAggregateAt(const LatLng(45.1, 9.0), toleranceMeters: 100);
       expect(model.selectedAnchor, isNull);
+    });
+  });
+
+  group('export', () {
+    /// Imports the GPX fixture; the pipeline saw the same bytes the
+    /// stored file now carries.
+    StoredTrack importOne() {
+      model.store.importBytes(fixture('morning_walk.gpx'));
+      return model.tracks.single;
+    }
+
+    void installSaver(String? savedTo) {
+      FilePickerPlatform.instance = FakeFilePicker(null, savedTo: savedTo);
+      addTearDown(() {
+        FilePickerPlatform.instance = MethodChannelFilePicker();
+      });
+    }
+
+    test('a desktop save writes the stored bytes byte-identical', () async {
+      final track = importOne();
+      final stored = model.store.trackFileFor(track).readAsBytesSync();
+      final target = '${root.path}${Platform.pathSeparator}out.gpx';
+      installSaver(target);
+
+      final result = await model.exportTrack(track);
+
+      expect(result, target);
+      expect(File(target).readAsBytesSync(), stored);
+    });
+
+    test('a cancelled save dialog writes nothing', () async {
+      final track = importOne();
+      final target = '${root.path}${Platform.pathSeparator}out.gpx';
+      installSaver(null);
+
+      final result = await model.exportTrack(track);
+
+      expect(result, isNull);
+      expect(File(target).existsSync(), isFalse);
     });
   });
 }

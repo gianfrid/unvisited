@@ -4,6 +4,7 @@ import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart' show Locale;
 import 'package:geolocator/geolocator.dart';
@@ -12,6 +13,7 @@ import 'package:latlong2/latlong.dart';
 import '../aggregate/aggregate_tracks.dart'
     show AggregateInput, AggregateTrack, AggregateIndex, UnionFindAggregateIndex;
 import '../geo.dart' show haversineMeters;
+import '../host_channel.dart' show hostChannel;
 import '../l10n/app_strings.dart';
 import '../road/road_bench.dart' show benchReport, runRoadBench;
 import '../road/road_format.dart' show RoadFormatException;
@@ -333,6 +335,51 @@ class AppModel extends ChangeNotifier {
     await store.clearAll();
     imports.clearCache();
     notifyListeners();
+  }
+
+  // --- Export --------------------------------------------------------------
+
+  /// The mime per stored format ('application/gpx+xml'), matching the
+  /// accept set the share-intent filter and the parser sniffing use.
+  static const _trackMimes = <String, String>{
+    'gpx': 'application/gpx+xml',
+    'kmz': 'application/vnd.google-earth.kmz',
+    'kml': 'application/vnd.google-earth.kml+xml',
+    'tcx': 'application/xml',
+    'fit': 'application/octet-stream',
+  };
+
+  /// Writes the track's original stored file as-is to a user-chosen path
+  /// (records export as the GPX they were finalized into); returns the
+  /// destination, or null when cancelled. Android shows the share sheet
+  /// instead (the host channel's ACTION_SEND over the app-private file
+  /// through the FileProvider) and returns null — there is no destination
+  /// path to report. Throws on a failed export; the caller surfaces the
+  /// error.
+  Future<String?> exportTrack(StoredTrack track) async {
+    if (Platform.isAndroid) {
+      try {
+        await hostChannel.invokeMethod('shareTrack', <String, Object?>{
+          'path': store.trackFileFor(track).path,
+          'mime': _trackMimes[track.format.toLowerCase()] ??
+              'application/octet-stream',
+        });
+      } on MissingPluginException {
+        return null; // test runs, or a degraded build: nothing to do
+      }
+      return null;
+    }
+    final file = store.trackFileFor(track);
+    // Sync read: tracks are small, and a synchronous read keeps the export
+    // inside a widget test's fake-async zone (real-IO futures never
+    // dispatch there — see the recording stop's runAsync note).
+    final target = await FilePicker.saveFile(
+      fileName: file.uri.pathSegments.last,
+      bytes: file.readAsBytesSync(),
+      mimeType: _trackMimes[track.format.toLowerCase()] ??
+          'application/octet-stream',
+    );
+    return target?.toFilePath();
   }
 
   /// The map's start center: the position saved by the previous run, or

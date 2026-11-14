@@ -5,6 +5,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:file_picker/file_picker.dart'
+    show
+        FilePickerPlatform,
+        FilePickerStatus,
+        LinuxOptions,
+        MethodChannelFilePicker,
+        WebOptions,
+        WindowsOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
@@ -19,6 +27,33 @@ import 'package:unvisited/ui/map_page.dart';
 import 'package:unvisited/ui/track_colors.dart';
 
 import 'helpers.dart';
+
+/// A save-only FilePickerPlatform: the "save dialog" writes the handed
+/// bytes to [target] and answers with its file URI (null = cancelled).
+/// Just enough glue for the export-menu wiring tests.
+class FakeSavePicker extends FilePickerPlatform {
+  FakeSavePicker(this.target);
+
+  final String? target;
+
+  @override
+  Future<Uri?> saveFile({
+    required String fileName,
+    required Uint8List bytes,
+    String mimeType = 'application/octet-stream',
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileSaving,
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    final path = target;
+    if (path == null) return null;
+    File(path).writeAsBytesSync(bytes);
+    return Uri.file(path);
+  }
+}
 
 void main() {
   testWidgets('MapPage builds its tile layer without crashing', (tester) async {
@@ -1250,6 +1285,46 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(AlertDialog), findsNothing);
     expect(model.tracks, isNotEmpty);
+  });
+
+  testWidgets('the menu Export writes the stored bytes and toasts', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    final stored = model.store.trackFileFor(model.tracks.single);
+    final target = File(
+      '${root.path}${Platform.pathSeparator}export.gpx',
+    );
+    FilePickerPlatform.instance = FakeSavePicker(target.path);
+    addTearDown(() {
+      FilePickerPlatform.instance = MethodChannelFilePicker();
+    });
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await tester.tap(find.byTooltip('Track actions'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Export'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // The bytes went through unchanged and the toast says so.
+    expect(target.existsSync(), isTrue);
+    expect(target.readAsBytesSync(), stored.readAsBytesSync());
+    expect(find.text('Track exported'), findsOneWidget);
   });
 
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {

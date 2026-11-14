@@ -214,6 +214,10 @@ abstract class AppStrings {
 
   /// A track's start date/time, locale-formatted for the info dialog.
   String trackStart(DateTime start);
+
+  // Export feedback (a toast on success and failure).
+  String get exportDone;
+  String get exportFailed;
 }
 
 class EnglishStrings extends AppStrings {
@@ -259,6 +263,10 @@ class EnglishStrings extends AppStrings {
       '${start.day.toString().padLeft(2, '0')} '
       '${start.hour.toString().padLeft(2, '0')}:'
       '${start.minute.toString().padLeft(2, '0')}';
+  @override
+  String get exportDone => 'Track exported';
+  @override
+  String get exportFailed => 'Export failed';
   @override
   String get locateLabel => 'Locate';
   @override
@@ -524,6 +532,10 @@ class ItalianStrings extends AppStrings {
       '${start.year.toString().padLeft(4, '0')} '
       '${start.hour.toString().padLeft(2, '0')}:'
       '${start.minute.toString().padLeft(2, '0')}';
+  @override
+  String get exportDone => 'Traccia esportata';
+  @override
+  String get exportFailed => 'Esportazione non riuscita';
   @override
   String get locateLabel => 'Posizione';
   @override

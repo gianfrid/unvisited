@@ -520,6 +520,10 @@ class TrackStore {
 
   String _pathFor(StoredTrack t) =>
       '${tracksDir.path}${Platform.pathSeparator}${t.file}';
+
+  /// The stored file of a track, as imported (never rewritten on the way
+  /// out — export ships the very bytes the catalog keeps).
+  File trackFileFor(StoredTrack t) => File(_pathFor(t));
 }
 
 /// 64-bit FNV-1a content hash, stable across runs and platforms that this

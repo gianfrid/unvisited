@@ -18,6 +18,7 @@ import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -114,6 +115,44 @@ class MainActivity : FlutterActivity() {
             }
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /**
+     * Shares a stored track file as-is through the system share sheet:
+     * an ACTION_SEND Intent whose stream URI the FileProvider grants —
+     * the file lives under the app-private files dir, direct raw-path
+     * sharing is not possible from external apps. The bytes are never
+     * rewritten on the way out (recorded tracks export as the GPX they
+     * were finalized into).
+     */
+    private fun shareTrack(args: Map<String, Any>?, result: MethodChannel.Result) {
+        val path = args?.get("path") as? String
+        if (path == null) {
+            result.error("bad_args", "shareTrack needs a path", null)
+            return
+        }
+        val file = File(path)
+        if (!file.exists()) {
+            result.error("not_found", "track file is gone", null)
+            return
+        }
+        try {
+            val mime = args["mime"] as? String ?: "application/octet-stream"
+            val uri = FileProvider.getUriForFile(
+                this, "$packageName.fileprovider", file
+            )
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(share, null))
+            result.success(null)
+        } catch (e: ActivityNotFoundException) {
+            result.error("no_activity", "No app accepts the share", null)
+        } catch (e: Exception) {
+            result.error("share_failed", e.message ?: "share failed", null)
         }
     }
 
@@ -356,6 +395,10 @@ class MainActivity : FlutterActivity() {
                     "pickDirectory" -> pickSafDirectory(result)
                     "listTrackFiles" ->
                         listSafTrackFiles(call.arguments?.toString() ?: "", result)
+                    // Export: the system share sheet over the stored file,
+                    // granted through the app's FileProvider (see shareTrack).
+                    "shareTrack" ->
+                        shareTrack(call.arguments as? Map<String, Any>, result)
                     // The recording FGS's notification needs POST_NOTIFICATIONS
                     // (API 33+); denied, it stays mute and recording proceeds.
                     // The ask is soft and fires only at the Record tap.

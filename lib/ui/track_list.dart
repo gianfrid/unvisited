@@ -242,6 +242,30 @@ class _TrackTile extends StatelessWidget {
                 if (await _confirmDelete(context, strings)) {
                   await model.delete(track);
                 }
+              case 'export':
+                // Capture the messenger up front: the export awaits, and
+                // using the context across that gap would.
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final target = await model.exportTrack(track);
+                  // Android's share sheet has no destination path; a
+                  // desktop cancellation returns null without a toast.
+                  if (target != null) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(strings.exportDone),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                } on Exception {
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(strings.exportFailed),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
             }
           },
           itemBuilder: (context) => [

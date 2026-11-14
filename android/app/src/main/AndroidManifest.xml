@@ -56,6 +56,18 @@
                 <data android:mimeType="text/xml"/>
             </intent-filter>
         </activity>
+        <!-- Track export: the system share sheet receives stored track files
+             through this provider (and only from it) — the storage root is
+             app-private, raw paths cannot be handed to other apps. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
         <!-- Flutter 3.27+ defaults to the Impeller renderer; on devices where
              its textures fail to present, the map tiles never appear (grey
              map while vector layers paint). Skia is the battle-tested
