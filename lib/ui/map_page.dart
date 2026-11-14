@@ -298,15 +298,21 @@ class _MapPageState extends State<MapPage> {
         // emits controller events (programmatic sources), so this never
         // releases the follow; any hand gesture still does, and with it
         // the rotation. nearestEquivalentRotation keeps the short arc
-        // where the course crosses 0/360. No course yet — a first fix
-        // without heading — leaves the camera rotation alone.
-        final course = session?.currentCourse;
-        if (course == null) {
+        // where the course crosses 0/360. The rotation is gated on the
+        // device's *reported* heading, not the bridged course: a
+        // magnetometer-less or bearing-only fix stream keeps the camera
+        // north-up (the marker still rotates with the course), because a
+        // bearing between fixes says where the user was, not where they
+        // face. No heading yet — a first fix — leaves the camera
+        // rotation alone.
+        final heading = session?.currentHeading;
+        if (heading == null) {
           _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
         } else {
+          // With a reported heading, currentCourse is that same heading.
           final courseDelta =
               nearestEquivalentRotation(
-                course,
+                heading,
                 _mapController.camera.rotation,
               ) -
               _mapController.camera.rotation;
@@ -314,7 +320,7 @@ class _MapPageState extends State<MapPage> {
             _mapController.moveAndRotate(
               LatLng(lat, lon),
               _mapController.camera.zoom,
-              nearestEquivalentRotation(course, _mapController.camera.rotation),
+              nearestEquivalentRotation(heading, _mapController.camera.rotation),
             );
           } else {
             _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);

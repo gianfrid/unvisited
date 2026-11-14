@@ -577,7 +577,7 @@ void main() {
     },
   );
 
-  testWidgets('the bearing fallback steers the follow camera course-up', (
+  testWidgets('the bearing fallback keeps the camera north-up, marker rotating', (
     tester,
   ) async {
     final root = createRoot();
@@ -595,16 +595,28 @@ void main() {
 
     MapCamera camera() =>
         MapController.of(tester.element(find.byType(TileLayer))).camera;
+    double markerAngle() {
+      final m = tester
+          .widget<Transform>(
+            find.byKey(const ValueKey('recording-marker-rotate')),
+          )
+          .transform;
+      return math.atan2(m.entry(1, 0), m.entry(0, 0));
+    }
 
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
     // ~7 m east of the first fix, no heading: the course is the bearing
-    // the displacement bridges.
+    // the displacement bridges — but a bridged bearing is not a reported
+    // heading, so it must not steer the camera.
     fakeFix(source, 1, lon: 13.4051);
     await tester.pump();
     await tester.pump();
 
-    expect(camera().rotation, closeTo(90.0, 0.1));
+    expect(camera().rotation, closeTo(0.0, 0.1),
+        reason: 'a bearing-only stream keeps the camera north-up');
+    expect(markerAngle(), closeTo(math.pi / 2, 1e-6),
+        reason: 'the marker still rotates along the bridged course');
   });
 
   testWidgets('while recording, locate returns the follow after a pan', (

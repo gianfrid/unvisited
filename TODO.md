@@ -27,25 +27,6 @@ Track list — catalog UX:
    tracks export as the GPX they were finalized into. Widget tests for the
    menu wiring; strings en + it.
 
-Bugs — high priority:
-
-1. - [ ] Test the engine's `currentHeading`/`currentCourse` split (the
-   state itself landed in b6fdfe8 with getter docs claiming "unit tests
-   both ways" — its diff touched no test file; the message overclaimed).
-   Unit tests for the two behaviors: a fix that carries a heading sets
-   both getters to it; a heading-less fix leaves `currentHeading` null
-   while `currentCourse` keeps bridging the bearing between fixes.
-2. - [ ] Gate the course-up camera rotation on the device-reported
-   heading — the magnetometer-backed signal — so a sensor-less or
-   bearing-only stream keeps the camera north-up with the marker still
-   rotating; and smooth what remains (the course-delta hysteresis below
-   the threshold landed in b6fdfe8, but the rotation still rides
-   `currentCourse` — map_page.dart has no `currentHeading` gate, so a
-   bridged-bearing stream still spins the camera). No new packages: a
-   dedicated magnetometer plugin would be a package decision beyond the
-   established set — the gate rides the heading the position fixes
-   already report.
-
 Map — aggregate tracks & selection:
 
 1. - [ ] Aggregate track model: cluster the visible stored tracks so that

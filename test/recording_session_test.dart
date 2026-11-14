@@ -231,13 +231,18 @@ void main() {
     final session = newSession('Compass')..start(FakeSource());
     expect(session.currentCourse, isNull,
         reason: 'no heading-bearing fix has been accepted yet');
+    expect(session.currentHeading, isNull);
     session.processFix(fix(0, heading: 170));
     expect(session.currentCourse, 170,
         reason: 'one heading-bearing fix is enough');
+    expect(session.currentHeading, 170,
+        reason: 'a fix that carries a heading sets both getters to it');
     // A subsequent fix without a heading falls back to the bearing.
     session.processFix(fix(1, lat: 52.5201, heading: null));
     expect(session.currentCourse, closeTo(0, 0.5),
         reason: 'bearing fallback: north along the meridian');
+    expect(session.currentHeading, isNull,
+        reason: 'a heading-less fix leaves currentHeading null');
   });
 
   test('course falls back to the bearing between fixes', () {
@@ -245,10 +250,13 @@ void main() {
     // The very first fix carries no heading: nothing is measured.
     expect(session.processFix(fix(0)), FixDisposition.accepted);
     expect(session.currentCourse, isNull);
+    expect(session.currentHeading, isNull);
     // East along a parallel: the displacement's initial bearing.
     session.processFix(fix(1, lon: 13.405173));
     expect(session.currentCourse, closeTo(90, 0.5),
         reason: 'fused fallback: bearing between the fixes');
+    expect(session.currentHeading, isNull,
+        reason: 'currentHeading stays null; only currentCourse bridges');
   });
 
   test('a fix-loss gap closes the segment automatically', () {
