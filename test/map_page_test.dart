@@ -1,3 +1,4 @@
+import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -1325,6 +1326,51 @@ void main() {
     expect(target.existsSync(), isTrue);
     expect(target.readAsBytesSync(), stored.readAsBytesSync());
     expect(find.text('Track exported'), findsOneWidget);
+  });
+
+  testWidgets('track tiles carry their aggregate color', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    // Two co-located tracks (one aggregate) and a distant third.
+    String gpx(double lat, double lon, DateTime start) =>
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<gpx version="1.1" creator="test"><trk><name>x</name><trkseg>'
+        '<trkpt lat="$lat" lon="$lon"><time>${start.toIso8601String()}</time></trkpt>'
+        '</trkseg></trk></gpx>\n';
+    final t0 = DateTime.utc(2026, 6, 1, 8);
+    model.store.importBytes(utf8.encode(gpx(45.0, 9.0, t0)));
+    model.store.importBytes(
+        utf8.encode(gpx(45.0, 9.0002, t0.add(const Duration(days: 3)))));
+    model.store.importBytes(
+        utf8.encode(gpx(48.85, 2.35, t0.add(const Duration(days: 6)))));
+    expect(model.tracks.length, 3);
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    Color dotColor(String trackId) {
+      final container = tester.widget<Container>(
+        find.byKey(ValueKey('track-dot-$trackId')),
+      );
+      return (container.decoration as BoxDecoration).color!;
+    }
+
+    final ids = model.tracks.map((t) => t.id).toList();
+    // Oldest aggregate: green (the fixed default). The Paris aggregate:
+    // the next palette color. The two clustered tiles share a color.
+    // (The dot draws solid — withValues(alpha: 1) — so compare the opaque
+    // counterparts.)
+    expect(dotColor(ids[0]), exploredAreaColor('green').withValues(alpha: 1));
+    expect(dotColor(ids[1]), exploredAreaColor('green').withValues(alpha: 1));
+    expect(dotColor(ids[2]), exploredAreaColor('blue').withValues(alpha: 1));
   });
 
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {

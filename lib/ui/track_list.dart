@@ -9,6 +9,7 @@ import '../l10n/app_strings.dart';
 import '../storage/track_store.dart';
 import 'app_model.dart';
 import 'format.dart';
+import 'track_colors.dart' show exploredAreaColor;
 
 class TrackDrawer extends StatelessWidget {
   const TrackDrawer({super.key, required this.model});
@@ -218,7 +219,31 @@ class _TrackTile extends StatelessWidget {
       child: CheckboxListTile(
         value: track.visible,
         onChanged: (_) => model.toggleVisible(track),
-        title: Text(track.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Row(
+          children: [
+            // The aggregate color the map draws for this track's cluster
+            // (palette rank or the per-aggregate override); hidden tracks
+            // have no aggregate and show the default.
+            Container(
+              key: ValueKey('track-dot-${track.id}'),
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: exploredAreaColor(model.tintKeyForTrack(track))
+                    .withValues(alpha: 1),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                track.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         subtitle: Text(
           '${track.format} · ${strings.pointCount(track.pointCount)} · '
           '$distance · $duration',

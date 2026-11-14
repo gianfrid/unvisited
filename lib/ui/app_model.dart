@@ -660,6 +660,19 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The resolved tint key of the aggregate a track belongs to (what the
+  /// map draws), or the default when the track is hidden — it leaves no
+  /// aggregate until re-shown. The track list's color dot reads this.
+  String tintKeyForTrack(StoredTrack t) {
+    if (!t.visible) return defaultTintKey;
+    for (final a in aggregates) {
+      if (a.trackIds.contains(t.id)) {
+        return aggregateTintKeys[a.anchorId] ?? defaultTintKey;
+      }
+    }
+    return defaultTintKey;
+  }
+
   @override
   void dispose() {
     recorder.recordingLive.dispose();
