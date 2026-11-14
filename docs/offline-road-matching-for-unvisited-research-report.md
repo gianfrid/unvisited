@@ -134,6 +134,36 @@ Scores: 1 (poor) – 5 (excellent). "Deps" counts additions beyond the establish
 5. LOD/simplification variants at build time; perf test on mid-range Android profile with 5k+ unlocked segments.
 6. (Optional) Rust core behind the same interface if measurements demand; port matcher 1:1 with flutter_rust_bridge.
 
+## Profile results (measured 2026-11-14): JSON payloads stay, no Rust core
+
+The "profiling follow-ups" measured the format v2 pipeline on a real Geofabrik
+extract (Geofabrik `isole` — Italy's islands zone; 784,017 highway ways, 1,060
+z12 buckets, 82.8 MB) built with `tool/build_roads.dart`, benched by
+`tool/bench_roads.dart --roads` (desktop) and the app's profile-mode in-app
+run (`lib/road/road_bench.dart`) on a mid-range Redmi Note 8 (Android 11,
+arm64, profile build):
+
+| Metric | Desktop (profile) | Redmi Note 8 (profile) |
+|---|---|---|
+| open (directory parse) | 21.9 ms cold / ~2 ms warm | 1.3 ms |
+| full payload scan, all 82.78 MB JSON | 725 ms | 3,734 ms |
+| bucket cold parse avg / max | 0.7 / 9.6 ms | 3.5 / 77.8 ms |
+| densest urban bucket cold parse (12,254 ways) | 8.6 ms | 65.1 ms |
+| match cold (2,000-point 10 km walk) | 87 ms | 331 ms |
+| match warm avg / min | 8.4 / 5.6 ms | 41.7 / 38.4 ms |
+
+Both JSON-vs-varint questions resolve to "no change": a walk's cost is
+per-bucket and hence density-bound, not region-bound — a Germany-sized file
+only multiplies the bucket count (and so directory size, still milliseconds),
+while the buckets a walk touches parse in single-digit milliseconds on the
+mid-range device. The worst case the lazy loader can be pushed to (every
+z12 tile visited) stays out of any real session, and even the import-path
+budget (`open` + one cold match per import) sits at ~0.4 s on the device,
+well inside the 1 s bar. The same reasoning retires finding 5's Rust exit
+hatch: nothing in the measured profile is within an order of magnitude of
+needing native code. Trigger remains live in profile builds
+(`AppModel.setRoadFile`) should a future format change need re-measuring.
+
 ## Open Questions (owner decisions)
 
 1. **Road classes in scope:** all `highway=*` including footway/path/track, or motor-vehicle roads only? Default: all classes — the app tracks walking as much as driving, and excluding footways would make walking corridors unmatchable.

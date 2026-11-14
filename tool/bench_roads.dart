@@ -4,6 +4,9 @@
 //
 // Run with: dart run tool/bench_roads.dart [--blocks N] [--points N]
 //                                          [--step M] [--iterations N]
+//         or: dart run tool/bench_roads.dart --roads <region.roads>
+// The --roads form benchmarks a real region file (same measurements as the
+// app's profile-mode run) instead of the synthetic city below.
 //
 // The synthetic city is a grid: `blocks`×`blocks` city blocks of 100 m,
 // every street segment between intersections its own way (OSM-like), points
@@ -20,6 +23,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
+import 'package:unvisited/road/road_bench.dart';
 import 'package:unvisited/road/road_matcher.dart';
 import 'package:unvisited/road/road_store.dart';
 
@@ -29,13 +33,16 @@ const blockMeters = 100.0;
 const wayPointEveryMeters = 25.0;
 const metersPerDegLat = 111320.0;
 
-void main(List<String> args) {
+Future<void> main(List<String> args) async {
   var blocks = 100;
   var trackPoints = 10000;
   var stepMeters = 5.0;
   var iterations = 5;
+  String? roadsPath;
   for (var i = 0; i < args.length; i++) {
     switch (args[i]) {
+      case '--roads':
+        roadsPath = args[++i];
       case '--blocks':
         blocks = int.parse(args[++i]);
       case '--points':
@@ -48,6 +55,14 @@ void main(List<String> args) {
         print('unknown arg ${args[i]}');
         exit(2);
     }
+  }
+
+  // Real-region mode: the same measurements the profile-mode in-app run
+  // prints (lib/road/road_bench.dart), for the desktop column of the A/B.
+  if (roadsPath != null) {
+    print('real region: $roadsPath');
+    print(benchReport(await runRoadBench(roadsPath)));
+    return;
   }
 
   final lat0 = 52.5200;

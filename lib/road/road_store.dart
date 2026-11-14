@@ -41,9 +41,10 @@ class RoadWay {
 /// Flutter — a future Rust core replaces this class behind the same
 /// interface.
 class RoadStore {
-  RoadStore._(this._bytes, this._file, this._blobBase,
+  RoadStore._(this._bytes, this._file, this._blobBase, int directoryLength,
       Map<String, List<int>> directory)
-      : _directory = directory;
+      : _directory = directory,
+        _directoryLength = directoryLength;
 
   /// In-memory source (tests, small fixtures). Null when reading from disk.
   final List<int>? _bytes;
@@ -57,6 +58,15 @@ class RoadStore {
 
   /// Bucket key → (offset relative to [_blobBase], length).
   final Map<String, List<int>> _directory;
+
+  /// Byte size of the JSON directory blob (the open-time parse cost).
+  final int _directoryLength;
+
+  /// Byte size of bucket [key]'s payload per the directory (0 if absent).
+  int bucketPayloadBytes(String key) => _directory[key]?[1] ?? 0;
+
+  /// Byte size of the JSON directory blob.
+  int get directoryByteCount => _directoryLength;
 
   /// Parsed-bucket LRU: insertion-ordered, evicting the oldest beyond the
   /// limit. A bucket holds every way in one ~10 km z12 tile, so a handful
@@ -174,6 +184,7 @@ class RoadStore {
           null,
           file,
           roadMagic.length + 5 + directoryLength,
+          directoryLength,
           _parseHeader(prefix, directoryBytes, directoryLength));
     } on RoadFormatException {
       file.closeSync();
@@ -204,7 +215,7 @@ class RoadStore {
         directoryLength,
         fileLength: bytes.length,
         blobBase: blobBase);
-    return RoadStore._(bytes, null, blobBase, directory);
+    return RoadStore._(bytes, null, blobBase, directoryLength, directory);
   }
 
   /// Validates the magic/version and parses the directory JSON. [prefix] is

@@ -11,13 +11,6 @@ bundled in the APK (regions are user-provided files); the build CLI's PBF
 reader is dev-tool-only (hand-written in `tool/`, no package dependency);
 unlock state persists as way ids + matched-length ratio in `index.json`.
 
-- [] profiling follow-ups (the Berlin numbers are desktop; they leave the
-  open questions on Android): the JSON
-  bucket payloads dominate open/parse cost at region scale; if a real
-  Germany-sized file proves too slow on mid-range Android, switch the bucket
-  payload to a binary layout (varint lengths instead of JSON) — the directory
-  and lazy-loading design stays. Also re-run `tool/bench_roads.dart` on a
-  device profile build before deciding on the Rust core (hybrid scoring).
 - [] slice 7 — hybrid scoring (optional, only if quality demands):
   candidate preference for the previously active way to stop hopping
   between parallel roads; fixture with a service road beside a main road.
