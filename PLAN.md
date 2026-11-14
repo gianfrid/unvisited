@@ -1,58 +1,28 @@
-# Plan — shared geo math module (TODO.md, technical debt item 2)
-
-## Problem
-
-Haversine lives twice — `lib/models/track.dart` (`_haversine(TrackPoint,
-TrackPoint)`) and `lib/recording/recording_session.dart`
-(`_haversine(double, double, double, double)`) — byte-for-byte the same
-formula, kept in step only by comments. `recording_session.dart` also carries
-an initial-bearing `_bearing` that is the engine's course fallback and has no
-other home. Any numeric tweak must be hand-mirrored or engine and catalog
-distances silently disagree.
+# Plan — pubspec cleanup (TODO.md, technical debt item 3)
 
 ## Change
 
-New pure-Dart module `lib/geo.dart` (no imports beyond `dart:math`,
-consistent with the portability rule), exposing:
+`pubspec.yaml` only:
 
-- `double haversineMeters(double lat1, double lon1, double lat2, double lon2)`
-- `double initialBearingDeg(double lat1, double lon1, double lat2, double lon2)`
-  (degrees clockwise from true north, as today)
-- No `TrackPoint`-taking wrapper: keep the API primitive-only; `track.dart`
-  calls it with `point.lat, point.lon`, one-line call sites.
+1. Drop the Flutter template comment block (versioning lecture, dependency
+   boilerplate, assets/fonts tutorial comments). Keep: name, description
+   rewritten from "A new Flutter project." → a real one-liner, publish_to,
+   version, environment, dependencies, dev_dependencies, the flutter
+   section with `uses-material-design: true`.
+2. Remove the unused `cupertino_icons` dependency — verified: no
+   CupertinoIcons usage anywhere in lib/ or test/; the
+   `package:flutter/cupertino.dart` import in main.dart is the locale
+   delegate and stays untouched.
 
-Then:
-
-1. `track.dart` — delete `_earthRadius`/`_haversine`/`_rad`, call
-   `haversineMeters(...)` in `distanceMeters`; drop `dart:math` if now
-   unused.
-2. `recording_session.dart` — delete the local `_haversine`, `_bearing`,
-   `_earthRadius`; call the shared functions at the two existing call sites;
-   keep the existing doc comments on the call sites (the source of the
-   agreement rationale), drop the duplicated formula comments.
-3. Migrate `currentCourse`/marker behavior untouched — pure extraction, no
-   logic change.
-
-## Tests
-
-New `test/geo_test.dart` pinning the shared module against hand-computed
-values:
-
-- haversine: zero distance for identical points; a known short leg (~1 m
-  scale, 0.001° latitude ≈ 111.19 m) and a known equator longitude leg;
-  antipodal sanity.
-- bearing: due north, due east, due south, due west on simple legs; a
-  non-trivial leg checked against a precomputed value; result wraps into
-  [0, 360).
-- regression: existing `recording_session_test.dart` and parser/store tests
-  must pass unchanged (distance agreement between engine and catalog relies
-  on them).
+Per SPEC, the package removal needs the owner's explicit confirmation in
+this plan step — that confirmation is being asked for now.
 
 ## Verification
 
-`flutter analyze` clean, `flutter test` green.
+`flutter analyze` clean, `flutter test` green
+(`flutter pub get` re-resolves without cupertino_icons).
 
 ## Commit
 
-PLAN.md + the change + removal of TODO.md item 2 (technical debt list
+PLAN.md, pubspec.yaml, pubspec.lock, and TODO.md's item 3 removed (list
 renumbered) in one commit.

@@ -13,10 +13,6 @@ the rest of the backlog by intent):
    rebuild — a scaling wall for long sessions. Give the recording live
    state its own Listenable (stats/trace/marker) so the fog overlay and
    toolbar rebuild channels stay untouched.
-3. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
-   the unused `cupertino_icons` dependency (zero CupertinoIcons usage —
-   the cupertino.dart import in main.dart is the locale delegate and
-   stays). Package removal per SPEC: confirm with owner in the plan step.
 
 Track list — catalog UX:
 
