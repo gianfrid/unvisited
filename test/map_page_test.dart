@@ -17,8 +17,7 @@ import 'package:file_picker/file_picker.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
-import 'package:unvisited/recording/position_source.dart'
-    show PositionFix;
+import 'package:unvisited/recording/position_source.dart' show PositionFix;
 import 'package:unvisited/recording/recording_session.dart' show RecordingState;
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/tile_source.dart';
@@ -614,47 +613,54 @@ void main() {
     },
   );
 
-  testWidgets('the bearing fallback keeps the camera north-up, marker rotating', (
-    tester,
-  ) async {
-    final root = createRoot();
-    final cache = createCache();
-    final model = await createModel(root);
-    final source = FakePositionSource();
+  testWidgets(
+    'the bearing fallback keeps the camera north-up, marker rotating',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
 
-    await pumpMapPage(
-      tester,
-      model: model,
-      cache: cache,
-      locationSupported: true,
-    );
-    await tester.pump();
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
 
-    MapCamera camera() =>
-        MapController.of(tester.element(find.byType(TileLayer))).camera;
-    double markerAngle() {
-      final m = tester
-          .widget<Transform>(
-            find.byKey(const ValueKey('recording-marker-rotate')),
-          )
-          .transform;
-      return math.atan2(m.entry(1, 0), m.entry(0, 0));
-    }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      double markerAngle() {
+        final m = tester
+            .widget<Transform>(
+              find.byKey(const ValueKey('recording-marker-rotate')),
+            )
+            .transform;
+        return math.atan2(m.entry(1, 0), m.entry(0, 0));
+      }
 
-    await model.startRecording(source: source, permissionGate: false);
-    fakeFix(source, 0);
-    // ~7 m east of the first fix, no heading: the course is the bearing
-    // the displacement bridges — but a bridged bearing is not a reported
-    // heading, so it must not steer the camera.
-    fakeFix(source, 1, lon: 13.4051);
-    await tester.pump();
-    await tester.pump();
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      // ~7 m east of the first fix, no heading: the course is the bearing
+      // the displacement bridges — but a bridged bearing is not a reported
+      // heading, so it must not steer the camera.
+      fakeFix(source, 1, lon: 13.4051);
+      await tester.pump();
+      await tester.pump();
 
-    expect(camera().rotation, closeTo(0.0, 0.1),
-        reason: 'a bearing-only stream keeps the camera north-up');
-    expect(markerAngle(), closeTo(math.pi / 2, 1e-6),
-        reason: 'the marker still rotates along the bridged course');
-  });
+      expect(
+        camera().rotation,
+        closeTo(0.0, 0.1),
+        reason: 'a bearing-only stream keeps the camera north-up',
+      );
+      expect(
+        markerAngle(),
+        closeTo(math.pi / 2, 1e-6),
+        reason: 'the marker still rotates along the bridged course',
+      );
+    },
+  );
 
   testWidgets('while recording, locate returns the follow after a pan', (
     tester,
@@ -1004,8 +1010,7 @@ void main() {
 
     // Tap on a real track point: tapAt refreshes the global position of
     // the tester, so convert the point through the live camera first.
-    final camera =
-        MapCamera.of(tester.element(find.byType(TileLayer)));
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
     // latLngToScreenOffset is map-local; tapAt is viewport-global — the
     // map starts below the toolbar, so add its origin.
     final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
@@ -1017,19 +1022,22 @@ void main() {
     await tester.pump();
 
     expect(model.selectedAggregate, isNotNull);
-    expect(model.selectedAggregate!.trackIds,
-        [model.tracks.single.id]);
+    expect(model.selectedAggregate!.trackIds, [model.tracks.single.id]);
     expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
-    // The selection actions live inside the top toolbar pill now.
-    expect(
-        find.ancestor(
-          of: find.byKey(const ValueKey('selection-hide')),
-          matching: find.byType(FloatingToolbar),
-        ),
-        findsOneWidget);
+    // The selection actions sit in a second pill below the toolbar, not
+    // inside it.
+    final toolbarTop = tester.getTopLeft(
+      find.widgetWithText(FloatingToolbar, 'Tracks'),
+    );
+    final hideTop = tester.getTopLeft(
+      find.byKey(const ValueKey('selection-hide')).first,
+    );
+    expect(hideTop.dy > toolbarTop.dy, isTrue);
     // The highlight rides a second circle layer above the fog.
-    expect(tester.widgetList<CircleLayer>(find.byType(CircleLayer)),
-        hasLength(2));
+    expect(
+      tester.widgetList<CircleLayer>(find.byType(CircleLayer)),
+      hasLength(2),
+    );
   });
 
   testWidgets('the selection bar changes the color and hides the aggregate', (
@@ -1048,12 +1056,12 @@ void main() {
     );
     await tester.pump();
 
-    final camera =
-        MapCamera.of(tester.element(find.byType(TileLayer)));
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
     final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
-    await tester.tapAt(mapOrigin +
-        camera.latLngToScreenOffset(
-            model.visibleTracks.single.points.first));
+    await tester.tapAt(
+      mapOrigin +
+          camera.latLngToScreenOffset(model.visibleTracks.single.points.first),
+    );
     // Double-tap zoom delays the tap; see the select test above.
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
@@ -1064,10 +1072,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Blue'));
     await tester.pump();
-    expect(
-      model.store.aggregateColor(model.selectedAnchor!),
-      'blue',
-    );
+    expect(model.store.aggregateColor(model.selectedAnchor!), 'blue');
 
     // ...hide deselects and hides the member tracks...
     await tester.tap(find.byKey(const ValueKey('selection-hide')));
@@ -1093,12 +1098,12 @@ void main() {
     );
     await tester.pump();
 
-    final camera =
-        MapCamera.of(tester.element(find.byType(TileLayer)));
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
     final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
-    await tester.tapAt(mapOrigin +
-        camera.latLngToScreenOffset(
-            model.visibleTracks.single.points.first));
+    await tester.tapAt(
+      mapOrigin +
+          camera.latLngToScreenOffset(model.visibleTracks.single.points.first),
+    );
     // Double-tap zoom delays the tap; see the select test above.
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
@@ -1304,9 +1309,7 @@ void main() {
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
     final stored = model.store.trackFileFor(model.tracks.single);
-    final target = File(
-      '${root.path}${Platform.pathSeparator}export.gpx',
-    );
+    final target = File('${root.path}${Platform.pathSeparator}export.gpx');
     FilePickerPlatform.instance = FakeSavePicker(target.path);
     addTearDown(() {
       FilePickerPlatform.instance = MethodChannelFilePicker();
@@ -1349,9 +1352,11 @@ void main() {
     final t0 = DateTime.utc(2026, 6, 1, 8);
     model.store.importBytes(utf8.encode(gpx(45.0, 9.0, t0)));
     model.store.importBytes(
-        utf8.encode(gpx(45.0, 9.0002, t0.add(const Duration(days: 3)))));
+      utf8.encode(gpx(45.0, 9.0002, t0.add(const Duration(days: 3)))),
+    );
     model.store.importBytes(
-        utf8.encode(gpx(48.85, 2.35, t0.add(const Duration(days: 6)))));
+      utf8.encode(gpx(48.85, 2.35, t0.add(const Duration(days: 6)))),
+    );
     expect(model.tracks.length, 3);
 
     await pumpMapPage(
@@ -1418,8 +1423,11 @@ void main() {
       contains(model.tracks.singleWhere((t) => t.name == 'Morning walk').id),
     );
     expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
-    expect(zoom(), greaterThan(before),
-        reason: 'fitting one aggregate zooms in over the Europe-wide fit');
+    expect(
+      zoom(),
+      greaterThan(before),
+      reason: 'fitting one aggregate zooms in over the Europe-wide fit',
+    );
   });
 
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {
@@ -1683,9 +1691,7 @@ void main() {
       reason: 'unlock circles are sized as real ground areas',
     );
     expect(
-      circles.every(
-        (c) => explorationTints.values.contains(c.color),
-      ),
+      circles.every((c) => explorationTints.values.contains(c.color)),
       isTrue,
       reason: 'circles draw in palette colors (per aggregate)',
     );
@@ -1947,9 +1953,7 @@ void main() {
     final trace = tester
         .widgetList<PolylineLayer>(find.byType(PolylineLayer))
         .expand((l) => l.polylines)
-        .singleWhere(
-          (p) => p.color == recordingTraceColor('red'),
-        );
+        .singleWhere((p) => p.color == recordingTraceColor('red'));
     expect(trace.points.length, 2);
 
     // After stop the live trace is gone (the finalized track joins the

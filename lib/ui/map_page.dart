@@ -1164,15 +1164,36 @@ class _MapPageState extends State<MapPage> {
                       tooltip: strings.settingsLabel,
                       onTap: _openSettings,
                     ),
-                    // The aggregate selection's actions join the pill while
-                    // an aggregate is selected: hide, color, fit, dismiss.
-                    if (widget.model.selectedAnchor != null)
-                      _selectionActions(strings),
                   ],
                 ),
               ),
             ),
           ),
+          // The aggregate selection's actions hold a second compact pill
+          // directly below the toolbar while an aggregate is selected:
+          // hide, color, fit, dismiss — a temporary state, attached to the
+          // toolbar's pill without crowding it.
+          if (widget.model.selectedAnchor != null)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                minimum: const EdgeInsets.only(top: 8 + kToolbarHeight + 4),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: Material(
+                    elevation: 2,
+                    borderRadius: BorderRadius.circular(24),
+                    color: Theme.of(context).colorScheme.surface,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: _selectionActions(strings),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // Bottom-left action stack: the locate button hugs the map's
           // bottom-left corner and the record slot sits directly above it.
           // The record slot is hidden where the platform cannot deliver a

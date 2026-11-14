@@ -1,44 +1,25 @@
-# Plan — aggregate selection actions into the top bar (TODO.md "Recording dashboard UX (triage)", unit 5)
+# Plan — selection actions as a second compact pill below the toolbar (follow-up to unit 5)
 
-The aggregate selection currently renders as a large bottom-center card
-(`_selectionBar` in `lib/ui/map_page.dart:655`, shown via the `Positioned`
-at `map_page.dart:1257-1265`). Move its four actions — hide, color, fit,
-dismiss — into the existing top `FloatingToolbar` pill, shown only while an
-aggregate is selected, and delete the bottom bar.
+The one-pill layout crowds at narrow widths (Settings + 4 selection actions
+in the top pill). Split it:
 
-## Steps
-
-1. In `map_page.dart`, extract the selection actions (hide / color /
-   fit / dismiss) from `_selectionBar` into a small widget (e.g.
-   `_selectionActions(strings)`) returning the `Row` of action buttons,
-   keeping every existing `ValueKey` (`selection-hide`, `selection-color`,
-   `selection-fit`, `selection-dismiss`) and tooltips unchanged. The
-   container keeps the `ValueKey('selection-bar')` so presence-based
-   widget tests still work.
-2. Append those actions to the `FloatingToolbar.children` list, guarded by
-   `if (widget.model.selectedAnchor != null)`, after the Settings action.
-   Use plain icon buttons (same icons, same callbacks) so the pill stays
-   compact; the color action remains a `PopupMenuButton` with the same
-   `explorationTints` items.
-3. Remove the bottom `Positioned` + `SafeArea` + `_selectionBar` block and
-   the now-unused `_selectionBar` method (the `Card`/padding wrapper goes
-   away entirely — the pill provides the background).
-4. Comment updates: the toolbar comment at ~1147 and the selection-bar
-   comment at ~1251 describe the old layout; adjust to the new one.
-5. Tests (`test/map_page_test.dart`): the existing selection tests tap the
-   action keys and assert `selection-bar` presence — they should pass
-   unchanged since keys are preserved. Add one assertion that the
-   selection actions appear inside the toolbar (e.g. `find.ancestor` of
-   `selection-hide` with `FloatingToolbar`) and that the bottom bar is
-   gone. Run `flutter analyze` + `flutter test`.
-6. Commit with this PLAN.md and remove unit 5 from TODO.md in the same
-   commit.
-
-## Notes
-
-- While recording, the toolbar holds only Tracks/Settings; selection
-  actions would join them there too if an aggregate is selected mid-session
-  (selection is possible then via track-tile tap). Kept for consistency;
-  revisit if it crowds.
-- Bottom-left record/locate stack is untouched — this unit only moves the
-  aggregate selection actions.
+1. `lib/ui/map_page.dart`: stop appending `_selectionActions` to the top
+   `FloatingToolbar.children`. Instead, overlay a second compact pill
+   directly below the toolbar when `widget.model.selectedAnchor != null`:
+   a `Column` at `Alignment.topCenter` holding the toolbar and, beneath it,
+   an icon-only pill. Largest toolbar so far is 3 actions; adding the pill
+   below never widens it.
+2. Reuse the current `_selectionActions` Row as the pill's content —
+   keep all `ValueKey`s (`selection-bar`, `-hide`, `-color`, `-fit`,
+   `-dismiss`) and tooltips; give it the same `Material` + rounded pill
+   styling (elevated surface, radius 24, horizontal padding) that
+   `FloatingToolbar` uses, so it visualizes as "attached" to the toolbar.
+3. Update the assertion added in the previous commit: `selection-hide`'s
+   ancestor is no longer `FloatingToolbar` — assert it sits in a sibling
+   pill below the toolbar instead (e.g. two `Material` pills, selection
+   actions' offset below the toolbar's). Adjust other selection tests as
+   needed (they tap keys, so mostly unaffected).
+4. `flutter analyze` + `flutter test`, then a visual check via
+   `flutter run -d linux` if desired.
+5. Commit (PLAN.md included in the same commit; TODO.md already has no
+   unit for this — it refines unit 5, already removed).
