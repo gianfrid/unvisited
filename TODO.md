@@ -44,6 +44,17 @@ Bugs — high priority:
   must accumulate only while running (freeze on pause, resume from the
   accumulated value). Engine-level tests on pause/resume spans.
 
+Recording — live trace on the map:
+
+- [] slice 15 — an in-progress session's track is only in the staged GPX;
+  the map shows nothing of the path so far. Plot the accepted points as
+  a polyline under the course-up marker: a little transparent and in a
+  distinct color (not any catalog track's palette color), redrawn from
+  the session's accepted fixes; multi-segment sessions render each
+  trkseg; it disappears when the session stops (the finalized track
+  becomes an ordinary catalog polyline). Widget test: points accepted
+  while recording show the trace on the map; after stop it is gone.
+
 - [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
   (owner decision 2026-11-13), revisit when flutter_map's pitch support
   releases (`MapOptions.maxPitch` — fog circles/corridors are ground
