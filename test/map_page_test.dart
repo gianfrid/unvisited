@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -539,6 +540,121 @@ void main() {
     expect(find.byIcon(Icons.navigation), findsOneWidget);
     expect(cameraCenter(), sameCameraAs(panned),
         reason: 'the pan released the follow');
+  });
+
+  test('nearestEquivalentRotation picks the nearest mod-360 equivalent', () {
+    // Crossing the 0/360 boundary: 10 applied against 350, and 350
+    // applied against 10, rotate through the short arc.
+    expect(nearestEquivalentRotation(10.0, 350.0), closeTo(370.0, 1e-9));
+    expect(nearestEquivalentRotation(350.0, 10.0), closeTo(-10.0, 1e-9));
+    // An already-normalized pair is a no-op; a quarter away rotates a
+    // quarter of the way.
+    expect(nearestEquivalentRotation(90.0, 90.0), closeTo(90.0, 1e-9));
+    expect(nearestEquivalentRotation(45.0, 315.0), closeTo(405.0, 1e-9));
+  });
+
+  testWidgets('while recording the camera rotates course-up; a pan releases it',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    MapCamera camera() => MapController.of(
+            tester.element(find.byType(TileLayer)))
+        .camera;
+    double markerAngle() {
+      final m = tester.widget<Transform>(
+              find.byKey(const ValueKey('recording-marker-rotate')))
+          .transform;
+      return math.atan2(m.entry(1, 0), m.entry(0, 0));
+    }
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0, heading: 90);
+    fakeFix(source, 1, lat: 52.5201, heading: 90);
+    await tester.pump();
+    await tester.pump();
+
+    // Course-up: the east-heading fixes rotate the camera 90, and the
+    // marker's own rotation nets to 0 — the nose points up on screen.
+    expect(camera().rotation, closeTo(90.0, 0.1));
+    expect(markerAngle(), closeTo(0.0, 1e-6));
+
+    // A user pan releases the follow — and the rotation with it: the next
+    // fix re-centers nothing and leaves the rotation where the pan put it.
+    final size = tester.getSize(find.byType(FlutterMap));
+    await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.8), const Offset(0, 80));
+    final panned = camera().center;
+    fakeFix(source, 2, lat: 52.5202, heading: 180);
+    await tester.pump();
+
+    expect(camera().rotation, closeTo(90.0, 0.1),
+        reason: 'the pan released the rotation with the follow');
+    expect(camera().center, sameCameraAs(panned),
+        reason: 'the pan released the follow');
+    // The marker matches the new course against the camera's rotation, so
+    // it still points along the course on screen.
+    expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
+  });
+
+  testWidgets('the bearing fallback steers the follow camera course-up',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    MapCamera camera() => MapController.of(
+            tester.element(find.byType(TileLayer)))
+        .camera;
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0);
+    // ~7 m east of the first fix, no heading: the course is the bearing
+    // the displacement bridges.
+    fakeFix(source, 1, lon: 13.4051);
+    await tester.pump();
+    await tester.pump();
+
+    expect(camera().rotation, closeTo(90.0, 0.1));
   });
 
   testWidgets('dark theme darkens the tiles client-side, light leaves them',

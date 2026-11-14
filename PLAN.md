@@ -1,41 +1,70 @@
-# Slice 15 — live recording trace drawn on the map
+# PLAN — Course-up camera rotation while recording
 
-## Context
+TODO unit: "Recording — map controls & camera", item 1.
 
-While recording, accepted fixes exist only in the staged GPX; the map
-shows just the course-up marker. The trace of the current session should
-plot live. The session currently keeps only `_lastLat/_lastLon`, so it
-must start exposing the accepted points grouped by `<trkseg>` (the same
-breaks the stage writer sees: pause and fix-loss gaps).
+Goal: while a recording session runs with the follow-camera armed, the map
+camera rotates so the current course points up — where the user is going is
+shown before them. Rotation is tied to the follow-camera (owner answer): any
+user gesture releases rotation together with the follow; re-arming via the
+locate button lands with TODO unit 2. Still plain 2D — no tilt (backlog).
 
-## Steps
+## Facts established by reading the code (flutter_map 8.3.2, app sources)
 
-1. `lib/recording/recording_session.dart` — the engine accumulates
-   `List<List<LatLng>> _liveSegments` alongside the staged writes: the
-   accepted fix appends to the last segment; `gap > segmentGap` and
-   `pause()` open a new one. Exposed read-only as `liveSegments` (a
-   defensive copy). No behavior change to distance/timers.
-2. `lib/ui/map_page.dart` — while `model.recording != null`, render a
-   `PolylineLayer` with the session's `liveSegments`, placed above the
-   fog circles and road corridors and below the recording marker:
-   - color: a fixed recording red (`Colors.redAccent`) at ~0.65 opacity,
-     stroke width 4 — deliberately outside the catalog track-tint
-     family, and translucent so it reads as in-progress;
-   - segments with a single point render as a dot-sized polyline skipped
-     (a polyline needs ≥2 points), same rule as corridors.
-   - The layer is absent when no session runs; after stop the finalized
-     track appears as an ordinary catalog track (unchanged path).
-3. Tests:
-   - engine (`test/recording_session_test.dart`): accepted fixes build
-     segments; a pause splits them; a fix-loss gap splits them; paused
-     fixes add nothing.
-   - widget (`test/map_page_test.dart`): fake-sourced session, two fixes —
-     a `PolylineLayer` with one two-point polyline at the recording tint
-     is present while recording and gone after stop; its color is the
-     fixed red, not the track tint.
+- `MapController.moveAndRotate(center, zoom, degree)` exists and is composed
+  of `moveRaw` + `rotateRaw`; both emitted events carry
+  `MapEventSource.mapController`, already listed in `_programmaticEvents`
+  (lib/ui/map_page.dart) — the follow never releases itself.
+- `move()` and `fitCamera()` only change center/zoom and preserve
+  `camera.rotation`, so the zoom slider and camera fits keep the rotation.
+- Two-finger rotate is part of `InteractiveFlag.all`; its events carry gesture
+  sources, so the existing release branch in the map-event listener
+  (`_followRecording = false` on any non-programmatic source) releases
+  rotation together with the follow — no extra release code needed.
+- `RecordingSession.currentCourse` is degrees clockwise from north in
+  [0, 360) (device heading wins, else the per-fix bearing, both normalized);
+  null until a heading or a second accepted fix exists.
+- `MapCamera.rotation` is degrees, 0 = north.
 
-## Verification
+## Implementation steps
 
-- `flutter analyze` clean; `flutter test` all pass.
-- Commit includes PLAN.md and deletes the slice 15 TODO entry; PLAN.md
-  carries over to the next task unmodified.
+1. `lib/ui/map_page.dart` — add a top-level pure helper
+   `nearestEquivalentRotation(double course, double currentRotation)` that
+   returns the angle equivalent to `course` mod 360 closest to
+   `currentRotation`, so crossing the 0/360 boundary never spins the map the
+   long way around.
+2. `lib/ui/map_page.dart`, `_onModelChanged` — in the follow branch, when
+   `session.currentCourse != null`, call
+   `_mapController.moveAndRotate(LatLng(lat, lon), zoom,
+   nearestEquivalentRotation(course, _mapController.camera.rotation))`;
+   keep the plain `move(...)` when the course is not yet known.
+3. `lib/ui/map_page.dart`, `_recordingMarkers` — rotate the marker by
+   `(course ?? 0) - _mapController.camera.rotation` instead of `course`
+   alone, so the nose points along the course on screen at any camera
+   rotation (angle 0 = up while the follow has the camera on the course).
+   Update the doc comment.
+4. Tests in `test/map_page_test.dart`:
+   - plain unit tests for `nearestEquivalentRotation` (0/360 wrap-around
+     cases, already-normalized input);
+   - widget test: record with `fakeFix(..., heading: 90)` → while following,
+     `MapController.of(...).camera.rotation` is ~90; a drag pan releases the
+     follow and the next fix leaves the rotation untouched; the marker is
+     still rendered;
+   - widget test: two fixes without heading moving east → course 90 via the
+     bearing fallback → rotation ~90;
+   - marker angle: while camera rotation == course, the marker's
+     `Transform.rotate` angle is ~0.
+5. Docs — ARCHITECTURE.md dashboard bullet: "course-up marker over a
+   north-up camera" becomes camera rotates to the course while following,
+   marker counter-rotates by the camera rotation. SPEC.md scope item 6:
+   adjust the "course-up marker" wording the same way (still 2D). Remove
+   TODO unit 1 from TODO.md in the same commit.
+6. Verify: `flutter analyze` clean, `flutter test` green. Manual check on
+   Android: record and watch the map rotate to the heading; pan or
+   two-finger rotate by hand → rotation stops following.
+
+## Out of scope for this slice
+
+- Locate re-arming the follow while recording (unit 2), the bottom-left
+  button stack (unit 3), the pause/resume/stop flow (unit 4).
+- Tilt/pitch (backlog, owner decision 2026-11-13).
+- No new user-visible strings, so no `app_strings.dart` changes.

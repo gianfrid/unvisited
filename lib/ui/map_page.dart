@@ -56,6 +56,13 @@ String _formatDuration(Duration d) => d.inHours > 0
     : '${d.inMinutes.remainder(60).toString().padLeft(2, '0')}:'
         '${d.inSeconds.remainder(60).toString().padLeft(2, '0')}';
 
+/// The angle equivalent to [course] (mod 360) closest to [reference] —
+/// the camera rotation the course is applied against — so a course
+/// crossing the 0/360 boundary rotates through the short arc, never the
+/// long way around.
+double nearestEquivalentRotation(double course, double reference) =>
+    course + 360 * ((reference - course) / 360).roundToDouble();
+
 /// OSM standard tiles exist between zoom 0 and 19; 3 is a world view that
 /// still feels like a map. Both the camera and the zoom slider stay inside.
 const _minZoom = 3.0;
@@ -291,8 +298,25 @@ class _MapPageState extends State<MapPage> {
       final lat = session?.currentLat;
       final lon = session?.currentLon;
       if (lat != null && lon != null) {
-        _mapController.move(
-            LatLng(lat, lon), _mapController.camera.zoom);
+        // Course-up: while the follow holds, the camera rotates to the
+        // current course so where the user is going stays ahead of them —
+        // course-up makes the motion read upward on screen. The rotation
+        // emits controller events (programmatic sources), so this never
+        // releases the follow; any hand gesture still does, and with it
+        // the rotation. nearestEquivalentRotation keeps the short arc
+        // where the course crosses 0/360. No course yet — a first fix
+        // without heading — leaves the camera rotation alone.
+        final course = session?.currentCourse;
+        if (course == null) {
+          _mapController.move(
+              LatLng(lat, lon), _mapController.camera.zoom);
+        } else {
+          _mapController.moveAndRotate(
+              LatLng(lat, lon),
+              _mapController.camera.zoom,
+              nearestEquivalentRotation(
+                  course, _mapController.camera.rotation));
+        }
       }
     }
     setState(() {});
@@ -474,10 +498,12 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  /// The recording marker: at the last accepted fix, rotating to its
-  /// course so the nose points where the user is moving — course-up over
-  /// the map's north-up camera (the tilt stays excluded; see SPEC). A fix
-  /// without a heading and no bearing yet renders unrotated.
+  /// The recording marker: at the last accepted fix, rotating to the
+  /// course relative to the camera's rotation, so the nose points along
+  /// the course on screen — straight up while the follow-camera holds the
+  /// camera on the course (these are not two settings: the rotation *is*
+  /// the follow; any gesture releases both; see SPEC). A fix without a
+  /// heading and no bearing yet renders unrotated.
   List<Widget> _recordingMarkers() {
     final session = widget.model.recording;
     final lat = session?.currentLat;
@@ -491,7 +517,11 @@ class _MapPageState extends State<MapPage> {
             width: 44,
             height: 44,
             child: Transform.rotate(
-              angle: (session!.currentCourse ?? 0) * math.pi / 180,
+              key: const ValueKey('recording-marker-rotate'),
+              angle: ((session!.currentCourse ?? 0) -
+                      _mapController.camera.rotation) *
+                  math.pi /
+                  180,
               child: Icon(
                 Icons.navigation,
                 size: 32,
