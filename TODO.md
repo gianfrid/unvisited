@@ -29,6 +29,27 @@ staged file as a partial track on next start. Desktop recording is backlog
 
 Track list — catalog UX:
 
+Bugs — high priority:
+
+- [] slice 11 — the "No tracks yet" empty-state hint blocks the view while
+  recording (it shows whenever no *visible* track plots) and also when
+  tracks are imported but all deselected. It must not appear in either
+  case: suppress it while a recording session runs and whenever the
+  catalog is non-empty (even if nothing is selected); the empty map with
+  an empty catalog keeps it. Widget tests for all three states.
+- [] slice 12 — the track tile's trailing date column takes too much
+  space and duplicates what the filename usually already carries: drop
+  the date from `_TrackTile` (subtitle keeps format · points · distance ·
+  duration). Widget test on the tile layout.
+- [] slice 13 — deleting a track from the drawer asks no confirmation.
+  `Dismissible` swipes straight to `model.delete`; add a confirmation
+  dialog before the delete runs, with the track name in the message.
+  Widget test: swipe, decline → track kept; swipe, confirm → deleted.
+- [] slice 14 — a paused recording's elapsed timer keeps counting wall
+  clock: resume jumps by all the paused seconds. The session's elapsed
+  must accumulate only while running (freeze on pause, resume from the
+  accumulated value). Engine-level tests on pause/resume spans.
+
 - [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
   (owner decision 2026-11-13), revisit when flutter_map's pitch support
   releases (`MapOptions.maxPitch` — fog circles/corridors are ground
