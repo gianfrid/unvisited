@@ -57,9 +57,9 @@ Location comes from the `geolocator` plugin via `AppModel.locate`, which reports
 
 The startup camera fit for saved tracks goes through `MapOptions.initialCameraFit`, which flutter_map applies only once the camera has a real size. At launch the window surface may not be ready — the first layouts can have zero-sized constraints — and a manual `MapController.fitCamera` against them degenerates the camera, leaving the tile layer rendering nothing until the user pans (grey map at startup). The manual fits that remain (import refits, the fit button) wait for a non-zero camera size before applying.
 
-### Recording (planned slices — decided, research: `docs/active-recording-for-unvisited-research-report.md`)
+### Recording (Android; research: `docs/active-recording-for-unvisited-research-report.md`)
 
-Active recording is an Android feature in delivery; the app is no longer specified as view-only. The design keeps the app's one-pipeline shape:
+Active recording is an Android feature — the app is no longer specified as view-only, and the bullets below describe what has shipped. The design keeps the app's one-pipeline shape:
 
 - **Source**: geolocator's `getPositionStream` with `AndroidSettings(foregroundNotificationConfig: …)` — the plugin's own foreground service carries the session (mandatory notification, optional wake lock). The manifest gains `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION` and `POST_NOTIFICATIONS`; location service declarations come from geolocator_android's merged manifest. Deliberately *no* `ACCESS_BACKGROUND_LOCATION`: a session starts only from the Record action (app in use), which keeps while-in-use access sufficient and keeps the Play-review footprint small. Zero new packages — geolocator is already the Locate plugin.
 - **Engine**: a pure-Dart `RecordingSession` behind a `PositionSource` interface (portability rule as for parsers): accept/reject filters (accuracy threshold ~50 m, staleness via `maxUpdateAge`), pause/resume and fix-loss as `<trkseg>` breaks, distance/duration/moving-time/speed aggregation (fused `Position.speed` where accurate, haversine fallback as the store already uses). Unit tests feed synthetic streams — no emulator needed.
