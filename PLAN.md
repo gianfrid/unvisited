@@ -1,64 +1,74 @@
-# Plan — resolve technical debt (TODO.md technical debt, items 1 and 2)
+# Plan — aggregate tracks & selection (TODO.md "Map" section, 4 items)
 
-## Phase A — recording live state gets its own Listenable (item 2)
+Implemented as four vertical slices, each ending with tests and a commit.
 
-Problem: `AppModel.notifyRecordingFix` calls `notifyListeners()` on the whole
-model at 1 Hz; `MapPage._onModelChanged` then rebuilds the entire map tree,
-and `recording.liveSegments` deep-copies every segment on each rebuild.
+## Slice 1 — aggregate track model (pure Dart)
 
-Change:
+New `lib/aggregate/aggregate_tracks.dart` behind a small interface (like the
+parsers):
 
-1. New `RecordingLiveState extends ChangeNotifier` (lives in
-   `lib/ui/recording_live_state.dart` or next to the model) that owns the
-   per-fix payload the UI reads at 1 Hz: a reference to the current
-   `RecordingSession` (or its stats/segments/marker getters). The model
-   exposes it as `model.recordingLive`; `notifyRecordingFix()` notifies
-   only that notifier.
-2. `MapPage` keeps its existing `model.addListener(_onModelChanged)` for
-   structural changes (imports, visibility, settings, recording
-   start/stop) and adds a separate listener on `recordingLive` for the
-   per-fix path: follow-camera move/rotate, HUD chip, stats panel, marker,
-   live trace. Those subtrees wrap in `AnimatedBuilder`/`ListenableBuilder`
-   on `recordingLive` so the fog overlay and toolbar do not rebuild per fix.
-3. `liveSegments` in `RecordingSession` keeps returning copies (it must —
-   the writer mutates them), but they're now copied once per fix into the
-   live subtree's rebuild, not per model-wide rebuild.
+```dart
+abstract class AggregateIndex {
+  /// Clusters the given tracks' points into aggregates; points of different
+  /// tracks within [thresholdMeters] belong to the same aggregate.
+  List<AggregateTrack> build(Iterable<MapTrackLike> tracks, {double thresholdMeters});
+}
 
-Tests: existing `map_page_test.dart` recording tests must pass unchanged
-(they assert chip/marker/camera behavior); add one test asserting the fog
-overlay widget does not rebuild on a fix (e.g. via a spy/counter or by
-checking `AnimatedBuilder` scoping) — at minimum the existing widget tests
-green proves no behavior regression.
+class AggregateTrack {
+  final List<String> trackIds;       // member catalog tracks
+  final List<LatLng> points;         // all member points
+  String get anchorId;               // earliest-starting member; the
+                                     // stable key for persisted overrides
+}
+```
 
-## Phase B — split app_model.dart (item 1)
+- Clustering: union-find over tracks, joined when any point pair is within
+  ~100 m (spatial hash at cell = threshold, 3×3 neighborhood query, same
+  trick as the road matcher's segment index — O(n) per area, not O(n²)).
+- Pure Dart, no Flutter imports; `MapTrackLike` = id + points + start time
+  so the model's `MapTrack` slots in unchanged and the anchor is computable.
+- Unit tests on synthetic fixtures in `test/aggregate_tracks_test.dart`:
+  chains (A–B–C via B), singletons, threshold edge cases (99 m joins,
+  101 m doesn't), empty input.
 
-Problem: 869 lines, 6 concerns in one ChangeNotifier.
+## Slice 2 — tap-to-select + selection bar
 
-Change (file layout):
+- `AppModel` gains selection state: `AggregateTrack? selected`, computed
+  lazily from `visibleTracks` (cache keyed by visible-track id set).
+- Map tap handler: within tolerance (~screen-pixel equivalent at zoom, same
+  math family as the fog radius) of any aggregate point → select it; else
+  deselect.
+- Selection bar (bottom sheet / top bar while a selection is active):
+  Hide (sets each member track `visible=false` via the store, then
+  deselects), Change color, Fit. Visual highlight: the aggregate's circles
+  drawn in a brighter/opaque tint on top.
+- Per-aggregate color override persisted in `index.json`
+  (`aggregateColors: {anchorTrackId: tintKey}`). The key is the *anchor* —
+  the member track with the earliest start time — not a hash of the whole
+  member set: adding or removing other tracks leaves the anchor (and so
+  the persisted color) untouched. Only deleting the anchor re-keys the
+  aggregate (the next-oldest member becomes the anchor).
+- Widget tests in `test/map_page_test.dart`: tap selects, bar actions work,
+  deselect restores visibility.
 
-- `lib/ui/app_model.dart` — keeps `AppModel` (settings, locate, visibility,
-  delete, load), `MapTrack`, `ImportSummary`, `LocateResult`, and exposes
-  the two extracted collaborators as fields.
-- `lib/ui/recording_controller.dart` — `RecordingController extends
-  ChangeNotifier`: start/stop-with-name/pause/resume, staging path,
-  salvage on load, screen latch, battery advisory, `recordingName`. Holds a
-  back-reference to the model for the import-on-stop and road matching.
-- `lib/ui/import_coordinator.dart` — `ImportCoordinator`: one
-  `importBytes(bytes, filename, {source})` helper performing the shared
-  store+roads+cache+summary choreography (`_importBytes`,
-  `_noteImported`/`_recordNewImports`, `_matchRoads`/`_matchTrack`,
-  `notifyListeners`); `importFromFile`, `importFromDirectory`,
-  `importViaFilePicker`, `importViaDirectoryPicker`, `_importSafTree`
-  collapse onto it.
-- Call sites in `map_page.dart`, `track_list.dart`, `settings_sheet.dart`
-  updated to `model.recording.*` / `model.imports.*` where they belong.
-  Mechanical renames, no behavior change.
+## Slice 3 — remove the global Fit button
 
-Tests: full `flutter test` suite (app_model_test, map_page_test) must pass
-unchanged; analyze clean.
+- `map_actions.dart`/toolbar: drop the Fit action; startup camera fit
+  unchanged. Selection bar's Fit covers per-aggregate fitting.
 
-## Order and commits
+## Slice 4 — palette & colors
 
-Two commits: Phase A first (smaller, independently verifiable), then
-Phase B. PLAN.md committed with each; TODO.md debt items removed in the
-same commits.
+- `track_colors.dart`: extend `explorationTints` beyond the four (add ~4
+  more), keep `defaultTintKey` for the main fog aggregate.
+- Aggregates render in palette colors by rank (main = default tint; others
+  next palette colors), overridable per selection (from slice 2).
+- Settings "track color" row now drives only the live recording trace color
+  (replacing the fixed `Colors.redAccent` in map_page) — a new
+  `settings.recordingTint`, persisted like the others, default red.
+- Strings en + it for the new selection bar labels; widget tests for
+  highlight/selection colors.
+
+## Verification per slice
+
+`flutter analyze` clean, `flutter test` green (all existing suites plus the
+new ones). TODO.md entries removed in the same commit as their slice.
