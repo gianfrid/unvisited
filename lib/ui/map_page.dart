@@ -559,11 +559,32 @@ class _MapPageState extends State<MapPage> {
   /// position can be had, says why — a silent no-op reads as a broken
   /// button.
   ///
+  /// While a session runs (recording or paused) the tap is the way back to
+  /// the follow after panning away: the session's own fix is fresher than
+  /// any new attempt and permission is already granted, so the branch
+  /// re-centers on it at the user's zoom and re-arms the follow — both the
+  /// camera and the course-up rotation come back with the next fix. The
+  /// shortcut returns before [_locating] is set: it is instant, no
+  /// spinner. Without a session fix yet (cold GPS) it falls through to the
+  /// real attempt; its success arms the follow too while recording.
+  ///
   /// The whole attempt is bracketed by [_locating], so the toolbar button
   /// turns into a spinner for as long as the fix takes. Re-entrant taps
   /// are ignored: a second GPS request would not answer any sooner.
   Future<void> _locate() async {
     if (_locating) return;
+    if (widget.model.isRecording) {
+      final session = widget.model.recording;
+      final lat = session?.currentLat;
+      final lon = session?.currentLon;
+      if (lat != null && lon != null) {
+        setState(() => _followRecording = true);
+        _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
+        return;
+      }
+      // No session fix yet: a real attempt is the only way to answer
+      // "where am I"; its success arms the follow below.
+    }
     final strings = AppStrings.ofContext(context);
     setState(() => _locating = true);
     try {
@@ -577,16 +598,25 @@ class _MapPageState extends State<MapPage> {
         _toast(_locateFailureMessage(strings, result.failure));
         return;
       }
-      setState(() => _locatedPosition = pos);
+      setState(() {
+        _locatedPosition = pos;
+        // The attempt landed while a session runs: its fix is the one to
+        // follow — arm the follow so the next fix takes the camera over.
+        if (widget.model.isRecording) _followRecording = true;
+      });
       // A deliberated locate is also evidence the GPS works: it opens the
       // Record button, no silent retry needed.
       _gpsWorking = true;
       _fixRetryTimer?.cancel();
-      // Never zoom out: a user already closer than the locate zoom keeps
-      // their detail level.
-      final zoom = _mapController.camera.zoom < _locateZoom
-          ? _locateZoom
-          : _mapController.camera.zoom;
+      // While a session runs the follow takes the camera over from here,
+      // and its zoom stays the user's; the locate-zoom settle is for the
+      // plain locate. Either way, never zoom out: a user already closer
+      // than the locate zoom keeps their detail level.
+      final zoom = widget.model.isRecording
+          ? _mapController.camera.zoom
+          : (_mapController.camera.zoom < _locateZoom
+              ? _locateZoom
+              : _mapController.camera.zoom);
       _mapController.move(pos, zoom);
     } finally {
       // Also runs when the widget went away mid-flight; the mounted check
@@ -919,10 +949,11 @@ class _MapPageState extends State<MapPage> {
                 alignment: Alignment.topCenter,
                 child: _FloatingToolbar(
                   children: [
-                  // Import and Fit/Locate fight the record-mode dashboard
-                  // for space and attention; while a session runs the
-                  // header keeps the essential actions only (Stop, Pause,
-                  // Tracks, Settings) and these come back after it.
+                  // Import and Fit fight the record-mode dashboard for
+                  // space and attention — they and their comment above
+                  // return after the session. Locate stays: its tap is the
+                  // way back to the follow after panning away (see
+                  // [_locate]'s session branch).
                   if (!widget.model.isRecording)
                     _HeaderAction(
                       icon: const Icon(Icons.add),
@@ -937,7 +968,7 @@ class _MapPageState extends State<MapPage> {
                       tooltip: strings.fitTooltip,
                       onTap: mapTracks.isEmpty ? null : _fitTracks,
                     ),
-                  if (widget.locationSupported && !widget.model.isRecording)
+                  if (widget.locationSupported)
                     _HeaderAction(
                       icon: _locating
                           ? const SizedBox(

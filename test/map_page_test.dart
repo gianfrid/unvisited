@@ -242,12 +242,13 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Recording: Import and Fit/Locate are hidden (they fight the
-    // dashboard for space and attention); Stop and Pause stay. The live
+    // Recording: Import and Fit are hidden (they fight the dashboard for
+    // space and attention) while Locate stays — its tap is the way back to
+    // the follow after panning away. Stop and Pause stay. The live
     // speed is the primary readout, big and bottom-center, from the
     // engine's fix speed.
     expect(find.text('Import'), findsNothing);
-    expect(find.text('Locate'), findsNothing);
+    expect(find.text('Locate'), findsOneWidget);
     expect(find.text('Stop'), findsOneWidget);
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
@@ -655,6 +656,114 @@ void main() {
     await tester.pump();
 
     expect(camera().rotation, closeTo(90.0, 0.1));
+  });
+
+  testWidgets('while recording, locate returns the follow after a pan',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    MapCamera camera() => MapController.of(
+            tester.element(find.byType(TileLayer)))
+        .camera;
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0);
+    fakeFix(source, 1, lat: 52.5201);
+    await tester.pump();
+    await tester.pump();
+
+    // A user pan releases the follow: the next fix stays where the pan put
+    // it, and the toolbar keeps the Locate action to come back.
+    final size = tester.getSize(find.byType(FlutterMap));
+    await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.8), const Offset(0, 80));
+    fakeFix(source, 2, lat: 52.5202);
+    await tester.pump();
+    final zoom = camera().zoom;
+    expect(find.byTooltip('Center on current position'), findsOneWidget);
+
+    // The tap is the way back: instant (no spinner — the session's own fix
+    // needs no attempt), re-centered on the session's fix at the user's
+    // zoom, and the follow re-arms — the next fix rides the camera again.
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(camera().center.latitude, closeTo(52.5202, 1e-6),
+        reason: 'the tap returned the camera to the session fix');
+    fakeFix(source, 3, lat: 52.5203);
+    await tester.pump();
+    await tester.pump();
+    expect(camera().center.latitude, closeTo(52.5203, 1e-6));
+    expect(camera().zoom, closeTo(zoom, 1e-6));
+  });
+
+  testWidgets('while recording with no session fix, locate runs the attempt',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    MapCamera camera() => MapController.of(
+            tester.element(find.byType(TileLayer)))
+        .camera;
+
+    mockGeolocator(tester,
+        permission: 3, position: {'lat': 52.5200, 'lon': 13.4050});
+
+    // A session started cold: nothing to shortcut on — the tap falls
+    // through to the real locate attempt, whose fix arms the follow.
+    await model.startRecording(source: source, permissionGate: false);
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(camera().center.latitude, closeTo(52.5200, 1e-6));
+    // The follow armed on the attempt's success: the session's fix takes
+    // the camera from here.
+    fakeFix(source, 0, lat: 52.5201);
+    await tester.pump();
+    await tester.pump();
+    expect(camera().center.latitude, closeTo(52.5201, 1e-6));
   });
 
   testWidgets('dark theme darkens the tiles client-side, light leaves them',
