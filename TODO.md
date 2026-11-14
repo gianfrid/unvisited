@@ -39,6 +39,20 @@ staged file as a partial track on next start. Desktop recording is backlog
   (poll once at startup / listen to the position stream) so GPS-off shows
   no dead Record button. Desktop Linux stays hidden outright.
 
+Track list — catalog UX:
+
+- [] slice 7 — duration in the track list: `TrackData` gains
+  `endTime`/`durationSeconds` (from point timestamps; parsers already carry
+  them), `StoredTrack` persists it in `index.json` next to
+  `distanceMeters`, and the track tile subtitle shows it (format · points ·
+  distance · duration · date), so a recorded ride reads like any import.
+  Model/store round-trip tests; recorded tracks included via the staging
+  GPX path.
+- [] slice 8 — track list ordered most-recent-first: sort by
+  `startTimeUtc` descending, tracks without a start time last (stable
+  within each group); widget test on ordering after imports recorded in
+  mixed order.
+
 - [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
   (owner decision 2026-11-13), revisit when flutter_map's pitch support
   releases (`MapOptions.maxPitch` — fog circles/corridors are ground
