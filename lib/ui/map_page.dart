@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../host_channel.dart';
 import '../l10n/app_strings.dart';
 import '../recording/recording_session.dart';
 import '../storage/track_store.dart';
@@ -169,6 +170,31 @@ class _MapPageState extends State<MapPage> {
   /// HUD chip toggles it.
   bool _dashboardOpen = false;
 
+  /// The recording's screen latch: the session keeps the screen on so the
+  /// dashboard stays readable on a bike or in a pocket-free hand. The
+  /// latch is a per-session default-on that the chip's screen-lock icon
+  /// toggles; the flag itself lives on the Android window (see the host
+  /// channel's `keepScreenOn`), so it dies with the window — no stale
+  /// latch survives a session's end even on a process kill.
+  bool _screenLockOff = false;
+  bool _screenOn = false;
+
+  /// Applies the latch if it changed. Best effort: a platform without the
+  /// host channel (desktop, tests) has no window to latch; its OS timeout
+  /// applies.
+  Future<void> _applyScreenOn() async {
+    final on = widget.model.isRecording && !_screenLockOff;
+    if (on == _screenOn) return;
+    _screenOn = on;
+    try {
+      await hostChannel.invokeMethod('keepScreenOn', on);
+    } on MissingPluginException {
+      // No host side (desktop, tests): nothing to latch.
+    } on PlatformException {
+      // The host refused (a headless window?): the OS timeout applies.
+    }
+  }
+
   /// Map-event sources that are not the user's hand: programmatic moves
   /// (the follow-camera itself, the zoom slider), camera fits, customs.
   /// Everything else runs the follow-camera release below.
@@ -218,13 +244,18 @@ class _MapPageState extends State<MapPage> {
       }
     }
     // A session boundary re-arms the follow-camera (the old marker and
-    // any open panel are gone with it).
+    // any open panel are gone with it) and resets the screen latch's
+    // opt-out: a new session keeps the screen on again.
     final recording = widget.model.isRecording;
     if (recording != _wasRecording) {
       _wasRecording = recording;
       _followRecording = recording;
       _dashboardOpen = false;
+      _screenLockOff = false;
     }
+    // Applied best-effort from here and from the chip's toggle: the
+    // window flag matters only while the dashboard is in front anyway.
+    _applyScreenOn();
     // The follow-camera rides each accepted fix while it is armed; the
     // marker rebuilds off the session's own getters below either way.
     if (recording && _followRecording) {
@@ -333,6 +364,29 @@ class _MapPageState extends State<MapPage> {
                                 Theme.of(context).textTheme.bodyMedium),
                       ],
                       const SizedBox(width: 8),
+                      // The screen latch's toggle: lit while the screen
+                      // stays on, dimmed while it may sleep (see the
+                      // state notes on the latch). The chip only exists
+                      // while a session runs, so does the toggle.
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(
+                          Icons.screen_lock_portrait,
+                          size: 16,
+                          color: _screenLockOff
+                              ? Theme.of(context).hintColor
+                              : Theme.of(context).colorScheme.primary,
+                        ),
+                        tooltip: _screenLockOff
+                            ? strings.screenMayTurnOff
+                            : strings.screenStaysOn,
+                        onPressed: () {
+                          setState(() => _screenLockOff = !_screenLockOff);
+                          _applyScreenOn();
+                        },
+                      ),
                       Icon(
                         _dashboardOpen
                             ? Icons.expand_less

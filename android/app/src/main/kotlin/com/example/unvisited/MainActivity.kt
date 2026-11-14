@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -319,6 +320,17 @@ class MainActivity : FlutterActivity() {
                         } catch (e: Exception) {
                             result.error("unavailable", "No battery settings screen", null)
                         }
+                    }
+                    // Keep the screen on while a recording session shows its
+                    // dashboard: a window flag, so it dies with the window
+                    // (backgrounding or finishing the session clears it).
+                    "keepScreenOn" -> {
+                        if (call.arguments == true) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                        result.success(null)
                     }
                     else -> result.notImplemented()
                 }

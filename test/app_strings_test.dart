@@ -94,6 +94,8 @@ Map<String, String> allStrings(AppStrings s) => {
       'batteryExcluded': s.batteryExcluded,
       'batteryAdvisory': s.batteryAdvisory,
       'salvagedRecording': s.salvagedRecording('Morning walk'),
+      'screenStaysOn': s.screenStaysOn,
+      'screenMayTurnOff': s.screenMayTurnOff,
     };
 
 void main() {
