@@ -30,29 +30,24 @@ staged file as a partial track on next start. Desktop recording is backlog
 Technical debt — high priority (owner-approved 2026-11-14; findings above
 the rest of the backlog by intent):
 
-1. - [ ] Split lib/ui/map_page.dart (2K lines, 14 classes) into `ui/`
-   modules: `_SettingsSheet`, `_StatsPanel`, the zoom slider, the drawer
-   (make `TrackDrawer` private) + `_TrackTile`, the bottom-left action
-   stack and toolbar widgets. No behavior change; widget tests assert by
-   text/tooltip and must keep passing untouched.
-3. - [ ] Test harness extraction: `mockGeolocator` and the repeated
+1. - [ ] Test harness extraction: `mockGeolocator` and the repeated
    `createRoot` + temp-dir + `MaterialApp`/`MapPage` setup (43 copies in
    test/map_page_test.dart) become shared helpers in test/helpers.dart or
    a pump harness; shrinks the 2.4K-line test file materially.
-4. - [ ] Split lib/ui/app_model.dart (868 lines, 6 concerns): a recording
+2. - [ ] Split lib/ui/app_model.dart (868 lines, 6 concerns): a recording
    controller (start/stop-with-name/pause/salvage staging) and an import
    coordinator (the three near-parallel import paths collapsed onto one
    helper for the store+roads+cache+summary choreography), keeping
    settings/locate on the model.
-5. - [ ] Extract the duplicated haversine/bearing formulas (identical
+3. - [ ] Extract the duplicated haversine/bearing formulas (identical
    twins in lib/models/track.dart and lib/recording/recording_session.dart
    kept in step by comments only) into one shared pure-Dart geo module.
-6. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
+4. - [ ] Per-fix repaint granularity: `notifyRecordingFix` notifies the
    whole tree at 1 Hz and `liveSegments` deep-copies every segment per
    rebuild — a scaling wall for long sessions. Give the recording live
    state its own Listenable (stats/trace/marker) so the fog overlay and
    toolbar rebuild channels stay untouched.
-7. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
+5. - [ ] pubspec cleanup: drop the Flutter template comment block; remove
    the unused `cupertino_icons` dependency (zero CupertinoIcons usage —
    the cupertino.dart import in main.dart is the locale delegate and
    stays). Package removal per SPEC: confirm with owner in the plan step.
