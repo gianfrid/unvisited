@@ -29,6 +29,17 @@ staged file as a partial track on next start. Desktop recording is backlog
 
 Track list — catalog UX:
 
+1. - [ ] Per-track menu: a ⋮ button on each track tile opening a menu with
+   Info, Delete and Export. Delete keeps the existing confirmation dialog;
+   swipe-to-delete stays as is.
+2. - [ ] Track info from the menu: a dialog with start date/time, format,
+   point count, distance, duration, average speed (distance over duration).
+   All strings en + it.
+3. - [ ] Export from the menu: share/save the track's original stored file
+   as-is (share sheet on Android, save dialog on desktop Linux) — recorded
+   tracks export as the GPX they were finalized into. Widget tests for the
+   menu wiring; strings en + it.
+
 Bugs — high priority:
 
 Recording — live trace on the map:
@@ -41,3 +52,54 @@ Recording — live trace on the map:
   desktop recording (needs a Linux location source), resume of a killed
   session, auto-pause-when-stationary, interval setting,
   vector-tiles/3D-building look (needs a new map-data decision).
+
+Recording — map controls & camera (Android first):
+
+1. - [ ] Course-up camera rotation tied to the follow-camera: while
+   recording with the follow armed, rotate the camera so the current
+   course points up (the marker stops counter-rotating); any user gesture
+   releases rotation together with the follow, and the locate action
+   re-arms both.
+2. - [ ] Locate usable while recording: keep the locate button visible in
+   record mode; tapping it centers on the current position (the live fix
+   while recording) and re-arms the follow-camera, so panning the map away
+   is recoverable.
+3. - [ ] Bottom-left action stack: move the locate button out of the top
+   toolbar to the bottom-left of the map; the record button sits directly
+   above it and is shown only once a position fix has been acquired; the
+   top bar keeps Import / Tracks / Settings only (Fit leaves it — see the
+   aggregate-track section below).
+4. - [ ] Pause/resume/stop at the record slot: while recording that slot
+   shows pause; pressing it turns the button into resume and a stop
+   button appears before it in the same stack; stop opens a name dialog
+   defaulting to the current date-time timestamp and finalizes the session
+   through the unified import pipeline under that name.
+
+Map — aggregate tracks & selection:
+
+1. - [ ] Aggregate track model: cluster the visible stored tracks so that
+   points of different tracks within ~100 m belong to the same aggregate
+   track. Pure Dart behind a small interface (like the parsers), unit
+   tests on synthetic fixtures: chains, singletons, threshold edge cases.
+2. - [ ] Tap-to-select: tapping the map within tolerance of an aggregate's
+   points selects it (visual highlight); a selection bar offers hide
+   (deselect = underlying tracks visible=false), change color
+   (per-aggregate override persisted in index.json) and fit screen to the
+   aggregate.
+3. - [ ] Remove the global Fit button from the top toolbar — fitting is per
+   aggregate via selection now; the startup camera fit is unchanged.
+4. - [ ] Colors: extend the tint palette beyond the current four; aggregates
+   render in palette colors — the main fog aggregate keeps the fixed
+   default color, distant aggregates take the next palette colors,
+   overridable per selection. The Settings "track color" row now drives
+   only the live recording trace color (replacing the fixed red). Strings
+   en + it; widget tests for selection and highlight.
+
+Packaging:
+
+1. - [ ] Rename the app package com.example.unvisited →
+   io.github.gianfrid.unvisited everywhere it appears: Android namespace +
+   applicationId (android/app/build.gradle.kts) and MainActivity package +
+   source dir, Linux APPLICATION_ID + desktop file + desktop-entry.sh,
+   iOS/macOS PRODUCT_BUNDLE_IDENTIFIER. Verify with flutter analyze,
+   flutter test and an Android debug build.
