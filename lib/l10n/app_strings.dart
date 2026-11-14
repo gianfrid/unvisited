@@ -309,9 +309,10 @@ class EnglishStrings extends AppStrings {
   @override
   String buildDate(String date) => 'Build date: $date';
   @override
-  String get trackColor => 'Track color';
+  String get trackColor => 'Trace color';
   @override
-  String get trackColorSubtitle => 'Tint of the unlocked areas on the map';
+  String get trackColorSubtitle =>
+      'Color of the live recording trace on the map';
   @override
   String get zoomSlider => 'Zoom slider';
   @override
@@ -428,6 +429,10 @@ class EnglishStrings extends AppStrings {
     'blue' => 'Blue',
     'orange' => 'Orange',
     'purple' => 'Purple',
+    'red' => 'Red',
+    'teal' => 'Teal',
+    'amber' => 'Amber',
+    'pink' => 'Pink',
     _ => key,
   };
 }
@@ -549,9 +554,10 @@ class ItalianStrings extends AppStrings {
   @override
   String buildDate(String date) => 'Data di build: $date';
   @override
-  String get trackColor => 'Colore delle tracce';
+  String get trackColor => 'Colore della traccia';
   @override
-  String get trackColorSubtitle => 'Tinta delle aree esplorate sulla mappa';
+  String get trackColorSubtitle =>
+      'Colore della traccia live in registrazione sulla mappa';
   @override
   String get zoomSlider => 'Cursore dello zoom';
   @override
@@ -671,6 +677,10 @@ class ItalianStrings extends AppStrings {
     'blue' => 'Blu',
     'orange' => 'Arancione',
     'purple' => 'Viola',
+    'red' => 'Rosso',
+    'teal' => 'Verde acetato',
+    'amber' => 'Ambra',
+    'pink' => 'Rosa',
     _ => key,
   };
 }

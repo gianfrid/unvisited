@@ -1395,7 +1395,7 @@ void main() {
     // Settings sheet.
     await tester.tap(find.text('Impostazioni'));
     await tester.pumpAndSettle();
-    expect(find.text('Colore delle tracce'), findsOneWidget);
+    expect(find.text('Colore della traccia'), findsOneWidget);
     expect(find.text('Cursore dello zoom'), findsOneWidget);
     expect(find.text('Sinistra'), findsOneWidget);
     expect(find.text('Elimina tutte le tracce'), findsOneWidget);
@@ -1435,10 +1435,17 @@ void main() {
       reason: 'unlock circles are sized as real ground areas',
     );
     expect(
-      circles.every((c) => c.color == exploredAreaColor('green')),
+      circles.every(
+        (c) => explorationTints.values.contains(c.color),
+      ),
       isTrue,
-      reason: 'one uniform exploration tint, map stays legible',
+      reason: 'circles draw in palette colors (per aggregate)',
     );
+    // Two distant tracks: two aggregates — the oldest stays on the default
+    // tint, the other takes the next palette color.
+    final colors = circles.map((c) => c.color).toSet();
+    expect(colors, contains(exploredAreaColor('green')));
+    expect(colors, contains(exploredAreaColor('blue')));
     expect(
       circles.every((c) => c.radius >= unlockRadiusMeters - 1e-9),
       isTrue,
@@ -1676,7 +1683,7 @@ void main() {
     int tracePolylines() => tester
         .widgetList<PolylineLayer>(find.byType(PolylineLayer))
         .expand((l) => l.polylines)
-        .where((p) => p.color == Colors.redAccent.withValues(alpha: 0.65))
+        .where((p) => p.color == recordingTraceColor('red'))
         .length;
     expect(tracePolylines(), 0);
 
@@ -1693,7 +1700,7 @@ void main() {
         .widgetList<PolylineLayer>(find.byType(PolylineLayer))
         .expand((l) => l.polylines)
         .singleWhere(
-          (p) => p.color == Colors.redAccent.withValues(alpha: 0.65),
+          (p) => p.color == recordingTraceColor('red'),
         );
     expect(trace.points.length, 2);
 
@@ -2058,24 +2065,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Both appearance controls are present with their choices visible.
-    expect(find.text('Track color'), findsOneWidget);
+    // The trace-color control (it drives only the live recording trace
+    // now — the fog aggregates color by palette) is present alongside its
+    // sibling appearance control.
+    expect(find.text('Trace color'), findsOneWidget);
     expect(find.text('Zoom slider'), findsOneWidget);
     expect(find.text('Left'), findsOneWidget);
     expect(find.text('Right'), findsOneWidget);
 
-    // A tint pick recolors the map behind the still-open sheet and
-    // persists in the index.
+    // A trace tint pick persists in the index...
     await tester.tap(find.byTooltip('Blue'));
     await tester.pump();
-    final circles = tester
-        .widget<CircleLayer>(find.byType(CircleLayer))
-        .circles;
-    expect(circles.every((c) => c.color == exploredAreaColor('blue')), isTrue);
-    expect(model.trackTint, 'blue');
+    expect(model.recordingTint, 'blue');
     final reloaded = TrackStore(root);
     await reloaded.load();
-    expect(reloaded.tint, 'blue');
+    expect(reloaded.recordingTint, 'blue');
 
     // So does a slider edge switch (scrolled into view first — the sheet
     // grew past one screen when it gained the appearance controls).

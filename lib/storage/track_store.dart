@@ -180,6 +180,12 @@ class TrackStore {
 
   /// Which screen edge the zoom slider hugs: 'left' or 'right'.
   String _zoomSliderSide = 'right';
+
+  /// The live recording trace's tint key (the fog aggregates color by
+  /// palette/overrides now; this drives only the recording trace).
+  /// Persisted like the other appearance settings: survives [clearAll].
+  String _recordingTint = 'red';
+  String get recordingTint => _recordingTint;
   String get zoomSliderSide => _zoomSliderSide;
 
   /// UI language: 'system' (follow the device) or a language code such as
@@ -284,6 +290,13 @@ class TrackStore {
     _saveIndex();
   }
 
+  /// Saves the recording trace's tint key. A preference like the others:
+  /// it survives [clearAll].
+  Future<void> saveRecordingTint(String tint) async {
+    _recordingTint = tint;
+    _saveIndex();
+  }
+
   /// Per-aggregate color overrides, keyed by the aggregate's anchor track
   /// id (the earliest-starting member — stable when other tracks join or
   /// leave, so the override survives membership changes). Persisted in the
@@ -323,6 +336,7 @@ class TrackStore {
         _language = (settings['language'] as String?) ?? _language;
         _themeMode = (settings['themeMode'] as String?) ?? _themeMode;
         _tileLayer = (settings['tileLayer'] as String?) ?? _tileLayer;
+        _recordingTint = (settings['recordingTint'] as String?) ?? _recordingTint;
         _roadsFile = settings['roadsFile'] as String?;
         aggregateColors
           ..clear()
@@ -493,6 +507,7 @@ class TrackStore {
         'language': _language,
         'themeMode': _themeMode,
         'tileLayer': _tileLayer,
+        'recordingTint': _recordingTint,
         if (_roadsFile != null) 'roadsFile': _roadsFile,
         if (aggregateColors.isNotEmpty)
           'aggregateColors': Map<String, String>.of(aggregateColors),

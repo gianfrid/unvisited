@@ -98,8 +98,8 @@ class SettingsSheet extends StatelessWidget {
                           TintSwatch(
                             tintKey: entry.key,
                             color: entry.value,
-                            selected: model.trackTint == entry.key,
-                            onTap: () => model.setTrackTint(entry.key),
+                            selected: model.recordingTint == entry.key,
+                            onTap: () => model.setRecordingTint(entry.key),
                           ),
                       ],
                     ),

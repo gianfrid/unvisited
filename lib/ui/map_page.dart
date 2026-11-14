@@ -239,8 +239,9 @@ class _MapPageState extends State<MapPage> {
   /// Cached unlock centers keyed to the current overlay inputs (visible
   /// track ids + cell size), so pans and transient item rebuilds do not
   /// re-walk every track point.
-  String? _fogCentersKey;
-  List<LatLng> _fogCenters = const [];
+  /// Per-aggregate unlock centers cache: aggregate cache key (anchor +
+  /// member ids + fog cell size) -> its grid centers.
+  final _fogCentersByAnchor = <String, List<LatLng>>{};
 
   /// Creates the provider's `fm_cache` subdirectory synchronously; fails
   /// fast when the location is unwritable.
@@ -358,13 +359,15 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  /// The selected aggregate's highlight: the same cells the fog grid draws,
-  /// computed over just the selection's points, in an opaque-er tint so the
-  /// selection reads on top of the shared overlay.
+  /// The selected aggregate's highlight: the same cells the fog grid
+  /// draws, computed over just the selection's points, in a more transparent
+  /// opaque version of the aggregate's own resolved color so the selection
+  /// reads on top of the shared overlay.
   List<CircleMarker> _selectionHighlight() {
     final selected = widget.model.selectedAggregate;
     if (selected == null) return const [];
-    final tint = exploredAreaColor(widget.model.trackTint);
+    final key = widget.model.aggregateTintKeys[selected.anchorId];
+    final tint = exploredAreaColor(key ?? defaultTintKey);
     final highlight = tint.withValues(
       alpha: (tint.a + 0.55).clamp(0.0, 1.0),
     );
@@ -882,40 +885,50 @@ class _MapPageState extends State<MapPage> {
   /// the single exploration tint. Track polylines are gone by design — the
   /// union of circles is how a visited area shows on the map.
   List<CircleMarker> _buildFogCircles(List<MapTrack> tracks) {
-    final key =
-        '${[for (final t in tracks) t.meta.id].join('|')}@$_fogCellSize';
-    if (key != _fogCentersKey) {
-      _fogCentersKey = key;
-      _fogCenters = unlockCenters(
-        tracks.expand((t) => t.points),
-        cellSizeMeters: _fogCellSize,
-      );
-    }
+    final tintKeys = widget.model.aggregateTintKeys;
+    final out = <CircleMarker>[];
     final radius = unlockRadiusForCell(_fogCellSize);
-    final tint = exploredAreaColor(widget.model.trackTint);
-    return [
-      for (final c in _fogCenters)
-        CircleMarker(
-          point: c,
-          color: tint,
-          radius: radius,
-          useRadiusInMeter: true,
-        ),
-    ];
+    for (final a in widget.model.aggregates) {
+      final key = '${[for (final t in a.members) t.id].join('|')}@$_fogCellSize';
+      var centers = _fogCentersByAnchor[key];
+      if (centers == null) {
+        centers = unlockCenters(a.points, cellSizeMeters: _fogCellSize);
+        _fogCentersByAnchor[key] = centers;
+      }
+      final tint =
+          exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
+      out.addAll([
+        for (final c in centers)
+          CircleMarker(
+            point: c,
+            color: tint,
+            radius: radius,
+            useRadiusInMeter: true,
+          ),
+      ]);
+    }
+    return out;
   }
 
   /// Unlocked road corridors: the matched sub-polylines persisted on each
-  /// visible track, drawn fat and translucent in the same tint family so
-  /// corridors and circles read as one overlay. A way unlocked by several
-  /// tracks draws once (the corridors usually coincide; double-drawing
-  /// would double-darken the shared stretch). flutter_map culls off-screen
-  /// polylines and simplifies them per zoom; LOD variants are deferred
-  /// until catalog scale demands them.
+  /// visible track, drawn fat and translucent in the track's aggregate
+  /// tint so corridors and their circles read as one overlay. A way
+  /// unlocked by several tracks draws once (the corridors usually
+  /// coincide; double-drawing would double-darken the shared stretch).
+  /// flutter_map culls off-screen polylines and simplifies them per zoom;
+  /// LOD variants are deferred until catalog scale demands them.
   List<Polyline> _buildCorridors(List<MapTrack> tracks) {
-    final tint = exploredAreaColor(widget.model.trackTint);
+    final tintKeys = widget.model.aggregateTintKeys;
+    final anchors = <String, String>{};
+    for (final a in widget.model.aggregates) {
+      for (final id in a.trackIds) {
+        anchors[id] = tintKeys[a.anchorId] ?? defaultTintKey;
+      }
+    }
     final seen = <String>{};
     final out = <Polyline>[];
     for (final t in tracks) {
+      final tint = exploredAreaColor(anchors[t.meta.id] ?? defaultTintKey);
       t.meta.unlockedWays.forEach((wayId, corridors) {
         if (!seen.add(wayId)) return;
         for (final corridor in corridors) {
@@ -1037,7 +1050,8 @@ class _MapPageState extends State<MapPage> {
                         if (seg.length >= 2)
                           Polyline(
                             points: seg,
-                            color: Colors.redAccent.withValues(alpha: 0.65),
+                            color: recordingTraceColor(
+                                widget.model.recordingTint),
                             strokeWidth: 4,
                           ),
                     ],

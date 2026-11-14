@@ -24,6 +24,7 @@ import 'fog_of_war.dart' show unlockCenters;
 import 'import_coordinator.dart';
 import 'recording_controller.dart';
 import 'recording_live.dart' show RecordingLiveState;
+import 'track_colors.dart' show defaultTintKey, explorationTints;
 
 /// Why a position could not be obtained; each maps to a message that
 /// tells the user what to do about it.
@@ -343,8 +344,43 @@ class AppModel extends ChangeNotifier {
   // --- Settings ------------------------------------------------------------
 
   /// Exploration overlay tint key (see the tints in track_colors.dart),
-  /// persisted in the index.
+  /// persisted in the index. The fog overlay colors by aggregate now; this
+  /// drives the main fog aggregate's default and the swatch fallbacks.
   String get trackTint => store.tint;
+
+  /// The live recording trace's tint key, persisted in the index.
+  String get recordingTint => store.recordingTint;
+
+  /// The resolved tint key per aggregate anchor: the per-aggregate
+  /// override when one is set, else the palette rank — the earliest (the
+  /// "main") aggregate keeps the app default, the others take the
+  /// following palette colors in anchor-start order, cycling.
+  Map<String, String> get aggregateTintKeys {
+    final keys = <String, String>{};
+    final ordered = [
+      for (final a in aggregates)
+        (anchor: a.anchorId, start: _anchorStart(a)),
+    ]..sort((x, y) {
+      final xs = x.start, ys = y.start;
+      if (xs == null && ys == null) return x.anchor.compareTo(y.anchor);
+      if (xs == null) return 1;
+      if (ys == null) return -1;
+      return xs.compareTo(ys);
+    });
+    final palette = explorationTints.keys.where((k) => k != defaultTintKey).toList();
+    for (var i = 0; i < ordered.length; i++) {
+      final anchor = ordered[i].anchor;
+      keys[anchor] = i == 0
+          ? store.aggregateColor(anchor) ?? defaultTintKey
+          : store.aggregateColor(anchor) ?? palette[(i - 1) % palette.length];
+    }
+    return keys;
+  }
+
+  DateTime? _anchorStart(AggregateTrack a) => a.members
+      .map((m) => m.startTimeUtc)
+      .whereType<DateTime>()
+      .fold<DateTime?>(null, (min, t) => min == null || t.isBefore(min) ? t : min);
 
   /// Which screen edge the zoom slider hugs: 'left' or 'right'.
   String get zoomSliderSide => store.zoomSliderSide;
@@ -377,6 +413,13 @@ class AppModel extends ChangeNotifier {
   /// notification.
   Future<void> setTileLayer(String layer) async {
     await store.saveTileLayer(layer);
+    notifyListeners();
+  }
+
+  /// Saves the live recording trace's tint (the fog overlay colors by
+  /// aggregate now).
+  Future<void> setRecordingTint(String key) async {
+    await store.saveRecordingTint(key);
     notifyListeners();
   }
 
