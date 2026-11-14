@@ -340,9 +340,17 @@ class _MapPageState extends State<MapPage> {
 
   /// Record button: starts a session through the model and pulses the
   /// chip; a declined permission says so instead of leaving a button that
-  /// silently did nothing.
+  /// silently did nothing. Alongside it, the one soft POST_NOTIFICATIONS
+  /// ask fires unawaited — a refusal leaves the session mute, and the
+  /// once-per-run guard keeps repeated taps from nagging.
+  bool _notificationsAsked = false;
+
   Future<void> _startRecording() async {
     final strings = AppStrings.ofContext(context);
+    if (!_notificationsAsked) {
+      _notificationsAsked = true;
+      unawaited(widget.model.requestPostNotifications());
+    }
     final staged = await widget.model.startRecording();
     if (!mounted || staged != null) return;
     _toast(strings.recordDeclined);

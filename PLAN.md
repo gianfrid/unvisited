@@ -1,29 +1,47 @@
-# Slice 9 — drop the local-only claim from the Settings About card
+# Slice 10 — soft POST_NOTIFICATIONS ask; open-decisions defaults closed out
 
 ## Context
 
-`aboutDescription` reads "Local-only track recording and exploration on
-OpenStreetMap" (en) / "Registrazione ed esplorazione di tracce solo in
-locale su OpenStreetMap" (it). Map tiles are fetched from the OSM tile
-service, so local-only is false. What is true: imports, the JSON index
-and recordings are stored on-device; only the tile fetch uses the
-network. No test asserts the exact text (only the strings-coverage
-enumeration), so the change is two string literals.
+TODO's open-decisions line confirms five defaults; four are already
+delivered (1 s interval in `AndroidPositionSource`, the soft battery
+advisory in Settings, manual pause from slice 5, salvage-as-import from
+the robustness slice). The one gap is the research report's permission
+table: `POST_NOTIFICATIONS` (API 33+) is in the manifest but never
+requested — "soft, never blocking recording". geolocator has no
+notification-permission API, so the ask rides the existing
+`unvisited/host` channel (same pattern as the battery advisory), handset
+API 33 gating: below 33 the permission does not exist and the answer is
+granted.
 
 ## Steps
 
-1. `lib/l10n/app_strings.dart`, English:
-   `aboutDescription` → "Track recording and exploration on OpenStreetMap
-   (GPX, FIT, KMZ and TCX). Imports and recordings stay on your device;
-   only the map tiles are fetched."
-2. Italian: "Registrazione ed esplorazione di tracce su OpenStreetMap
-   (GPX, FIT, KMZ e TCX). Importazioni e registrazioni restano sul tuo
-   dispositivo; solo i riquadri della mappa vengono scaricati."
-3. The strings-coverage test needs no change (getter still exists and is
-   enumerated); no other tests reference the text.
+1. `MainActivity.kt` — new host-channel method
+   `requestPostNotifications`:
+   - granted immediately when the permission exists not at all (< API 33)
+     or is already held;
+   - otherwise fires `requestPermissions` once and answers with the
+     grant result via `onRequestPermissionsResult` (pending-result
+     pattern like `pickDirectory`, with `already_active` re-entry guard).
+2. `lib/ui/app_model.dart` — `Future<bool?> requestPostNotifications()`:
+   invokes the method, returns null (or false) on any
+   MissingPluginException/PlatformException — desktop and tests fall
+   back cleanly, mirroring `batteryOptimizationExcluded`.
+3. `lib/ui/map_page.dart` — `_startRecording` fires the request without
+   awaiting it (`unawaited`) right before the session starts: the ask is
+   soft (one system dialog at the first tap, no second popup that same
+   run since Android remembers), refusal never blocks or fails the
+   session, and the FGS proceeds mute as the confirmed default says.
+   Honor a one-shot-per-run flag so repeated Record taps do not nag.
+4. Tests (`test/app_model_test.dart`, host-channel mock pattern):
+   - model method surfaces the channel's grant result (true / false);
+   - a `notImplemented` host answers null (no crash on desktop);
+   - a widget-level tap of Record issues the request alongside the
+     session start (map-page test with the channel mocked, recording
+     still starts when the mock answers false).
 
 ## Verification
 
 - `flutter analyze` clean; `flutter test` all pass.
-- Commit includes PLAN.md and deletes the slice 9 TODO entry; PLAN.md
-  carries over to the next task unmodified.
+- Commit includes PLAN.md, deletes the open-decisions TODO entry (its
+  five defaults are then all delivered in code), and carries PLAN.md
+  over unmodified.

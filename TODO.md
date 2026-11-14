@@ -37,6 +37,3 @@ Track list — catalog UX:
   desktop recording (needs a Linux location source), resume of a killed
   session, auto-pause-when-stationary, interval setting,
   vector-tiles/3D-building look (needs a new map-data decision).
-- [] open decisions (report §Open questions): confirmed defaults — 1 s
-  interval, soft battery advisory, mute-FGS when notifications denied,
-  manual pause only, salvage-as-import.

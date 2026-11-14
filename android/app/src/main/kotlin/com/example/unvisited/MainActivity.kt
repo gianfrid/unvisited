@@ -1,9 +1,12 @@
 package com.example.unvisited
 
+import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +16,8 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.WindowManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -23,6 +28,7 @@ class MainActivity : FlutterActivity() {
         private const val SHARED_CHANNEL = "unvisited/shared"
         private const val SEND_ACTION = "android.intent.action.SEND"
         private const val PICK_DIR_REQUEST = 4941
+        private const val POST_NOTIFICATIONS_REQUEST = 4942
 
         /** Track file extensions accepted by the unified import pipeline.
          *  Matched case-insensitively, mirroring the Dart-side folder scan. */
@@ -48,6 +54,10 @@ class MainActivity : FlutterActivity() {
     // Pending result of an in-flight `pickDirectory` call, delivered once the
     // system directory picker returns.
     private var pendingDirResult: MethodChannel.Result? = null
+
+    // Pending result of the (soft) POST_NOTIFICATIONS request, delivered
+    // via onRequestPermissionsResult.
+    private var pendingNotifResult: MethodChannel.Result? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,6 +144,51 @@ class MainActivity : FlutterActivity() {
                 null,
             )
         }
+    }
+
+    /**
+     * One soft POST_NOTIFICATIONS ask, per the open-decisions defaults:
+     * granted immediately where no ask can exist (below API 33, or the
+     * permission is already held); otherwise a single system dialog whose
+     * grant result is the answer. A refusal never blocks the caller —
+     * the foreground service proceeds mute.
+     */
+    private fun requestPostNotifications(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < 33) {
+            result.success(true) // the permission does not exist there
+            return
+        }
+        val perm = Manifest.permission.POST_NOTIFICATIONS
+        if (ContextCompat.checkSelfPermission(this, perm) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(true)
+            return
+        }
+        if (pendingNotifResult != null) {
+            result.error("already_active", "A permission request is already pending.", null)
+            return
+        }
+        pendingNotifResult = result
+        ActivityCompat.requestPermissions(
+            this, arrayOf(perm), POST_NOTIFICATIONS_REQUEST
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != POST_NOTIFICATIONS_REQUEST) return
+        val result = pendingNotifResult
+        pendingNotifResult = null
+        result ?: return
+        result.success(
+            grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+        )
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -301,6 +356,10 @@ class MainActivity : FlutterActivity() {
                     "pickDirectory" -> pickSafDirectory(result)
                     "listTrackFiles" ->
                         listSafTrackFiles(call.arguments?.toString() ?: "", result)
+                    // The recording FGS's notification needs POST_NOTIFICATIONS
+                    // (API 33+); denied, it stays mute and recording proceeds.
+                    // The ask is soft and fires only at the Record tap.
+                    "requestPostNotifications" -> requestPostNotifications(result)
                     // Battery-optimization state for the recording advisory
                     // in Settings: the state read and the soft tap-through
                     // to the system settings screen. Deliberately not the
@@ -355,6 +414,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         pendingDirResult = null
+        pendingNotifResult = null
         sharedChannel = null
         super.onDestroy()
     }

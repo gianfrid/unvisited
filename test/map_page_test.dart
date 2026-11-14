@@ -1107,6 +1107,66 @@ void main() {
     return model;
   }
 
+  testWidgets('a tasteful soft notification ask fires once at the Record tap',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    // GPS working (the slice 6 gate) and the host refusing the
+    // notification ask: recording's FGS proceeds mute, per the confirmed
+    // default, and the tap's flow must carry on undisturbed.
+    mockGeolocator(tester, permission: 3, position: {
+      'lat': 52.5200,
+      'lon': 13.4050,
+    });
+    final hostCalls = <String>[];
+    const host = MethodChannel('unvisited/host');
+    tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(host, (call) async {
+      hostCalls.add(call.method);
+      return call.method == 'requestPostNotifications' ? false : null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(host, null));
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Record'));
+    // The ask fires without blocking the flow: denied, the session still
+    // starts (mute FGS — the confirmed default), the chip shows it.
+    await tester.pump();
+    await tester.pump();
+    expect(hostCalls.where((m) => m == 'requestPostNotifications').length, 1);
+    expect(find.byKey(const ValueKey('recording-chip')), findsOneWidget);
+
+    // Stop (unawaited: only the synchronous clear matters here), then a
+    // second tap must not nag again.
+    model.stopRecording();
+    await tester.pump();
+    await tester.tap(find.byTooltip('Record'));
+    await tester.pump();
+    await tester.pump();
+    expect(hostCalls.where((m) => m == 'requestPostNotifications').length, 1);
+  });
+
   testWidgets('locate is not offered where the platform has no location '
       'plugin', (tester) async {
     // Desktop Linux: geolocator has no implementation, so the action could

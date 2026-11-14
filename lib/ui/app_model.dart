@@ -687,11 +687,25 @@ class AppModel extends ChangeNotifier {
     }
   }
 
+  /// The soft POST_NOTIFICATIONS ask (API 33+): one non-blocking dialog,
+  /// fired from the Record tap, whose grant result decides only whether
+  /// the recording foreground service's notification is shown — a
+  /// refusal leaves the session mute, never stopped. Null when the
+  /// platform cannot say (no host plugin; desktop runs, tests).
+  Future<bool?> requestPostNotifications() async {
+    try {
+      return await hostChannel.invokeMethod<bool>('requestPostNotifications');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
   /// Opens Android's battery-optimization settings screen: the advisory's
   /// soft tap-through. Never an automated exemption request (the intent
   /// Play flags; see the recording research report).
-  Future<void> openBatteryOptimizationSettings() async {
-    try {
+  Future<void> openBatteryOptimizationSettings() async {    try {
       await hostChannel.invokeMethod('openBatteryOptimizationSettings');
     } on MissingPluginException {
       // No host plugin: nothing to open.

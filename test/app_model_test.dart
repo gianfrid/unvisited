@@ -14,6 +14,7 @@ import 'package:file_picker/file_picker.dart'
         WebOptions,
         WindowsOptions;
 import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/l10n/app_strings.dart';
@@ -707,6 +708,37 @@ void main() {
   });
 
   group('recording', () {
+    group('the soft POST_NOTIFICATIONS ask', () {
+      tearDown(() {
+        TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(hostChannel, null);
+      });
+
+      test('surfaces the grant result from the host', () async {
+        for (final granted in [true, false]) {
+          TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(hostChannel, (call) async {
+            expect(call.method, 'requestPostNotifications');
+            return granted;
+          });
+          expect(await model.requestPostNotifications(), granted);
+        }
+      });
+
+      test('a missing host plugin answers null (desktop, tests)', () async {
+        // No handler set: MissingPluginException turns into null.
+        expect(await model.requestPostNotifications(), isNull);
+      });
+
+      test('a host error answers null, never throws', () async {
+        TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(hostChannel, (call) async {
+          throw PlatformException(code: 'already_active');
+        });
+        expect(await model.requestPostNotifications(), isNull);
+      });
+    });
+
     test('start is gated closed when no host plugin answers', () async {
       // The unit-test host has no geolocator; the gate fails closed
       // instead of half-starting a session nobody can feed.
