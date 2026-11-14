@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert' show utf8;
 import 'dart:io';
 
@@ -22,7 +21,7 @@ import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/recording/position_source.dart'
-    show PositionFix, PositionSource;
+    show PositionFix;
 import 'package:unvisited/recording/staging_gpx.dart'
     show GpxStageWriter, MemoryStageSink;
 import 'package:unvisited/ui/app_model.dart';
@@ -69,8 +68,7 @@ class FakeFilePicker extends FilePickerPlatform {
     WindowsOptions windowsOptions = const WindowsOptions(),
     LinuxOptions linuxOptions = const LinuxOptions(),
     WebOptions webOptions = const WebOptions(),
-  }) async =>
-      picked;
+  }) async => picked;
 }
 
 void main() {
@@ -101,10 +99,8 @@ void main() {
     return dir;
   }
 
-  test('importFromDirectory exposes the new tracks for camera refit',
-      () async {
-    final summary =
-        await model.importFromDirectory(stageDir().path);
+  test('importFromDirectory exposes the new tracks for camera refit', () async {
+    final summary = await model.importFromDirectory(stageDir().path);
 
     expect(summary.imported, 2); // GPX + TCX; monitoring.fit is skipped
     expect(model.importEpoch, 1);
@@ -114,8 +110,7 @@ void main() {
     expect(model.lastImportedPoints.first.latitude, isNot(52.52));
   });
 
-  test('re-importing the same files is a no-op for the refit state',
-      () async {
+  test('re-importing the same files is a no-op for the refit state', () async {
     final dir = stageDir();
     await model.importFromDirectory(dir.path);
     final epoch = model.importEpoch;
@@ -132,8 +127,7 @@ void main() {
 
   test('importFromFile exposes points for share-intent imports', () async {
     final dir = stageDir();
-    final path =
-        '${dir.path}${Platform.pathSeparator}afternoon_ride.kmz';
+    final path = '${dir.path}${Platform.pathSeparator}afternoon_ride.kmz';
     File(path).writeAsBytesSync(fixture('afternoon_ride.kmz'));
 
     await model.importFromFile(path);
@@ -199,37 +193,40 @@ void main() {
     expect(exploredAreaColor('not-a-tint'), exploredAreaColor('green'));
   });
 
-  test('language choice persists, survives deleteAll and falls back safely',
-      () async {
-    // Out of the box the app follows the device language.
-    expect(model.language, 'system');
-    expect(model.locale, isNull);
+  test(
+    'language choice persists, survives deleteAll and falls back safely',
+    () async {
+      // Out of the box the app follows the device language.
+      expect(model.language, 'system');
+      expect(model.locale, isNull);
 
-    await model.setLanguage('it');
-    expect(model.language, 'it');
-    expect(model.locale, const Locale('it'));
+      await model.setLanguage('it');
+      expect(model.language, 'it');
+      expect(model.locale, const Locale('it'));
 
-    final reloaded = AppModel(TrackStore(root));
-    await reloaded.load();
-    expect(reloaded.language, 'it');
-    expect(reloaded.locale, const Locale('it'));
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.language, 'it');
+      expect(reloaded.locale, const Locale('it'));
 
-    // A preference, not track data.
-    await reloaded.deleteAll();
-    final after = AppModel(TrackStore(root));
-    await after.load();
-    expect(after.language, 'it');
+      // A preference, not track data.
+      await reloaded.deleteAll();
+      final after = AppModel(TrackStore(root));
+      await after.load();
+      expect(after.language, 'it');
 
-    // A hand-edited index naming a language the app does not speak must
-    // not produce a broken locale: follow the device instead.
-    await after.setLanguage('kl');
-    expect(after.locale, isNull);
-    expect(AppStrings.of(after.locale ?? const Locale('fr')),
-        isA<EnglishStrings>());
-  });
+      // A hand-edited index naming a language the app does not speak must
+      // not produce a broken locale: follow the device instead.
+      await after.setLanguage('kl');
+      expect(after.locale, isNull);
+      expect(
+        AppStrings.of(after.locale ?? const Locale('fr')),
+        isA<EnglishStrings>(),
+      );
+    },
+  );
 
-  test('saved position persists in the index and survives a reload',
-      () async {
+  test('saved position persists in the index and survives a reload', () async {
     expect(model.savedPosition, isNull, reason: 'never obtained a fix yet');
 
     // Saving happens inside currentPosition(); a fix is injected by
@@ -315,20 +312,26 @@ void main() {
 
     test('imports staged files through the unified pipeline', () async {
       const treeUri = 'content://tree/primary%3ADocuments';
-      final staged = stageSafScan(
-          ['morning_walk.gpx', 'afternoon_ride.kmz', 'monitoring.fit']);
+      final staged = stageSafScan([
+        'morning_walk.gpx',
+        'afternoon_ride.kmz',
+        'monitoring.fit',
+      ]);
       TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(hostChannel, (call) async {
-        switch (call.method) {
-          case 'pickDirectory':
-            return treeUri;
-          case 'listTrackFiles':
-            expect(call.arguments, treeUri,
-                reason: 'Dart must pass the picked tree URI through');
-            return staged;
-        }
-        fail('unexpected host method ${call.method}');
-      });
+            switch (call.method) {
+              case 'pickDirectory':
+                return treeUri;
+              case 'listTrackFiles':
+                expect(
+                  call.arguments,
+                  treeUri,
+                  reason: 'Dart must pass the picked tree URI through',
+                );
+                return staged;
+            }
+            fail('unexpected host method ${call.method}');
+          });
 
       final summary = await model.importViaDirectoryPicker();
 
@@ -338,61 +341,68 @@ void main() {
       expect(model.lastImportedPoints, isNotEmpty);
     });
 
-    test('deletes the staging copies once the pipeline consumed them',
-        () async {
-      final staged = stageSafScan(['morning_walk.gpx']);
-      TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(hostChannel, (call) async {
-        switch (call.method) {
-          case 'pickDirectory':
-            return 'content://tree/x';
-          case 'listTrackFiles':
-            return staged;
+    test(
+      'deletes the staging copies once the pipeline consumed them',
+      () async {
+        final staged = stageSafScan(['morning_walk.gpx']);
+        TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(hostChannel, (call) async {
+              switch (call.method) {
+                case 'pickDirectory':
+                  return 'content://tree/x';
+                case 'listTrackFiles':
+                  return staged;
+              }
+              fail('unexpected host method ${call.method}');
+            });
+
+        await model.importViaDirectoryPicker();
+
+        for (final entry in staged) {
+          expect(
+            File(entry['path'] as String).existsSync(),
+            isFalse,
+            reason: 'staged files must not linger in the cache dir',
+          );
         }
-        fail('unexpected host method ${call.method}');
-      });
+      },
+    );
 
-      await model.importViaDirectoryPicker();
-
-      for (final entry in staged) {
-        expect(File(entry['path'] as String).existsSync(), isFalse,
-            reason: 'staged files must not linger in the cache dir');
-      }
-    });
-
-    test('an unparseable staged file fails without aborting the import',
-        () async {
-      final staged = stageSafScan(['morning_walk.gpx']);
-      final junk = File(
+    test(
+      'an unparseable staged file fails without aborting the import',
+      () async {
+        final staged = stageSafScan(['morning_walk.gpx']);
+        final junk = File(
           '${Directory.systemTemp.createTempSync('unvisited-saf').path}'
-          '${Platform.pathSeparator}junk.gpx')
-        ..writeAsBytesSync('not a gpx'.codeUnits);
-      staged.add({'path': junk.path, 'name': 'junk.gpx'});
-      TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(hostChannel, (call) async {
-        switch (call.method) {
-          case 'pickDirectory':
-            return 'content://tree/x';
-          case 'listTrackFiles':
-            return staged;
-        }
-        fail('unexpected host method ${call.method}');
-      });
+          '${Platform.pathSeparator}junk.gpx',
+        )..writeAsBytesSync('not a gpx'.codeUnits);
+        staged.add({'path': junk.path, 'name': 'junk.gpx'});
+        TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(hostChannel, (call) async {
+              switch (call.method) {
+                case 'pickDirectory':
+                  return 'content://tree/x';
+                case 'listTrackFiles':
+                  return staged;
+              }
+              fail('unexpected host method ${call.method}');
+            });
 
-      final summary = await model.importViaDirectoryPicker();
+        final summary = await model.importViaDirectoryPicker();
 
-      expect(summary!.imported, 1);
-      expect(summary.failed, 1);
-      // The junk staging copy must be cleaned up despite the parse failure.
-      expect(junk.existsSync(), isFalse);
-    });
+        expect(summary!.imported, 1);
+        expect(summary.failed, 1);
+        // The junk staging copy must be cleaned up despite the parse failure.
+        expect(junk.existsSync(), isFalse);
+      },
+    );
 
     test('a cancelled SAF pick imports nothing', () async {
       TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(hostChannel, (call) async {
-        expect(call.method, 'pickDirectory');
-        return null; // user cancelled
-      });
+            expect(call.method, 'pickDirectory');
+            return null; // user cancelled
+          });
 
       final summary = await model.importViaDirectoryPicker();
 
@@ -406,13 +416,13 @@ void main() {
     /// it on the model.
     void activateRoad() {
       final roadFile = File(
-          '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads');
+        '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
+      );
       roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
       model.setRoadFile(roadFile.path);
     }
 
-    test('an import with an active road file persists unlock state',
-        () async {
+    test('an import with an active road file persists unlock state', () async {
       activateRoad();
       final dir = stageDir();
       File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
@@ -420,11 +430,12 @@ void main() {
 
       await model.importFromDirectory(dir.path);
 
-      final walk = model.tracks.singleWhere((t) => t.name == 'Main Street walk');
+      final walk = model.tracks.singleWhere(
+        (t) => t.name == 'Main Street walk',
+      );
       expect(walk.unlockedWays.keys, contains('1001')); // Main Street
       // The corridor runs along Main Street's latitude and spans the walk.
-      final corridor =
-          walk.unlockedWays['1001']!.expand((pts) => pts).toList();
+      final corridor = walk.unlockedWays['1001']!.expand((pts) => pts).toList();
       expect(corridor.length, greaterThanOrEqualTo(2));
       for (final p in corridor) {
         expect(p.latitude, closeTo(52.5200, 1e-4));
@@ -440,12 +451,13 @@ void main() {
       final restored = reloaded.tracks
           .singleWhere((t) => t.name == 'Main Street walk')
           .unlockedWays['1001']!;
-      expect(restored.expand((pts) => pts).last.longitude,
-          closeTo(13.4100, 1e-3));
+      expect(
+        restored.expand((pts) => pts).last.longitude,
+        closeTo(13.4100, 1e-3),
+      );
     });
 
-    test('an import without a road file leaves unlock state empty',
-        () async {
+    test('an import without a road file leaves unlock state empty', () async {
       final dir = stageDir();
       await model.importFromDirectory(dir.path);
       for (final t in model.tracks) {
@@ -453,37 +465,46 @@ void main() {
       }
     });
 
-    test('a byte-identical re-import keeps the existing unlock state',
-        () async {
-      activateRoad();
-      final dir = stageDir();
-      File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
-          .writeAsBytesSync(fixture('main_street_walk.gpx'));
-      await model.importFromDirectory(dir.path);
-      final before = Map.of(model.tracks
-          .singleWhere((t) => t.name == 'Main Street walk')
-          .unlockedWays);
+    test(
+      'a byte-identical re-import keeps the existing unlock state',
+      () async {
+        activateRoad();
+        final dir = stageDir();
+        File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
+            .writeAsBytesSync(fixture('main_street_walk.gpx'));
+        await model.importFromDirectory(dir.path);
+        final before = Map.of(
+          model.tracks
+              .singleWhere((t) => t.name == 'Main Street walk')
+              .unlockedWays,
+        );
 
-      final summary = await model.importFromDirectory(dir.path);
+        final summary = await model.importFromDirectory(dir.path);
 
-      expect(summary.duplicates, greaterThanOrEqualTo(1));
-      expect(model.tracks.singleWhere((t) => t.name == 'Main Street walk')
-          .unlockedWays, before);
-    });
+        expect(summary.duplicates, greaterThanOrEqualTo(1));
+        expect(
+          model.tracks
+              .singleWhere((t) => t.name == 'Main Street walk')
+              .unlockedWays,
+          before,
+        );
+      },
+    );
 
-    test('an index without the unlockedWays field loads with empty maps',
-        () async {
+    test('an index without the unlockedWays field loads with empty maps', () async {
       // A pre-road-matching index: entries without the field must load.
       // (load() skips entries whose track file is gone, so create it.)
       Directory('${root.path}${Platform.pathSeparator}tracks')
           .createSync(recursive: true);
-      File('${root.path}${Platform.pathSeparator}tracks${Platform.pathSeparator}abc.gpx')
-          .writeAsStringSync('<gpx/>');
-      File('${root.path}${Platform.pathSeparator}index.json')
-          .writeAsStringSync('{"version": 1, "tracks": [{"id": "abc", '
-              '"name": "old", "format": "GPX", "file": "abc.gpx", '
-              '"pointCount": 1, "distanceMeters": 10.0, "visible": true}], '
-              '"settings": {}}');
+      File(
+        '${root.path}${Platform.pathSeparator}tracks${Platform.pathSeparator}abc.gpx',
+      ).writeAsStringSync('<gpx/>');
+      File('${root.path}${Platform.pathSeparator}index.json').writeAsStringSync(
+        '{"version": 1, "tracks": [{"id": "abc", '
+        '"name": "old", "format": "GPX", "file": "abc.gpx", '
+        '"pointCount": 1, "distanceMeters": 10.0, "visible": true}], '
+        '"settings": {}}',
+      );
       final reloaded = TrackStore(root);
       await reloaded.load();
       expect(reloaded.tracks.single.unlockedWays, isEmpty);
@@ -557,8 +578,10 @@ void main() {
       expect(failure, isNull);
       expect(model.roadsName, 'berlin.unvisited-roads');
       expect(model.roadStore, isNotNull);
-      final stored = File('${root.path}${Platform.pathSeparator}roads'
-          '${Platform.pathSeparator}berlin.unvisited-roads');
+      final stored = File(
+        '${root.path}${Platform.pathSeparator}roads'
+        '${Platform.pathSeparator}berlin.unvisited-roads',
+      );
       expect(stored.existsSync(), isTrue);
       // The recompute-on-activation inline import: the walk now unlocks
       // Main Street without a new import.
@@ -599,10 +622,16 @@ void main() {
         'matched under an earlier region', () async {
       final walk = await importWalk();
 
-      expect(await model.activateRoadFile(buildRegion('a.unvisited-roads', regionA)), isNull);
+      expect(
+        await model.activateRoadFile(buildRegion('a.unvisited-roads', regionA)),
+        isNull,
+      );
       expect(walk.unlockedWays.keys, ['1001']);
 
-      expect(await model.activateRoadFile(buildRegion('b.unvisited-roads', regionB)), isNull);
+      expect(
+        await model.activateRoadFile(buildRegion('b.unvisited-roads', regionB)),
+        isNull,
+      );
 
       // Region B's way matched the walk (recompute ran), and region A's
       // way was NOT wiped away: the corridors are materialized
@@ -610,13 +639,19 @@ void main() {
       expect(walk.unlockedWays.keys.toSet(), {'1001', '2002'});
       // Previous region's stored copy is replaced on disk.
       final oldRegion = File(
-          '${root.path}${Platform.pathSeparator}roads'
-          '${Platform.pathSeparator}a.unvisited-roads');
+        '${root.path}${Platform.pathSeparator}roads'
+        '${Platform.pathSeparator}a.unvisited-roads',
+      );
       expect(oldRegion.existsSync(), isFalse);
       expect(model.roadsName, 'b.unvisited-roads');
 
       // Re-activating the same region never duplicates corridors.
-      expect(await model.activateRoadFile(buildRegion('b2.unvisited-roads', regionB)), isNull);
+      expect(
+        await model.activateRoadFile(
+          buildRegion('b2.unvisited-roads', regionB),
+        ),
+        isNull,
+      );
       expect(walk.unlockedWays.keys.toSet(), {'1001', '2002'});
     });
 
@@ -634,10 +669,12 @@ void main() {
       expect(walk.unlockedWays, before); // exploration data survives
       // Only the stored copy is deleted; the (now empty) directory stays.
       expect(
-          File('${root.path}${Platform.pathSeparator}roads'
-                  '${Platform.pathSeparator}a.unvisited-roads')
-              .existsSync(),
-          isFalse);
+        File(
+          '${root.path}${Platform.pathSeparator}roads'
+          '${Platform.pathSeparator}a.unvisited-roads',
+        ).existsSync(),
+        isFalse,
+      );
     });
 
     test('a road file gone from disk falls back to circles-only and '
@@ -645,9 +682,10 @@ void main() {
       await importWalk();
       await model.activateRoadFile(buildRegion('a.unvisited-roads', regionA));
       expect(model.roadStore, isNotNull);
-      final stored =
-          File('${root.path}${Platform.pathSeparator}roads'
-              '${Platform.pathSeparator}a.unvisited-roads');
+      final stored = File(
+        '${root.path}${Platform.pathSeparator}roads'
+        '${Platform.pathSeparator}a.unvisited-roads',
+      );
       stored.deleteSync(); // vanished between runs (external deletion)
 
       final reloaded = AppModel(TrackStore(root));
@@ -657,13 +695,15 @@ void main() {
       expect(reloaded.roadStore, isNull);
       // The unlock state recorded earlier keeps rendering (circles-only
       // fallback affects *new* matching, not recorded corridors).
-      final restored = reloaded.tracks
-          .singleWhere((t) => t.name == 'Main Street walk');
+      final restored = reloaded.tracks.singleWhere(
+        (t) => t.name == 'Main Street walk',
+      );
       expect(restored.unlockedWays.keys.single, '1001');
     });
   });
 
-  group('theme mode', () {    test('defaults to system', () {
+  group('theme mode', () {
+    test('defaults to system', () {
       expect(model.themeMode, 'system');
       expect(model.themeModeValue, ThemeMode.system);
     });
@@ -719,9 +759,9 @@ void main() {
         for (final granted in [true, false]) {
           TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
               .setMockMethodCallHandler(hostChannel, (call) async {
-            expect(call.method, 'requestPostNotifications');
-            return granted;
-          });
+                expect(call.method, 'requestPostNotifications');
+                return granted;
+              });
           expect(await model.requestPostNotifications(), granted);
         }
       });
@@ -734,8 +774,8 @@ void main() {
       test('a host error answers null, never throws', () async {
         TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(hostChannel, (call) async {
-          throw PlatformException(code: 'already_active');
-        });
+              throw PlatformException(code: 'already_active');
+            });
         expect(await model.requestPostNotifications(), isNull);
       });
     });
@@ -747,36 +787,44 @@ void main() {
       expect(model.isRecording, isFalse);
     });
 
-    test('a fake-sourced session records and stops through the pipeline',
-        () async {
-      final source = FakePositionSource();
-      final staged =
-          await model.startRecording(source: source, permissionGate: false);
-      expect(staged, isNotNull);
-      expect(model.isRecording, isTrue);
-      expect(await model.startRecording(source: source, permissionGate: false),
-          isNull, reason: 'one session at a time');
+    test(
+      'a fake-sourced session records and stops through the pipeline',
+      () async {
+        final source = FakePositionSource();
+        final staged = await model.startRecording(
+          source: source,
+          permissionGate: false,
+        );
+        expect(staged, isNotNull);
+        expect(model.isRecording, isTrue);
+        expect(
+          await model.startRecording(source: source, permissionGate: false),
+          isNull,
+          reason: 'one session at a time',
+        );
 
-      fakeFix(source, 0, ele: 42.0);
-      fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201, ele: 43.0);
-      await Future<void>.delayed(Duration.zero);
-      await model.stopRecording();
-      expect(model.isRecording, isFalse);
-      final stored = model.tracks.single;
-      expect(stored.pointCount, 2);
-      expect(stored.format, 'GPX');
-      expect(stored.name, isNotEmpty, reason: 'the staged name survives');
-      // The staged file is deleted; the catalog owns the copy.
-      final dir = Directory('${root.path}${Platform.pathSeparator}recording');
-      expect(dir.existsSync(), isTrue);
-      expect(dir.listSync(), isEmpty);
-    });
+        fakeFix(source, 0, ele: 42.0);
+        fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201, ele: 43.0);
+        await Future<void>.delayed(Duration.zero);
+        await model.stopRecording();
+        expect(model.isRecording, isFalse);
+        final stored = model.tracks.single;
+        expect(stored.pointCount, 2);
+        expect(stored.format, 'GPX');
+        expect(stored.name, isNotEmpty, reason: 'the staged name survives');
+        // The staged file is deleted; the catalog owns the copy.
+        final dir = Directory('${root.path}${Platform.pathSeparator}recording');
+        expect(dir.existsSync(), isTrue);
+        expect(dir.listSync(), isEmpty);
+      },
+    );
 
     test('a stopped session also matches road corridors', () async {
       // The fake walk starts on Main Street (the roads fixture's way 1001
       // at 52.5200, 13.4050) and walks north.
       final roadFile = File(
-          '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads');
+        '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
+      );
       roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
       model.setRoadFile(roadFile.path);
 
@@ -789,13 +837,16 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       final stored = model.tracks.single;
-      expect(stored.unlockedWays.keys, contains('1001'),
-          reason: 'a recorded track is an ordinary catalog track: the '
-              'corridor matching applies');
+      expect(
+        stored.unlockedWays.keys,
+        contains('1001'),
+        reason:
+            'a recorded track is an ordinary catalog track: the '
+            'corridor matching applies',
+      );
     });
 
-    test("the stop name dialog's choice lands as the catalog name",
-        () async {
+    test("the stop name dialog's choice lands as the catalog name", () async {
       final source = FakePositionSource();
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0);
@@ -809,16 +860,18 @@ void main() {
       // The stored file's GPX header carries the name — the parser read
       // it from there, not from the filename fallback.
       final storedFile = File(
-          '${root.path}${Platform.pathSeparator}tracks'
-          '${Platform.pathSeparator}${stored.file}');
-      expect(utf8.decode(storedFile.readAsBytesSync()),
-          contains('<name>Bike home</name>'));
+        '${root.path}${Platform.pathSeparator}tracks'
+        '${Platform.pathSeparator}${stored.file}',
+      );
+      expect(
+        utf8.decode(storedFile.readAsBytesSync()),
+        contains('<name>Bike home</name>'),
+      );
       // The staged copy is spent either way.
       expect(
-          Directory(
-                  '${root.path}${Platform.pathSeparator}recording')
-              .listSync(),
-          isEmpty);
+        Directory('${root.path}${Platform.pathSeparator}recording').listSync(),
+        isEmpty,
+      );
     });
   });
 
@@ -832,31 +885,37 @@ void main() {
       final writer = GpxStageWriter(sink, name: trackName);
       writer.appendPoint(lat: 52.5200, lon: 13.4050, time: base, ele: 42.0);
       writer.appendPoint(
-          lat: 52.5201, lon: 13.4050, time: base.add(const Duration(seconds: 1)));
+        lat: 52.5201,
+        lon: 13.4050,
+        time: base.add(const Duration(seconds: 1)),
+      );
       final text = sink.buffer.toString();
       return utf8.encode(
-          text.substring(0, text.length - 1)); // byte-level mid-newline cut
+        text.substring(0, text.length - 1),
+      ); // byte-level mid-newline cut
     }
 
     Directory recordingDir() =>
         Directory('${root.path}${Platform.pathSeparator}recording')
-            ..createSync(recursive: true);
+          ..createSync(recursive: true);
 
-    test('a killed session s staged file imports at startup, with a notice',
-        () async {
-      final dir = recordingDir();
-      File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
-          .writeAsBytesSync(killedGpxBytes('Killed ride'));
+    test(
+      'a killed session s staged file imports at startup, with a notice',
+      () async {
+        final dir = recordingDir();
+        File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
+            .writeAsBytesSync(killedGpxBytes('Killed ride'));
 
-      await model.load();
+        await model.load();
 
-      expect(model.salvagedRecordingNames, ['Killed ride']);
-      final stored = model.tracks.single;
-      expect(stored.name, 'Killed ride');
-      expect(stored.pointCount, 2);
-      // The staged copy is spent; the catalog owns its file.
-      expect(dir.listSync(), isEmpty);
-    });
+        expect(model.salvagedRecordingNames, ['Killed ride']);
+        final stored = model.tracks.single;
+        expect(stored.name, 'Killed ride');
+        expect(stored.pointCount, 2);
+        // The staged copy is spent; the catalog owns its file.
+        expect(dir.listSync(), isEmpty);
+      },
+    );
 
     test('a non-ASCII track name survives the salvage byte-exact', () async {
       // Regression (utf8 vs String.codeUnits): the salvage path used to
@@ -868,8 +927,10 @@ void main() {
       final writer = GpxStageWriter(sink, name: 'Anello dei Grumé');
       writer.appendPoint(lat: 52.5200, lon: 13.4050, time: base);
       writer.appendPoint(
-          lat: 52.5201, lon: 13.4050, time: base.add(
-              const Duration(seconds: 1)));
+        lat: 52.5201,
+        lon: 13.4050,
+        time: base.add(const Duration(seconds: 1)),
+      );
       writer.finalize();
       File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
           .writeAsBytesSync(utf8.encode(sink.buffer.toString()));
@@ -889,7 +950,10 @@ void main() {
       final writer = GpxStageWriter(sink, name: 'Finalized ride');
       writer.appendPoint(lat: 52.5200, lon: 13.4050, time: base, ele: 42.0);
       writer.appendPoint(
-          lat: 52.5201, lon: 13.4050, time: base.add(const Duration(seconds: 1)));
+        lat: 52.5201,
+        lon: 13.4050,
+        time: base.add(const Duration(seconds: 1)),
+      );
       writer.finalize();
       expect(sink.buffer.toString(), contains('</gpx>'));
       File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
@@ -899,37 +963,34 @@ void main() {
 
       expect(model.salvagedRecordingNames, ['Finalized ride']);
       final stored = model.tracks.single;
-      expect(stored.pointCount, 2,
-          reason: 'nothing was cut from a complete file');
-      expect(dir.listSync(), isEmpty);
-    });
-
-    test('a staged file with nothing recorded is junk and is removed',
-        () async {
-      final dir = recordingDir();
-      // Killed before the first flushed point: header only.
-      File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
-          .writeAsBytesSync(
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<gpx version="1.1" creator="unvisited"><trk>'.codeUnits,
+      expect(
+        stored.pointCount,
+        2,
+        reason: 'nothing was cut from a complete file',
       );
-
-      await model.load();
-
-      expect(model.salvagedRecordingNames, isEmpty);
-      expect(model.tracks, isEmpty);
       expect(dir.listSync(), isEmpty);
     });
+
+    test(
+      'a staged file with nothing recorded is junk and is removed',
+      () async {
+        final dir = recordingDir();
+        // Killed before the first flushed point: header only.
+        File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
+            .writeAsBytesSync(
+              '<?xml version="1.0" encoding="UTF-8"?>\n'
+                      '<gpx version="1.1" creator="unvisited"><trk>'
+                  .codeUnits,
+            );
+
+        await model.load();
+
+        expect(model.salvagedRecordingNames, isEmpty);
+        expect(model.tracks, isEmpty);
+        expect(dir.listSync(), isEmpty);
+      },
+    );
   });
-}
-
-/// A fix stream the recording tests push through at will.
-class FakePositionSource implements PositionSource {
-  FakePositionSource();
-  final controller = StreamController<PositionFix>();
-
-  @override
-  Stream<PositionFix> get stream => controller.stream;
 }
 
 /// Walking north along the Greenwich meridian, ~11.1 m per 0.0001 deg of
@@ -945,12 +1006,14 @@ void fakeFix(
   double? acc = 5,
   double? speed,
 }) {
-  source.controller.add(PositionFix(
-    lat: lat,
-    lon: lon,
-    ele: ele,
-    accuracy: acc,
-    speed: speed,
-    time: DateTime.utc(2026, 11, 13, 12).add(Duration(seconds: second)),
-  ));
+  source.controller.add(
+    PositionFix(
+      lat: lat,
+      lon: lon,
+      ele: ele,
+      accuracy: acc,
+      speed: speed,
+      time: DateTime.utc(2026, 11, 13, 12).add(Duration(seconds: second)),
+    ),
+  );
 }

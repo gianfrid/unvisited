@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -10,9 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/recording/position_source.dart'
-    show PositionFix, PositionSource;
-import 'package:unvisited/recording/recording_session.dart'
-    show RecordingState;
+    show PositionFix;
+import 'package:unvisited/recording/recording_session.dart' show RecordingState;
 import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/tile_source.dart';
 import 'package:unvisited/ui/app_model.dart';
@@ -23,82 +21,16 @@ import 'package:unvisited/ui/track_colors.dart';
 import 'helpers.dart';
 
 void main() {
-  Directory createRoot() {
-    final root = Directory.systemTemp.createTempSync('unvisited-store');
-    addTearDown(() {
-      try {
-        root.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    return root;
-  }
-
-  /// Mocks the geolocator host channel. [permission] is the int the plugin
-  /// uses for a LocationPermission; [position] is returned by
-  /// getCurrentPosition (null means the fix times out).
-  void mockGeolocator(
-    WidgetTester tester, {
-    required int permission,
-    bool serviceEnabled = true,
-    Map<String, double>? position,
-    Duration fixDelay = Duration.zero,
-  }) {
-    const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        geolocatorChannel, (call) async {
-      switch (call.method) {
-        case 'isLocationServiceEnabled':
-          return serviceEnabled;
-        case 'checkPermission':
-        case 'requestPermission':
-          return permission;
-        case 'getCurrentPosition':
-          // A real fix is never instant; a delay lets tests observe the
-          // in-flight state.
-          if (fixDelay > Duration.zero) await Future.delayed(fixDelay);
-          if (position == null) {
-            throw PlatformException(code: 'TIMEOUT', message: 'no fix');
-          }
-          return <String, dynamic>{
-            'latitude': position['lat'],
-            'longitude': position['lon'],
-            'timestamp': 0,
-            'accuracy': 5.0,
-            'altitude': 0.0,
-            'altitudeAccuracy': 0.0,
-            'heading': 0.0,
-            'speed': 0.0,
-            'speedAccuracy': 0.0,
-            'floor': null,
-            'isMocked': false,
-          };
-      }
-      fail('unexpected geolocator method ${call.method}');
-    });
-    addTearDown(() {
-      tester.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(geolocatorChannel, null);
-    });
-  }
-
   testWidgets('MapPage builds its tile layer without crashing', (tester) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
-    await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
     );
     await tester.pump();
 
@@ -114,22 +46,18 @@ void main() {
     expect(provider, isNull);
   });
 
-  testWidgets('switching to the cycle layer swaps the tile source',
-      (tester) async {
+  testWidgets('switching to the cycle layer swaps the tile source', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
-    await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
     );
     await tester.pump();
 
@@ -147,35 +75,27 @@ void main() {
     expect(layer.subdomains, cycleTileSubdomains);
   });
 
-  testWidgets('record action starts a session the chip shows and stops it',
-      (tester) async {
+  testWidgets('record action starts a session the chip shows and stops it', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
     // The Record button is gated on a real fix (slice 6): grant the mock
     // a position so the startup poll opens the gate.
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 52.5200,
-      'lon': 13.4050,
-    });
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
     await tester.pump();
 
@@ -195,8 +115,11 @@ void main() {
     // chip shows the live stats — the pulsing dot and the meters walked
     // (the engine's haversine sum).
     expect(find.byIcon(Icons.stop), findsNothing);
-    expect(find.byIcon(Icons.fiber_manual_record), findsOneWidget,
-        reason: 'the pulse dot on the chip');
+    expect(
+      find.byIcon(Icons.fiber_manual_record),
+      findsOneWidget,
+      reason: 'the pulse dot on the chip',
+    );
     expect(find.text('11 m'), findsOneWidget);
 
     // The stop's import runs behind a real-file read that FakeAsync's
@@ -206,30 +129,20 @@ void main() {
     expect(model.recording, isNotNull);
   });
 
-  testWidgets('record mode trims the header and shows the speed readout',
-      (tester) async {
+  testWidgets('record mode trims the header and shows the speed readout', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
     // Idle: the full header, no dashboard, no speed readout.
@@ -254,9 +167,11 @@ void main() {
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
     expect(speedCard, findsOneWidget);
-    expect(tester.getTopRight(speedCard).dy,
-        greaterThan(tester.getBottomRight(find.byType(FlutterMap)).dy - 100),
-        reason: 'the speed readout sits at the bottom of the map');
+    expect(
+      tester.getTopRight(speedCard).dy,
+      greaterThan(tester.getBottomRight(find.byType(FlutterMap)).dy - 100),
+      reason: 'the speed readout sits at the bottom of the map',
+    );
     expect(find.text('10.8 km/h'), findsOneWidget);
 
     // The stop's import again never settles in the fake-async zone, so
@@ -274,27 +189,16 @@ void main() {
 
   testWidgets('the pause action flips to resume and back', (tester) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
     await model.startRecording(source: source, permissionGate: false);
@@ -312,8 +216,11 @@ void main() {
     expect(model.recording!.state, RecordingState.paused);
     expect(find.text('Resume'), findsOneWidget);
     expect(find.text('Pause'), findsNothing);
-    expect(find.text('Stop'), findsOneWidget,
-        reason: 'stop appears before the resume slot once paused');
+    expect(
+      find.text('Stop'),
+      findsOneWidget,
+      reason: 'stop appears before the resume slot once paused',
+    );
     final distance = model.recording!.distanceMeters;
 
     fakeFix(source, 5, prevLat: 52.5210, lat: 52.5220);
@@ -325,36 +232,30 @@ void main() {
     expect(model.recording!.state, RecordingState.recording);
     expect(find.text('Pause'), findsOneWidget);
     expect(find.text('Resume'), findsNothing);
-    expect(find.text('Stop'), findsNothing,
-        reason: 'a running session hides the stop action again');
+    expect(
+      find.text('Stop'),
+      findsNothing,
+      reason: 'a running session hides the stop action again',
+    );
 
     model.stopRecording();
     await tester.pump();
   });
 
-  testWidgets('stop asks for the track name; cancelling keeps recording',
-      (tester) async {
+  testWidgets('stop asks for the track name; cancelling keeps recording', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
     await model.startRecording(source: source, permissionGate: false);
@@ -368,8 +269,12 @@ void main() {
 
     // The dialog: a name field seeded with the current date-time
     // timestamp (`YYYY-MM-DD HH:mm`, the staged name's format).
-    final field = tester.widget<TextField>(find.descendant(
-        of: find.byType(AlertDialog), matching: find.byType(TextField)));
+    final field = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+    );
     expect(field.controller!.text, matches(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$'));
     expect(find.text('Stop recording'), findsOneWidget);
     expect(find.text('Track name'), findsOneWidget);
@@ -388,37 +293,39 @@ void main() {
     await tester.tap(find.byTooltip('Stop'));
     await tester.pump();
     await tester.enterText(find.byType(TextField), 'Bike home');
-    await tester.tap(find.descendant(
-        of: find.byType(AlertDialog), matching: find.text('Stop')));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Stop'),
+      ),
+    );
     await tester.pump();
     expect(find.byType(AlertDialog), findsNothing);
     expect(model.recording, isNull);
   });
 
-  testWidgets('a salvaged staged recording announces itself at startup',
-      (tester) async {
+  testWidgets('a salvaged staged recording announces itself at startup', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
+    final cache = createCache();
     // The kill-mid-session leftover under the app root: complete points,
     // an open segment, no closers (what the stage writer guarantees).
     final dir = Directory('${root.path}${Platform.pathSeparator}recording')
       ..createSync(recursive: true);
     final sink = StringBuffer();
     sink.write('<?xml version="1.0" encoding="UTF-8"?>\n');
-    sink.write('<gpx version="1.1" creator="unvisited" '
-        'xmlns="http://www.topografix.com/GPX/1/1">\n');
+    sink.write(
+      '<gpx version="1.1" creator="unvisited" '
+      'xmlns="http://www.topografix.com/GPX/1/1">\n',
+    );
     sink.write('<trk><name>Recovered walk</name>\n<trkseg>\n');
     for (final i in [0, 1]) {
       final t = DateTime.utc(2026, 11, 13, 12, 0, i);
-      sink.write('<trkpt lat="52.520${i}00" lon="13.405000">\n'
-          '<ele>42.00</ele>\n<time>${t.toIso8601String()}</time>\n</trkpt>\n');
+      sink.write(
+        '<trkpt lat="52.520${i}00" lon="13.405000">\n'
+        '<ele>42.00</ele>\n<time>${t.toIso8601String()}</time>\n</trkpt>\n',
+      );
     }
     File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
         .writeAsStringSync(sink.toString());
@@ -428,43 +335,32 @@ void main() {
     // fake-async test zone, so the load runs in runAsync.
     await tester.runAsync(() => model.load());
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
     expect(find.byType(SnackBar), findsOneWidget);
     expect(find.textContaining('Recovered walk'), findsOneWidget);
   });
 
-  testWidgets('the recording latch keeps the screen on; the toggle opts out',
-      (tester) async {
+  testWidgets('the recording latch keeps the screen on; the toggle opts out', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
     // No session: no chip, so no latch toggle.
@@ -488,29 +384,20 @@ void main() {
     expect(find.byTooltip('Screen stays on while recording'), findsNothing);
   });
 
-  testWidgets('the dashboard expands into the stats panel with live numbers',
-      (tester) async {
+  testWidgets('the dashboard expands into the stats panel with live numbers', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
     await model.startRecording(source: source, permissionGate: false);
@@ -540,46 +427,41 @@ void main() {
     expect(find.text('Avg speed'), findsOneWidget);
     expect(find.text('40.0 km/h'), findsOneWidget);
     expect(find.text('Distance'), findsOneWidget);
-    expect(find.text('22 m'), findsNWidgets(2),
-        reason: 'the panel repeats the chip s distance');
+    expect(
+      find.text('22 m'),
+      findsNWidgets(2),
+      reason: 'the panel repeats the chip s distance',
+    );
     expect(find.text('Elapsed'), findsOneWidget);
     // Chip, Elapsed and Moving all read 00:02 on this stream.
     expect(find.text('00:02'), findsNWidgets(3));
     expect(find.text('Moving'), findsOneWidget);
     expect(find.text('Altitude'), findsOneWidget);
-    expect(find.text('44 m'), findsOneWidget,
-        reason: 'the last accepted fix s altitude');
+    expect(
+      find.text('44 m'),
+      findsOneWidget,
+      reason: 'the last accepted fix s altitude',
+    );
   });
 
-  testWidgets('the recording camera follows the fixes; a pan releases it',
-      (tester) async {
+  testWidgets('the recording camera follows the fixes; a pan releases it', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
-    LatLng cameraCenter() => MapController.of(
-            tester.element(find.byType(TileLayer)))
-        .camera
-        .center;
+    LatLng cameraCenter() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera.center;
 
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
@@ -598,17 +480,25 @@ void main() {
     // The empty-map hint sits dead center; drag below it.
     final size = tester.getSize(find.byType(FlutterMap));
     await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.8), const Offset(0, 80));
+      Offset(size.width / 2, size.height * 0.8),
+      const Offset(0, 80),
+    );
     await tester.pump();
     final panned = cameraCenter();
-    expect(panned.latitude, greaterThan(followed.latitude),
-        reason: 'dragging the map down moved the camera north');
+    expect(
+      panned.latitude,
+      greaterThan(followed.latitude),
+      reason: 'dragging the map down moved the camera north',
+    );
 
     fakeFix(source, 2, lat: 52.5202);
     await tester.pump();
     expect(find.byIcon(Icons.navigation), findsOneWidget);
-    expect(cameraCenter(), sameCameraAs(panned),
-        reason: 'the pan released the follow');
+    expect(
+      cameraCenter(),
+      sameCameraAs(panned),
+      reason: 'the pan released the follow',
+    );
   });
 
   test('nearestEquivalentRotation picks the nearest mod-360 equivalent', () {
@@ -622,98 +512,89 @@ void main() {
     expect(nearestEquivalentRotation(45.0, 315.0), closeTo(405.0, 1e-9));
   });
 
-  testWidgets('while recording the camera rotates course-up; a pan releases it',
-      (tester) async {
-    final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
+  testWidgets(
+    'while recording the camera rotates course-up; a pan releases it',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      double markerAngle() {
+        final m = tester
+            .widget<Transform>(
+              find.byKey(const ValueKey('recording-marker-rotate')),
+            )
+            .transform;
+        return math.atan2(m.entry(1, 0), m.entry(0, 0));
       }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, heading: 90);
+      fakeFix(source, 1, lat: 52.5201, heading: 90);
+      await tester.pump();
+      await tester.pump();
+
+      // Course-up: the east-heading fixes rotate the camera 90, and the
+      // marker's own rotation nets to 0 — the nose points up on screen.
+      expect(camera().rotation, closeTo(90.0, 0.1));
+      expect(markerAngle(), closeTo(0.0, 1e-6));
+
+      // A user pan releases the follow — and the rotation with it: the next
+      // fix re-centers nothing and leaves the rotation where the pan put it.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.8),
+        const Offset(0, 80),
+      );
+      final panned = camera().center;
+      fakeFix(source, 2, lat: 52.5202, heading: 180);
+      await tester.pump();
+
+      expect(
+        camera().rotation,
+        closeTo(90.0, 0.1),
+        reason: 'the pan released the rotation with the follow',
+      );
+      expect(
+        camera().center,
+        sameCameraAs(panned),
+        reason: 'the pan released the follow',
+      );
+      // The marker matches the new course against the camera's rotation, so
+      // it still points along the course on screen.
+      expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
+    },
+  );
+
+  testWidgets('the bearing fallback steers the follow camera course-up', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
-    MapCamera camera() => MapController.of(
-            tester.element(find.byType(TileLayer)))
-        .camera;
-    double markerAngle() {
-      final m = tester.widget<Transform>(
-              find.byKey(const ValueKey('recording-marker-rotate')))
-          .transform;
-      return math.atan2(m.entry(1, 0), m.entry(0, 0));
-    }
-
-    await model.startRecording(source: source, permissionGate: false);
-    fakeFix(source, 0, heading: 90);
-    fakeFix(source, 1, lat: 52.5201, heading: 90);
-    await tester.pump();
-    await tester.pump();
-
-    // Course-up: the east-heading fixes rotate the camera 90, and the
-    // marker's own rotation nets to 0 — the nose points up on screen.
-    expect(camera().rotation, closeTo(90.0, 0.1));
-    expect(markerAngle(), closeTo(0.0, 1e-6));
-
-    // A user pan releases the follow — and the rotation with it: the next
-    // fix re-centers nothing and leaves the rotation where the pan put it.
-    final size = tester.getSize(find.byType(FlutterMap));
-    await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.8), const Offset(0, 80));
-    final panned = camera().center;
-    fakeFix(source, 2, lat: 52.5202, heading: 180);
-    await tester.pump();
-
-    expect(camera().rotation, closeTo(90.0, 0.1),
-        reason: 'the pan released the rotation with the follow');
-    expect(camera().center, sameCameraAs(panned),
-        reason: 'the pan released the follow');
-    // The marker matches the new course against the camera's rotation, so
-    // it still points along the course on screen.
-    expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
-  });
-
-  testWidgets('the bearing fallback steers the follow camera course-up',
-      (tester) async {
-    final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
-    final source = FakePositionSource();
-
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
-    await tester.pump();
-
-    MapCamera camera() => MapController.of(
-            tester.element(find.byType(TileLayer)))
-        .camera;
+    MapCamera camera() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera;
 
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
@@ -726,34 +607,24 @@ void main() {
     expect(camera().rotation, closeTo(90.0, 0.1));
   });
 
-  testWidgets('while recording, locate returns the follow after a pan',
-      (tester) async {
+  testWidgets('while recording, locate returns the follow after a pan', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
-    MapCamera camera() => MapController.of(
-            tester.element(find.byType(TileLayer)))
-        .camera;
+    MapCamera camera() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera;
 
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
@@ -765,7 +636,9 @@ void main() {
     // it, and the toolbar keeps the Locate action to come back.
     final size = tester.getSize(find.byType(FlutterMap));
     await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.8), const Offset(0, 80));
+      Offset(size.width / 2, size.height * 0.8),
+      const Offset(0, 80),
+    );
     fakeFix(source, 2, lat: 52.5202);
     await tester.pump();
     final zoom = camera().zoom;
@@ -777,8 +650,11 @@ void main() {
     await tester.tap(find.byTooltip('Center on current position'));
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    expect(camera().center.latitude, closeTo(52.5202, 1e-6),
-        reason: 'the tap returned the camera to the session fix');
+    expect(
+      camera().center.latitude,
+      closeTo(52.5202, 1e-6),
+      reason: 'the tap returned the camera to the session fix',
+    );
     fakeFix(source, 3, lat: 52.5203);
     await tester.pump();
     await tester.pump();
@@ -786,37 +662,30 @@ void main() {
     expect(camera().zoom, closeTo(zoom, 1e-6));
   });
 
-  testWidgets('while recording with no session fix, locate runs the attempt',
-      (tester) async {
+  testWidgets('while recording with no session fix, locate runs the attempt', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
-    MapCamera camera() => MapController.of(
-            tester.element(find.byType(TileLayer)))
-        .camera;
+    MapCamera camera() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera;
 
-    mockGeolocator(tester,
-        permission: 3, position: {'lat': 52.5200, 'lon': 13.4050});
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
 
     // A session started cold: nothing to shortcut on — the tap falls
     // through to the real locate attempt, whose fix arms the follow.
@@ -834,155 +703,174 @@ void main() {
     expect(camera().center.latitude, closeTo(52.5201, 1e-6));
   });
 
-  testWidgets('locate and record live in the bottom-left stack, not the top bar',
-      (tester) async {
-    final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
-    final source = FakePositionSource();
+  testWidgets(
+    'locate and record live in the bottom-left stack, not the top bar',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
 
-    // GPS off at startup: no fix, so no Record — the stack is Locate only.
-    mockGeolocator(tester, permission: 3, serviceEnabled: false);
+      // GPS off at startup: no fix, so no Record — the stack is Locate only.
+      mockGeolocator(tester, permission: 3, serviceEnabled: false);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
+      await pumpMapPage(
+        tester,
         model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
+        cache: cache,
         locationSupported: true,
-      ),
-    ));
-    await tester.pump();
-    await tester.pump();
+      );
+      await tester.pump();
+      await tester.pump();
 
-    final mapRect = tester.getRect(find.byType(FlutterMap));
-    Rect rectOf(String tooltip) => tester.getRect(find.byTooltip(tooltip));
+      final mapRect = tester.getRect(find.byType(FlutterMap));
+      Rect rectOf(String tooltip) => tester.getRect(find.byTooltip(tooltip));
 
-    expect(find.text('Record'), findsNothing);
-    final locate = rectOf('Center on current position');
-    expect(locate.top, greaterThan(mapRect.height * 0.5),
-        reason: 'locate sits in the bottom half of the map');
-    expect(locate.left, closeTo(12.0, 1.0));
-    expect(mapRect.bottom - locate.bottom, closeTo(16.0, 1.0),
-        reason: 'locate clears the bottom safe-area inset');
-    // The top bar is untouched: Import and Fit stay up there.
-    expect(tester.getRect(find.text('Import')).top, lessThan(100));
-    expect(tester.getRect(find.text('Fit')).top, lessThan(100));
+      expect(find.text('Record'), findsNothing);
+      final locate = rectOf('Center on current position');
+      expect(
+        locate.top,
+        greaterThan(mapRect.height * 0.5),
+        reason: 'locate sits in the bottom half of the map',
+      );
+      expect(locate.left, closeTo(12.0, 1.0));
+      expect(
+        mapRect.bottom - locate.bottom,
+        closeTo(16.0, 1.0),
+        reason: 'locate clears the bottom safe-area inset',
+      );
+      // The top bar is untouched: Import and Fit stay up there.
+      expect(tester.getRect(find.text('Import')).top, lessThan(100));
+      expect(tester.getRect(find.text('Fit')).top, lessThan(100));
 
-    // A fix arrives through the locate tap: the Record button appears in
-    // the slot directly above Locate.
-    mockGeolocator(tester,
-        permission: 3, position: {'lat': 52.5200, 'lon': 13.4050});
-    await tester.tap(find.byTooltip('Center on current position'));
-    await tester.pump();
-    await tester.pump();
-    final record = rectOf('Record');
-    final locateAfter = rectOf('Center on current position');
-    expect(record.bottom, closeTo(locateAfter.top, 1.0),
-        reason: 'record sits directly above locate');
-    expect(record.center.dx, closeTo(locateAfter.center.dx, 1.0));
+      // A fix arrives through the locate tap: the Record button appears in
+      // the slot directly above Locate.
+      mockGeolocator(
+        tester,
+        permission: 3,
+        position: {'lat': 52.5200, 'lon': 13.4050},
+      );
+      await tester.tap(find.byTooltip('Center on current position'));
+      await tester.pump();
+      await tester.pump();
+      final record = rectOf('Record');
+      final locateAfter = rectOf('Center on current position');
+      expect(
+        record.bottom,
+        closeTo(locateAfter.top, 1.0),
+        reason: 'record sits directly above locate',
+      );
+      expect(record.center.dx, closeTo(locateAfter.center.dx, 1.0));
 
-    // While recording the slot holds Pause, still in the bottom-left
-    // stack; the header keeps Tracks and Settings only.
-    await model.startRecording(source: source, permissionGate: false);
-    fakeFix(source, 0);
-    await tester.pump();
-    await tester.pump();
-    expect(find.text('Record'), findsNothing);
-    expect(find.text('Stop'), findsNothing,
-        reason: 'stop only appears once paused');
-    final pause = rectOf('Pause');
-    final locateRec = rectOf('Center on current position');
-    expect(pause.bottom, closeTo(locateRec.top, 1.0),
-        reason: 'pause occupies the record slot directly above locate');
+      // While recording the slot holds Pause, still in the bottom-left
+      // stack; the header keeps Tracks and Settings only.
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Record'), findsNothing);
+      expect(
+        find.text('Stop'),
+        findsNothing,
+        reason: 'stop only appears once paused',
+      );
+      final pause = rectOf('Pause');
+      final locateRec = rectOf('Center on current position');
+      expect(
+        pause.bottom,
+        closeTo(locateRec.top, 1.0),
+        reason: 'pause occupies the record slot directly above locate',
+      );
 
-    // Paused: the slot reads Resume and Stop appears before it in the
-    // stack, all still bottom-left.
-    await tester.tap(find.byTooltip('Pause'));
-    await tester.pump();
-    final stop = rectOf('Stop');
-    final resume = rectOf('Resume');
-    final locatePaused = rectOf('Center on current position');
-    expect(stop.top, greaterThan(mapRect.height * 0.5));
-    expect(resume.bottom, closeTo(locatePaused.top, 1.0),
-        reason: 'resume occupies the record slot directly above locate');
-    expect(stop.bottom, closeTo(resume.top, 1.0),
-        reason: 'stop sits before the resume button in the stack');
-    expect(stop.center.dx, closeTo(resume.center.dx, 1.0));
-    expect(find.text('Import'), findsNothing);
-    expect(tester.getRect(find.text('Tracks')).top, lessThan(100));
-    // End the session without the dialog (its import never settles in
-    // the fake-async zone).
-    model.stopRecording();
-    await tester.pump();
-  });
+      // Paused: the slot reads Resume and Stop appears before it in the
+      // stack, all still bottom-left.
+      await tester.tap(find.byTooltip('Pause'));
+      await tester.pump();
+      final stop = rectOf('Stop');
+      final resume = rectOf('Resume');
+      final locatePaused = rectOf('Center on current position');
+      expect(stop.top, greaterThan(mapRect.height * 0.5));
+      expect(
+        resume.bottom,
+        closeTo(locatePaused.top, 1.0),
+        reason: 'resume occupies the record slot directly above locate',
+      );
+      expect(
+        stop.bottom,
+        closeTo(resume.top, 1.0),
+        reason: 'stop sits before the resume button in the stack',
+      );
+      expect(stop.center.dx, closeTo(resume.center.dx, 1.0));
+      expect(find.text('Import'), findsNothing);
+      expect(tester.getRect(find.text('Tracks')).top, lessThan(100));
+      // End the session without the dialog (its import never settles in
+      // the fake-async zone).
+      model.stopRecording();
+      await tester.pump();
+    },
+  );
 
-  testWidgets('dark theme darkens the tiles client-side, light leaves them',
-      (tester) async {
+  testWidgets('dark theme darkens the tiles client-side, light leaves them', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
     // Light theme: standard OSM tiles, no tile builder.
-    await tester.pumpWidget(MaterialApp(
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF4363D8)),
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(colorSchemeSeed: const Color(0xFF4363D8)),
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-    ));
+    );
     await tester.pump();
     expect(
-        tester.widget<TileLayer>(find.byType(TileLayer)).tileBuilder, isNull);
+      tester.widget<TileLayer>(find.byType(TileLayer)).tileBuilder,
+      isNull,
+    );
 
     // Dark theme: tiles are inverted client-side (no new tile endpoint).
     // Several pumps: the theme switch settles a frame or two later than
     // the widget swap.
-    await tester.pumpWidget(MaterialApp(
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF4363D8)),
-      darkTheme: ThemeData(
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(colorSchemeSeed: const Color(0xFF4363D8)),
+        darkTheme: ThemeData(
           colorSchemeSeed: const Color(0xFF4363D8),
-          brightness: Brightness.dark),
-      themeMode: ThemeMode.dark,
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
+          brightness: Brightness.dark,
+        ),
+        themeMode: ThemeMode.dark,
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-    ));
+    );
     await tester.pump();
     await tester.pump();
     await tester.pumpAndSettle();
-    expect(tester.widget<TileLayer>(find.byType(TileLayer)).tileBuilder,
-        same(darkModeTileBuilder));
+    expect(
+      tester.widget<TileLayer>(find.byType(TileLayer)).tileBuilder,
+      same(darkModeTileBuilder),
+    );
   });
 
-  testWidgets('unusable cache dir disables caching instead of stalling tiles',
-      (tester) async {
+  testWidgets('unusable cache dir disables caching instead of stalling tiles', (
+    tester,
+  ) async {
     final root = createRoot();
     // A path whose parent chain runs through a plain file is not creatable
     // - deterministic on every filesystem, no permission tricks needed.
     final blocker = File(
-        '${Directory.systemTemp.createTempSync('unvisited-blocker').path}'
-        '${Platform.pathSeparator}blocker')
-      ..createSync();
+      '${Directory.systemTemp.createTempSync('unvisited-blocker').path}'
+      '${Platform.pathSeparator}blocker',
+    )..createSync();
     addTearDown(() {
       try {
         blocker.parent.deleteSync(recursive: true);
@@ -991,16 +879,17 @@ void main() {
         // fail the test.
       }
     });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final model = await createModel(root);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: Directory('${blocker.path}${Platform.pathSeparator}cache'),
-        versionFuture: Future.value('2026-11-12 12:00'),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapPage(
+          model: model,
+          cacheDir: Directory('${blocker.path}${Platform.pathSeparator}cache'),
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-    ));
+    );
     await tester.pump();
 
     expect(tester.takeException(), isNull);
@@ -1013,17 +902,11 @@ void main() {
     expect(provider, isA<DisabledMapCachingProvider>());
   });
 
-  testWidgets('drawer select/deselect all button toggles every track',
-      (tester) async {
+  testWidgets('drawer select/deselect all button toggles every track', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     // Imports go through the synchronous store path: directory scanning is
     // real async I/O, which a widget test's fake async zone never completes.
@@ -1031,8 +914,11 @@ void main() {
     model.store.importBytes(fixture('eiffel_ride.tcx'));
     expect(model.tracks.length, 2);
 
-    await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
     );
     await tester.tap(find.byTooltip('Tracks'));
     // Fixed pumps, not pumpAndSettle: the tile-backed map keeps scheduling
@@ -1051,29 +937,19 @@ void main() {
     expect(model.allTracksVisible, isTrue);
   });
 
-  testWidgets('the empty-state hint hides when tracks exist, selected or not',
-      (tester) async {
+  testWidgets('the empty-state hint hides when tracks exist, selected or not', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
     await tester.pump();
 
@@ -1088,66 +964,59 @@ void main() {
     expect(find.text('No tracks yet'), findsNothing);
     await model.setAllVisible(true);
     await tester.pump();
-    expect(find.text('No tracks yet'), findsNothing,
-        reason: 'a plotted track replaces the hint');
+    expect(
+      find.text('No tracks yet'),
+      findsNothing,
+      reason: 'a plotted track replaces the hint',
+    );
   });
 
-  testWidgets('the empty-state hint hides while a session records',
-      (tester) async {
+  testWidgets('the empty-state hint hides while a session records', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
     await tester.pump();
-    expect(find.text('No tracks yet'), findsOneWidget,
-        reason: 'a genuinely empty map keeps the hint');
+    expect(
+      find.text('No tracks yet'),
+      findsOneWidget,
+      reason: 'a genuinely empty map keeps the hint',
+    );
 
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
     await tester.pump();
     await tester.pump();
-    expect(find.text('No tracks yet'), findsNothing,
-        reason: 'recording must not have the hint on top of the dashboard');
+    expect(
+      find.text('No tracks yet'),
+      findsNothing,
+      reason: 'recording must not have the hint on top of the dashboard',
+    );
     expect(find.byKey(const ValueKey('recording-chip')), findsOneWidget);
   });
 
-  testWidgets('track tile delete button removes the track',
-      (tester) async {
+  testWidgets('track tile delete button removes the track', (tester) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
     expect(model.tracks.length, 1);
 
-    await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
     );
     await tester.tap(find.byTooltip('Tracks')); // open the drawer
     await tester.pump(const Duration(milliseconds: 300));
@@ -1175,23 +1044,17 @@ void main() {
     expect(tracksDir.listSync(), isEmpty);
   });
 
-  testWidgets('a drawer swipe deletes only after confirmation',
-      (tester) async {
+  testWidgets('a drawer swipe deletes only after confirmation', (tester) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
 
-    await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
     );
     await tester.tap(find.byTooltip('Tracks')); // open the drawer
     await tester.pump(const Duration(milliseconds: 300));
@@ -1216,36 +1079,36 @@ void main() {
     await tester.drag(find.byType(Dismissible), const Offset(-600, 0));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Delete "Morning walk"?'), findsOneWidget,
-        reason: 'the second swipe must reopen the dialog');
+    expect(
+      find.text('Delete "Morning walk"?'),
+      findsOneWidget,
+      reason: 'the second swipe must reopen the dialog',
+    );
     await tester.tap(find.text('Delete'));
     await tester.pump();
     // The confirmed dismissal still walks its slide-out animation; given
     // generous fake-async time it completes and fires onDismissed.
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
-    expect(find.byType(Dismissible), findsNothing,
-        reason: 'confirmed dismissal removes the tile');
+    expect(
+      find.byType(Dismissible),
+      findsNothing,
+      reason: 'confirmed dismissal removes the tile',
+    );
     expect(model.tracks, isEmpty);
     expect(tracksDir.listSync(), isEmpty);
   });
 
-  testWidgets('the track tile shows the point-timestamp duration',
-      (tester) async {
+  testWidgets('the track tile shows the point-timestamp duration', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
     // A track without timestamps shows a dash where a duration would be.
-    const timeless = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    const timeless =
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<gpx version="1.1" creator="unvisited" '
         'xmlns="http://www.topografix.com/GPX/1/1">\n'
         '<trk><name>No time</name>\n<trkseg>\n'
@@ -1254,8 +1117,11 @@ void main() {
         '</trkseg></trk></gpx>\n';
     model.store.importBytes(timeless.codeUnits, filename: 'no-time.gpx');
 
-    await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
     );
     await tester.tap(find.byTooltip('Tracks')); // open the drawer
     await tester.pump(const Duration(milliseconds: 300));
@@ -1263,31 +1129,28 @@ void main() {
 
     // 07:05:00 → 07:09:00, formatted by the one zero-padded duration.
     expect(find.textContaining('· 04:00'), findsOneWidget);
-    expect(find.textContaining('· —'), findsOneWidget,
-        reason: 'the timestamp-less track reads a dash for duration');
+    expect(
+      find.textContaining('· —'),
+      findsOneWidget,
+      reason: 'the timestamp-less track reads a dash for duration',
+    );
     // The filename usually carries the date; the tile does not repeat it.
     expect(find.textContaining('2024-05-01'), findsNothing);
   });
 
-  testWidgets('the track list is ordered most-recent-first, timeless last',
-      (tester) async {
+  testWidgets('the track list is ordered most-recent-first, timeless last', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     // Imports in deliberately mixed chronological order: 07:05, 18:00,
     // 08:00, then a timestamp-less track.
     model.store.importBytes(fixture('morning_walk.gpx'));
     model.store.importBytes(fixture('recorded_ride.gpx'));
     model.store.importBytes(fixture('activity_ride.gpx'));
-    const timeless = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    const timeless =
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<gpx version="1.1" creator="unvisited" '
         'xmlns="http://www.topografix.com/GPX/1/1">\n'
         '<trk><name>No time</name>\n<trkseg>\n'
@@ -1296,8 +1159,11 @@ void main() {
         '</trkseg></trk></gpx>\n';
     model.store.importBytes(timeless.codeUnits, filename: 'no-time.gpx');
 
-    await tester.pumpWidget(
-      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
     );
     await tester.tap(find.byTooltip('Tracks')); // open the drawer
     await tester.pump(const Duration(milliseconds: 300));
@@ -1308,9 +1174,10 @@ void main() {
     final displayed = tester
         .widgetList<Dismissible>(find.byType(Dismissible))
         .map((d) => (d.key as ValueKey).value as String)
-        .map((key) => model.store.tracks
-            .firstWhere((t) => key == 'track-${t.id}')
-            .name)
+        .map(
+          (key) =>
+              model.store.tracks.firstWhere((t) => key == 'track-${t.id}').name,
+        )
         .toList();
     expect(displayed, [
       'Evening walk', // 18:00 — the recorded ride
@@ -1320,73 +1187,60 @@ void main() {
     ]);
   });
 
-  testWidgets('header actions carry labels naming what they do',
-      (tester) async {
+  testWidgets('header actions carry labels naming what they do', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
 
     for (final label in const ['Import', 'Locate', 'Tracks', 'Settings']) {
-      expect(find.text(label), findsOneWidget,
-          reason: 'the $label action must be captioned');
+      expect(
+        find.text(label),
+        findsOneWidget,
+        reason: 'the $label action must be captioned',
+      );
     }
     // Fit is disabled on the empty map, but still shows its label.
     expect(find.text('Fit'), findsOneWidget);
   });
 
-  testWidgets('the UI renders in Italian when the locale is Italian',
-      (tester) async {
+  testWidgets('the UI renders in Italian when the locale is Italian', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(MaterialApp(
-      // Force the locale rather than relying on the test host's; the
-      // delegate is the app's own, so this is the real resolution path.
-      locale: const Locale('it'),
-      localizationsDelegates: const [
-        _TestMaterialDelegate(),
-        _TestWidgetsDelegate(),
-        _TestCupertinoDelegate(),
-        _TestLocaleDelegate(),
-      ],
-      supportedLocales: AppStrings.supportedLocales,
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
+    await tester.pumpWidget(
+      MaterialApp(
+        // Force the locale rather than relying on the test host's; the
+        // delegate is the app's own, so this is the real resolution path.
+        locale: const Locale('it'),
+        localizationsDelegates: const [
+          _TestMaterialDelegate(),
+          _TestWidgetsDelegate(),
+          _TestCupertinoDelegate(),
+          _TestLocaleDelegate(),
+        ],
+        supportedLocales: AppStrings.supportedLocales,
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+          locationSupported: true,
+        ),
       ),
-    ));
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -1396,10 +1250,13 @@ void main() {
       'Inquadra',
       'Posizione',
       'Tracce',
-      'Impostazioni'
+      'Impostazioni',
     ]) {
-      expect(find.text(label), findsOneWidget,
-          reason: 'the $label action must be captioned');
+      expect(
+        find.text(label),
+        findsOneWidget,
+        reason: 'the $label action must be captioned',
+      );
     }
     expect(find.text('Import'), findsNothing);
     // Empty-map hint.
@@ -1417,68 +1274,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('visited tracks plot as fog-of-war unlock circles', (tester) async {
+  testWidgets('visited tracks plot as fog-of-war unlock circles', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // See above.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
     model.store.importBytes(fixture('eiffel_ride.tcx'));
     expect(model.tracks.length, 2);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
     await tester.pump();
 
     // The polylines are gone by design: the fog-of-war overlay replaces
     // them — one translucent circle per unlocked grid cell.
     expect(find.byType(PolylineLayer), findsNothing);
-    final circles = tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
+    final circles = tester
+        .widget<CircleLayer>(find.byType(CircleLayer))
+        .circles;
     expect(circles, isNotEmpty);
-    expect(circles.every((c) => c.useRadiusInMeter), isTrue,
-        reason: 'unlock circles are sized as real ground areas');
-    expect(circles.every((c) => c.color == exploredAreaColor('green')),
-        isTrue,
-        reason: 'one uniform exploration tint, map stays legible');
-    expect(circles.every((c) => c.radius >= unlockRadiusMeters - 1e-9),
-        isTrue,
-        reason: 'never smaller than the base unlock radius');
+    expect(
+      circles.every((c) => c.useRadiusInMeter),
+      isTrue,
+      reason: 'unlock circles are sized as real ground areas',
+    );
+    expect(
+      circles.every((c) => c.color == exploredAreaColor('green')),
+      isTrue,
+      reason: 'one uniform exploration tint, map stays legible',
+    );
+    expect(
+      circles.every((c) => c.radius >= unlockRadiusMeters - 1e-9),
+      isTrue,
+      reason: 'never smaller than the base unlock radius',
+    );
   });
 
-  testWidgets('settings sheet shows the About card and delete-all entry',
-      (tester) async {
+  testWidgets('settings sheet shows the About card and delete-all entry', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
     expect(model.tracks.length, 1);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 17:41'),
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+      buildTime: '2026-11-12 17:41',
+    );
 
     await tester.tap(find.byTooltip('Settings'));
     // Fixed pumps, not pumpAndSettle: the tile-backed map never settles.
@@ -1488,38 +1341,36 @@ void main() {
     // Two 'Settings' texts: the header caption behind the modal sheet
     // and the sheet's own header.
     expect(find.text('Settings'), findsNWidgets(2));
-    expect(find.text('Unvisited'), findsOneWidget, // About card
-        reason: 'the app-bar title is gone; only the About card names it');
+    expect(
+      find.text('Unvisited'),
+      findsOneWidget, // About card
+      reason: 'the app-bar title is gone; only the About card names it',
+    );
     expect(find.text('Build date: 2026-11-12 17:41'), findsOneWidget);
     expect(find.text('Delete all tracks'), findsOneWidget);
     expect(find.text('1 stored'), findsOneWidget);
   });
 
-  testWidgets('settings delete-all removes files only after confirmation',
-      (tester) async {
+  testWidgets('settings delete-all removes files only after confirmation', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
     model.store.importBytes(fixture('eiffel_ride.tcx'));
     final tracksDir = Directory('${root.path}${Platform.pathSeparator}tracks');
     expect(tracksDir.listSync().length, 2);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-    ));
+    );
 
     await tester.tap(find.byTooltip('Settings'));
     await tester.pump(const Duration(milliseconds: 300));
@@ -1541,28 +1392,22 @@ void main() {
     expect(tracksDir.listSync(), isEmpty);
   });
 
-  testWidgets('one Import button offers files and folder import',
-      (tester) async {
+  testWidgets('one Import button offers files and folder import', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-    ));
+    );
 
     await tester.tap(find.byTooltip('Import tracks'));
     // Fixed pumps, not pumpAndSettle: the tile-backed map never settles.
@@ -1573,40 +1418,32 @@ void main() {
     expect(find.text('A folder'), findsOneWidget);
   });
 
-  testWidgets('map starts at the last saved position when there are no tracks',
-      (tester) async {
-    final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.store.savePosition(-33.8688, 151.2093);
-    await model.load();
+  testWidgets(
+    'map starts at the last saved position when there are no tracks',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      await model.store.savePosition(-33.8688, 151.2093);
+      await model.load();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
+      await pumpMapPage(
+        tester,
         model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
-    final center = tester
-        .widget<FlutterMap>(find.byType(FlutterMap))
-        .options
-        .initialCenter;
-    expect(center.latitude, closeTo(-33.8688, 1e-9));
-    expect(center.longitude, closeTo(151.2093, 1e-9));
-  });
-
+      final center = tester
+          .widget<FlutterMap>(find.byType(FlutterMap))
+          .options
+          .initialCenter;
+      expect(center.latitude, closeTo(-33.8688, 1e-9));
+      expect(center.longitude, closeTo(151.2093, 1e-9));
+    },
+  );
 
   /// Pumps a MapPage wide enough that every header action is tappable.
   Future<AppModel> pumpMap(
@@ -1616,69 +1453,58 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: locationSupported,
+    final cache = createCache();
+    final model = await createModel(root);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+          locationSupported: locationSupported,
+        ),
       ),
-    ));
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     return model;
   }
 
-  testWidgets('a tasteful soft notification ask fires once at the Record tap',
-      (tester) async {
+  testWidgets('a tasteful soft notification ask fires once at the Record tap', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     // GPS working (the slice 6 gate) and the host refusing the
     // notification ask: recording's FGS proceeds mute, per the confirmed
     // default, and the tap's flow must carry on undisturbed.
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 52.5200,
-      'lon': 13.4050,
-    });
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
     final hostCalls = <String>[];
     const host = MethodChannel('unvisited/host');
-    tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(host, (call) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(host, (
+      call,
+    ) async {
       hostCalls.add(call.method);
       return call.method == 'requestPostNotifications' ? false : null;
     });
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(host, null));
-
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        host,
+        null,
       ),
-    ));
+    );
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
     await tester.pump();
 
@@ -1700,30 +1526,20 @@ void main() {
     expect(hostCalls.where((m) => m == 'requestPostNotifications').length, 1);
   });
 
-  testWidgets('the live recording trace plots while a session runs',
-      (tester) async {
+  testWidgets('the live recording trace plots while a session runs', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     final source = FakePositionSource();
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-        locationSupported: true,
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
     await tester.pump();
 
     // Idle: no live trace layer beyond the (empty) corridors layer.
@@ -1746,7 +1562,9 @@ void main() {
     final trace = tester
         .widgetList<PolylineLayer>(find.byType(PolylineLayer))
         .expand((l) => l.polylines)
-        .singleWhere((p) => p.color == Colors.redAccent.withValues(alpha: 0.65));
+        .singleWhere(
+          (p) => p.color == Colors.redAccent.withValues(alpha: 0.65),
+        );
     expect(trace.points.length, 2);
 
     // After stop the live trace is gone (the finalized track joins the
@@ -1765,15 +1583,19 @@ void main() {
 
     expect(find.text('Locate'), findsNothing);
     expect(find.byTooltip('Center on current position'), findsNothing);
-    expect(find.text('Record'), findsNothing,
-        reason: 'no location support means no fix can ever arrive');
+    expect(
+      find.text('Record'),
+      findsNothing,
+      reason: 'no location support means no fix can ever arrive',
+    );
     // The rest of the toolbar is untouched.
     expect(find.text('Import'), findsOneWidget);
     expect(find.text('Fit'), findsOneWidget);
   });
 
-  testWidgets('no fix yet means no Record button; a later fix reveals it',
-      (tester) async {
+  testWidgets('no fix yet means no Record button; a later fix reveals it', (
+    tester,
+  ) async {
     // GPS off at startup: the one-shot poll fails, the button must be
     // hidden — dead, never tappable — and stay hidden until a fix
     // actually arrives through the retry loop.
@@ -1783,51 +1605,60 @@ void main() {
 
     // GPS comes on and delivers a fix: the next silent retry (30 s)
     // picks it up and the button appears with no restart.
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 52.5200,
-      'lon': 13.4050,
-    });
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
     await tester.pump(const Duration(seconds: 30));
     await tester.pump();
     expect(find.text('Record'), findsOneWidget);
   });
 
-  testWidgets('a fix at startup shows the Record button immediately',
-      (tester) async {
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 52.5200,
-      'lon': 13.4050,
-    });
+  testWidgets('a fix at startup shows the Record button immediately', (
+    tester,
+  ) async {
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
     await pumpMap(tester);
     // The startup silent poll's fix already opened the gate: no wait for
     // the retry loop.
     expect(find.text('Record'), findsOneWidget);
   });
 
-  testWidgets('a successful locate opens the Record button without waiting',
-      (tester) async {
+  testWidgets('a successful locate opens the Record button without waiting', (
+    tester,
+  ) async {
     // No fix at startup; the user asks the Locate button, which prompts.
     mockGeolocator(tester, permission: 1); // denied: silently not asked yet
     await pumpMap(tester);
     expect(find.text('Record'), findsNothing);
 
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 48.8584,
-      'lon': 2.2945,
-    });
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 48.8584, 'lon': 2.2945},
+    );
     await tester.tap(find.byTooltip('Center on current position'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.text('Record'), findsOneWidget,
-        reason: 'a real fix landed, via Locate rather than the retry');
+    expect(
+      find.text('Record'),
+      findsOneWidget,
+      reason: 'a real fix landed, via Locate rather than the retry',
+    );
   });
 
   testWidgets('locate centers on the fix and zooms in', (tester) async {
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 48.8584,
-      'lon': 2.2945,
-    });
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 48.8584, 'lon': 2.2945},
+    );
     final model = await pumpMap(tester);
 
     await tester.tap(find.byTooltip('Center on current position'));
@@ -1847,17 +1678,17 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a successful locate shows the position marker',
-      (tester) async {
+  testWidgets('a successful locate shows the position marker', (tester) async {
     // Mock only after the startup pump: the silent startup fix would
     // otherwise already place the marker before the button is tapped.
     await pumpMap(tester);
     expect(find.byType(MarkerLayer), findsNothing);
 
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 48.8584,
-      'lon': 2.2945,
-    });
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 48.8584, 'lon': 2.2945},
+    );
     await tester.tap(find.byTooltip('Center on current position'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -1880,12 +1711,14 @@ void main() {
     expect(find.byType(MarkerLayer), findsNothing);
   });
 
-  testWidgets('panning away from the fix drops the position marker',
-      (tester) async {
-    mockGeolocator(tester, permission: 3, position: {
-      'lat': 48.8584,
-      'lon': 2.2945,
-    });
+  testWidgets('panning away from the fix drops the position marker', (
+    tester,
+  ) async {
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 48.8584, 'lon': 2.2945},
+    );
     await pumpMap(tester);
 
     await tester.tap(find.byTooltip('Center on current position'));
@@ -1904,13 +1737,15 @@ void main() {
     expect(find.byType(MarkerLayer), findsNothing);
   });
 
-  testWidgets('locate shows a spinner while the fix is in flight',
-      (tester) async {
-    mockGeolocator(tester, permission: 3, fixDelay: const Duration(seconds: 2),
-        position: {
-          'lat': 48.8584,
-          'lon': 2.2945,
-        });
+  testWidgets('locate shows a spinner while the fix is in flight', (
+    tester,
+  ) async {
+    mockGeolocator(
+      tester,
+      permission: 3,
+      fixDelay: const Duration(seconds: 2),
+      position: {'lat': 48.8584, 'lon': 2.2945},
+    );
     await pumpMap(tester);
 
     await tester.tap(find.byTooltip('Center on current position'));
@@ -1966,7 +1801,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(find.textContaining('Location permission is blocked'), findsOneWidget);
+    expect(
+      find.textContaining('Location permission is blocked'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -1994,28 +1832,19 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('lateral zoom slider steps and drags the camera zoom',
-      (tester) async {
+  testWidgets('lateral zoom slider steps and drags the camera zoom', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
     await tester.pump();
 
     double cameraZoom() => tester
@@ -2036,45 +1865,41 @@ void main() {
     // Full upward rail drag tops out at the OSM zoom limit, downward at
     // the world floor; the clamps also apply to the header's old buttons.
     await tester.drag(
-        find.byKey(const ValueKey('zoom-track')), const Offset(0, -400));
+      find.byKey(const ValueKey('zoom-track')),
+      const Offset(0, -400),
+    );
     await tester.pump();
     expect(cameraZoom(), 19.0);
 
     await tester.drag(
-        find.byKey(const ValueKey('zoom-track')), const Offset(0, 400));
+      find.byKey(const ValueKey('zoom-track')),
+      const Offset(0, 400),
+    );
     await tester.pump();
     expect(cameraZoom(), 3.0);
   });
 
   testWidgets('zoom slider hugs the configured screen edge', (tester) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     await TrackStore(root).saveZoomSliderSide('left');
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final model = await createModel(root);
     expect(model.zoomSliderSide, 'left');
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
     await tester.pump();
 
     Positioned sliderOf() => tester.widget<Positioned>(
-        find.ancestor(
-            of: find.byKey(const ValueKey('zoom-track')),
-            matching: find.byType(Positioned)));
+      find.ancestor(
+        of: find.byKey(const ValueKey('zoom-track')),
+        matching: find.byType(Positioned),
+      ),
+    );
 
     expect(sliderOf().left, 12, reason: 'setting says left edge');
     expect(sliderOf().right, isNull);
@@ -2085,27 +1910,19 @@ void main() {
     expect(sliderOf().right, 12, reason: 'setting says right edge');
   });
 
-  testWidgets('settings sheet picks the track color and slider side',
-      (tester) async {
+  testWidgets('settings sheet picks the track color and slider side', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
     await tester.pump();
 
     await tester.tap(find.byTooltip('Settings'));
@@ -2122,10 +1939,10 @@ void main() {
     // persists in the index.
     await tester.tap(find.byTooltip('Blue'));
     await tester.pump();
-    final circles =
-        tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
-    expect(circles.every((c) => c.color == exploredAreaColor('blue')),
-        isTrue);
+    final circles = tester
+        .widget<CircleLayer>(find.byType(CircleLayer))
+        .circles;
+    expect(circles.every((c) => c.color == exploredAreaColor('blue')), isTrue);
     expect(model.trackTint, 'blue');
     final reloaded = TrackStore(root);
     await reloaded.load();
@@ -2142,23 +1959,14 @@ void main() {
 
   testWidgets('settings sheet picks the theme and persists it', (tester) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    final cache = createCache();
+    final model = await createModel(root);
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
     await tester.pump();
 
     await tester.tap(find.byTooltip('Settings'));
@@ -2188,78 +1996,68 @@ void main() {
     expect(reloaded.themeMode, 'dark');
   });
 
-  testWidgets('switching to Dark theme resolves to dark brightness',
-      (tester) async {
+  testWidgets('switching to Dark theme resolves to dark brightness', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
 
     // Set theme to dark
     await model.setThemeMode('dark');
 
-    await tester.pumpWidget(MaterialApp(
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF4363D8),
-        useMaterial3: true,
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          colorSchemeSeed: const Color(0xFF4363D8),
+          useMaterial3: true,
+        ),
+        darkTheme: ThemeData(
+          colorSchemeSeed: const Color(0xFF4363D8),
+          brightness: Brightness.dark,
+          useMaterial3: true,
+        ),
+        themeMode: model.themeModeValue,
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-      darkTheme: ThemeData(
-        colorSchemeSeed: const Color(0xFF4363D8),
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
-      themeMode: model.themeModeValue,
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    );
     await tester.pump();
 
     // Verify the resolved theme brightness is dark by checking a widget in the tree
-    final brightness = Theme.of(tester.element(find.byType(MapPage))).brightness;
+    final brightness = Theme.of(tester.element(find.byType(MapPage)))
+        .brightness;
     expect(brightness, Brightness.dark);
   });
 
-  testWidgets('unlocked road corridors render as translucent polylines',
-      (tester) async {
+  testWidgets('unlocked road corridors render as translucent polylines', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
-    final model = AppModel(TrackStore(root));
-    await model.load();
+    final cache = createCache();
+    final model = await createModel(root);
     // Activate the synthetic road file and import the Main Street walk so
     // the track carries corridor unlock state.
     final roadFile = File(
-        '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads');
+      '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
+    );
     roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
     model.setRoadFile(roadFile.path);
     final walk = File(
-        '${root.path}${Platform.pathSeparator}main_street_walk.gpx');
+      '${root.path}${Platform.pathSeparator}main_street_walk.gpx',
+    );
     walk.writeAsBytesSync(fixture('main_street_walk.gpx'));
     await model.importFromFile(walk.path);
 
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
     await tester.pump();
 
     // The corridor layer exists and its polylines run along Main Street.
@@ -2272,52 +2070,40 @@ void main() {
     }
   });
 
-  testWidgets('a catalog without corridor state renders no polyline layer',
-      (tester) async {
+  testWidgets('a catalog without corridor state renders no polyline layer', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup.
-      }
-    });
+    final cache = createCache();
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
-      ),
-    ));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
     await tester.pump();
 
     expect(find.byType(PolylineLayer), findsNothing);
   });
 
-  testWidgets('startup fit goes through the guarded initialCameraFit',
-      (tester) async {
+  testWidgets('startup fit goes through the guarded initialCameraFit', (
+    tester,
+  ) async {
     final root = createRoot();
-    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
-    addTearDown(() {
-      try {
-        cache.deleteSync(recursive: true);
-      } on Exception {
-        // Best-effort cleanup; a failure to delete temp dirs must not
-        // fail the test.
-      }
-    });
+    final cache = createCache();
 
     final emptyModel = AppModel(TrackStore(root));
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: emptyModel,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapPage(
+          model: emptyModel,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-    ));
+    );
     expect(
       tester
           .widget<FlutterMap>(find.byType(FlutterMap))
@@ -2329,13 +2115,15 @@ void main() {
 
     final model = AppModel(TrackStore(root));
     model.store.importBytes(fixture('morning_walk.gpx'));
-    await tester.pumpWidget(MaterialApp(
-      home: MapPage(
-        model: model,
-        cacheDir: cache,
-        versionFuture: Future.value('2026-11-12 12:00'),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MapPage(
+          model: model,
+          cacheDir: cache,
+          versionFuture: Future.value('2026-11-12 12:00'),
+        ),
       ),
-    ));
+    );
     expect(
       tester
           .widget<FlutterMap>(find.byType(FlutterMap))
@@ -2383,8 +2171,7 @@ class _TestMaterialDelegate
 }
 
 /// Mirrors `_AnyLocaleWidgetsDelegate` in main.dart.
-class _TestWidgetsDelegate
-    extends LocalizationsDelegate<WidgetsLocalizations> {
+class _TestWidgetsDelegate extends LocalizationsDelegate<WidgetsLocalizations> {
   const _TestWidgetsDelegate();
 
   @override
@@ -2414,14 +2201,6 @@ class _TestCupertinoDelegate
   bool shouldReload(_TestCupertinoDelegate old) => false;
 }
 
-/// A fix stream the widget tests push through the model's record action.
-class FakePositionSource implements PositionSource {
-  FakePositionSource();
-  final controller = StreamController<PositionFix>();
-  @override
-  Stream<PositionFix> get stream => controller.stream;
-}
-
 /// One walking fix per second north along the Greenwich meridian, ~11.1 m
 /// between consecutive points.
 void fakeFix(
@@ -2435,21 +2214,24 @@ void fakeFix(
   double? speed,
   double? heading,
 }) {
-  source.controller.add(PositionFix(
-    lat: lat,
-    lon: lon,
-    time: DateTime.utc(2026, 11, 13, 12).add(Duration(seconds: second)),
-    ele: ele,
-    accuracy: acc,
-    speed: speed,
-    heading: heading,
-  ));
+  source.controller.add(
+    PositionFix(
+      lat: lat,
+      lon: lon,
+      time: DateTime.utc(2026, 11, 13, 12).add(Duration(seconds: second)),
+      ele: ele,
+      accuracy: acc,
+      speed: speed,
+      heading: heading,
+    ),
+  );
 }
 
 /// Matches a camera center against [expected] positionally: the released
 /// follow-camera must leave the view where the user's pan put it.
 Matcher sameCameraAs(LatLng expected) => predicate<LatLng>(
-    (c) =>
-        (c.latitude - expected.latitude).abs() < 1e-6 &&
-        (c.longitude - expected.longitude).abs() < 1e-6,
-    'camera stays at $expected');
+  (c) =>
+      (c.latitude - expected.latitude).abs() < 1e-6 &&
+      (c.longitude - expected.longitude).abs() < 1e-6,
+  'camera stays at $expected',
+);
