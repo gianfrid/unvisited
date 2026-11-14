@@ -9,6 +9,8 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:latlong2/latlong.dart';
+
 import 'position_source.dart';
 import 'staging_gpx.dart';
 
@@ -115,6 +117,18 @@ class RecordingSession {
   double? _lastLat;
   double? _lastLon;
 
+  /// The accepted fixes so far, grouped exactly like the staged
+  /// `<trkseg>`s — the live map trace draws these while a session runs.
+  /// Read-only copy out; the engine owns the lists.
+  List<List<LatLng>> get liveSegments => [
+        for (final s in _liveSegments) List<LatLng>.of(s),
+      ];
+  final List<List<LatLng>> _liveSegments = [];
+
+  /// Set by [pause]: the next accepted fix opens a fresh segment, so the
+  /// trace matches the staged file's `<trkseg>` breaks one to one.
+  bool _segmentOpen = true;
+
   /// Starts consuming [source]; fixes flow in as the stream produces
   /// them. Pauses, resumes and the eventual stop are the caller's calls.
   void start(PositionSource source) {
@@ -131,6 +145,7 @@ class RecordingSession {
     }
     state = RecordingState.paused;
     stage.breakSegment();
+    _segmentOpen = true;
   }
 
   /// Resumes: the next accepted fix opens a new `<trkseg>`.
@@ -162,7 +177,13 @@ class RecordingSession {
     }
     final gap = _lastFix == null ? Duration.zero : fix.time.difference(_lastFix!);
     final first = _lastFix == null;
-    if (gap > segmentGap) stage.breakSegment();
+    final brokeSegment = !first && gap > segmentGap;
+    if (brokeSegment) stage.breakSegment();
+    if (_segmentOpen || brokeSegment) {
+      _liveSegments.add([]);
+      _segmentOpen = false;
+    }
+    _liveSegments.last.add(LatLng(fix.lat, fix.lon));
     stage.appendPoint(lat: fix.lat, lon: fix.lon, time: fix.time, ele: fix.ele);
 
     if (!first) {

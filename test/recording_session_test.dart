@@ -170,6 +170,36 @@ void main() {
     expect(session.movingTime, const Duration(seconds: 2));
   });
 
+  test('the live trace mirrors the staged segments', () {
+    final session = newSession('Trace')..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201));
+    expect(session.liveSegments.length, 1);
+    expect(session.liveSegments.single.length, 2);
+
+    // A pause opens a fresh segment, like the staged <trkseg>.
+    session.pause();
+    session.resume();
+    session.processFix(fix(60, lat: 52.5202));
+    session.processFix(fix(61, lat: 52.5203));
+    expect(session.liveSegments.length, 2,
+        reason: 'the resumed fix starts a new segment');
+
+    // A fix-loss gap splits it too.
+    session.processFix(fix(400, lat: 52.5204));
+    expect(session.liveSegments.length, 3);
+    expect(session.liveSegments.last.single.latitude, closeTo(52.5204, 1e-9));
+
+    // Paused fixes add nothing.
+    session.pause();
+    session.processFix(fix(500, lat: 52.5299));
+    expect(session.liveSegments.fold(0, (n, s) => n + s.length), 5);
+
+    // The getter hands out copies: mutating it does not corrupt the engine.
+    session.liveSegments.first.clear();
+    expect(session.liveSegments.first.length, 2);
+  });
+
   test('pause/resume breaks the track into two segments', () {
     final sink = MemoryStageSink();
     final session = RecordingSession(

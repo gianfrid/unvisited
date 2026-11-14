@@ -1316,6 +1316,63 @@ void main() {
     expect(hostCalls.where((m) => m == 'requestPostNotifications').length, 1);
   });
 
+  testWidgets('the live recording trace plots while a session runs',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    // Idle: no live trace layer beyond the (empty) corridors layer.
+    int tracePolylines() => tester
+        .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+        .expand((l) => l.polylines)
+        .where((p) => p.color == Colors.redAccent.withValues(alpha: 0.65))
+        .length;
+    expect(tracePolylines(), 0);
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0);
+    fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
+    await tester.pump();
+    await tester.pump();
+
+    // While recording, one translucent recording-red polyline carries the
+    // two accepted fixes — distinct from the catalog tint.
+    expect(tracePolylines(), 1);
+    final trace = tester
+        .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+        .expand((l) => l.polylines)
+        .singleWhere((p) => p.color == Colors.redAccent.withValues(alpha: 0.65));
+    expect(trace.points.length, 2);
+
+    // After stop the live trace is gone (the finalized track joins the
+    // catalog instead — that import's real IO never settles in the
+    // fake-async zone, so only the trace's disappearance is asserted).
+    model.stopRecording();
+    await tester.pump();
+    expect(tracePolylines(), 0);
+  });
+
   testWidgets('locate is not offered where the platform has no location '
       'plugin', (tester) async {
     // Desktop Linux: geolocator has no implementation, so the action could

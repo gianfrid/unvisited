@@ -806,6 +806,23 @@ class _MapPageState extends State<MapPage> {
               // Unlocked road corridors (fog-of-war for streets), above
               // the circles so the corridor reads on top of the blobs.
               if (corridors.isNotEmpty) PolylineLayer(polylines: corridors),
+              // The live recording trace: the session's accepted fixes as
+              // polylines, translucent in a fixed recording red — outside
+              // the catalog tint family, clearly in-progress. Above the
+              // fog, below the course-up marker. Absent when no session
+              // runs; after stop the finalized track is a catalog track.
+              if (widget.model.recording != null)
+                PolylineLayer(
+                  polylines: [
+                    for (final seg in widget.model.recording!.liveSegments)
+                      if (seg.length >= 2)
+                        Polyline(
+                          points: seg,
+                          color: Colors.redAccent.withValues(alpha: 0.65),
+                          strokeWidth: 4,
+                        ),
+                  ],
+                ),
               // "You are here" marker for the last located fix; absent
               // until a fix exists and dropped when the user pans away.
               if (_locatedPosition != null)
