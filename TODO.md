@@ -69,14 +69,6 @@ Recording — live trace on the map:
   session, auto-pause-when-stationary, interval setting,
   vector-tiles/3D-building look (needs a new map-data decision).
 
-Recording — map controls & camera (Android first):
-
-1. - [ ] Pause/resume/stop at the record slot: while recording that slot
-   shows pause; pressing it turns the button into resume and a stop
-   button appears before it in the same stack; stop opens a name dialog
-   defaulting to the current date-time timestamp and finalizes the session
-   through the unified import pipeline under that name.
-
 Map — aggregate tracks & selection:
 
 1. - [ ] Aggregate track model: cluster the visible stored tracks so that

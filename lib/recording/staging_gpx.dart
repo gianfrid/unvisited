@@ -180,6 +180,23 @@ String? salvageGpx(String bytes) {
   return body;
 }
 
+/// Points a staged GPX at a different track name, for the stop-with-name
+/// flow: the writer wrote the start timestamp into the `<name>` element
+/// when the first point arrived, hours or days before the user gets to
+/// name the track. Rewrites the content of the first `<name>` element —
+/// the writer guarantees the `<trk><name>` header comes before anything
+/// else that could carry a name — and returns [gpx] unchanged when there
+/// is no name element at all.
+String renameGpxTrack(String gpx, String newName) {
+  const open = '<name>';
+  const close = '</name>';
+  final start = gpx.indexOf(open);
+  if (start < 0) return gpx;
+  final end = gpx.indexOf(close, start + open.length);
+  if (end < 0) return gpx;
+  return gpx.replaceRange(start + open.length, end, _escape(newName));
+}
+
 String _escape(String s) => s
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

@@ -393,7 +393,43 @@ class _MapPageState extends State<MapPage> {
     _toast(strings.recordDeclined);
   }
 
-  Future<void> _stopRecording() => widget.model.stopRecording();
+  /// Stop: asks what to call the track first (the dialog defaults to the
+  /// current date-time timestamp) and only finalizes on confirm — a
+  /// cancelled dialog leaves the session recording.
+  Future<void> _stopRecording() async {
+    final strings = AppStrings.ofContext(context);
+    final defaultName = widget.model.recordingName(DateTime.now());
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController(text: defaultName);
+        return AlertDialog(
+          title: Text(strings.stopRecordingTitle),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration:
+                InputDecoration(labelText: strings.recordingNameLabel),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(strings.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(
+                  controller.text.trim().isEmpty
+                      ? defaultName
+                      : controller.text.trim()),
+              child: Text(strings.stopLabel),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted || name == null) return; // Cancelled: keep recording.
+    await widget.model.stopRecording(name: name);
+  }
 
   /// While recording, the dashboard: the HUD chip — the pulsing dot with
   /// its live duration and distance, tap to expand — and the stats panel
@@ -1005,10 +1041,12 @@ class _MapPageState extends State<MapPage> {
           // position (no host plugin, desktop Linux) or none has actually
           // arrived yet (GPS off at startup — the silent retry loop picks
           // the button up once a fix exists) — a session could never start
-          // there. While recording the slot holds pause/resume and a stop
-          // action sits before it; the chip below the toolbar still shows
-          // the live stats. Locate stays usable during a session — its tap
-          // is the way back to the follow after panning away (see
+          // there. While a session runs the slot holds Pause; once paused
+          // the slot reads Resume and a Stop action appears before it,
+          // asking the track's name before it finalizes. The chip below
+          // the toolbar still shows the live stats. Locate stays usable
+          // during a session — its tap is the way back to the follow
+          // after panning away (see
           // [_locate]'s session branch).
           if (widget.locationSupported)
             Positioned(
@@ -1019,7 +1057,8 @@ class _MapPageState extends State<MapPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (widget.model.isRecording)
+                    if (widget.model.recording?.state ==
+                        RecordingState.paused)
                       _HeaderAction(
                         icon: const Icon(Icons.stop),
                         label: strings.stopLabel,

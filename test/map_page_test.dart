@@ -191,9 +191,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // The slot turns into the stop; the chip shows the live stats — the
-    // pulsing dot and the meters walked (the engine's haversine sum).
-    expect(find.byIcon(Icons.stop), findsOneWidget);
+    // The slot turns into the pause (Stop only appears once paused); the
+    // chip shows the live stats — the pulsing dot and the meters walked
+    // (the engine's haversine sum).
+    expect(find.byIcon(Icons.stop), findsNothing);
     expect(find.byIcon(Icons.fiber_manual_record), findsOneWidget,
         reason: 'the pulse dot on the chip');
     expect(find.text('11 m'), findsOneWidget);
@@ -244,12 +245,12 @@ void main() {
 
     // Recording: Import and Fit are hidden (they fight the dashboard for
     // space and attention) while Locate stays — its tap is the way back to
-    // the follow after panning away. Stop and Pause stay. The live
-    // speed is the primary readout, big and bottom-center, from the
-    // engine's fix speed.
+    // the follow after panning away. The slot reads Pause, no Stop yet.
+    // The live speed is the primary readout, big and bottom-center, from
+    // the engine's fix speed.
     expect(find.text('Import'), findsNothing);
     expect(find.text('Locate'), findsOneWidget);
-    expect(find.text('Stop'), findsOneWidget);
+    expect(find.text('Stop'), findsNothing);
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
     expect(speedCard, findsOneWidget);
@@ -311,6 +312,8 @@ void main() {
     expect(model.recording!.state, RecordingState.paused);
     expect(find.text('Resume'), findsOneWidget);
     expect(find.text('Pause'), findsNothing);
+    expect(find.text('Stop'), findsOneWidget,
+        reason: 'stop appears before the resume slot once paused');
     final distance = model.recording!.distanceMeters;
 
     fakeFix(source, 5, prevLat: 52.5210, lat: 52.5220);
@@ -322,9 +325,74 @@ void main() {
     expect(model.recording!.state, RecordingState.recording);
     expect(find.text('Pause'), findsOneWidget);
     expect(find.text('Resume'), findsNothing);
+    expect(find.text('Stop'), findsNothing,
+        reason: 'a running session hides the stop action again');
 
     model.stopRecording();
     await tester.pump();
+  });
+
+  testWidgets('stop asks for the track name; cancelling keeps recording',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    await model.load();
+    final source = FakePositionSource();
+
+    await tester.pumpWidget(MaterialApp(
+      home: MapPage(
+        model: model,
+        cacheDir: cache,
+        versionFuture: Future.value('2026-11-12 12:00'),
+        locationSupported: true,
+      ),
+    ));
+    await tester.pump();
+
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 0);
+    fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Stop'));
+    await tester.pump();
+
+    // The dialog: a name field seeded with the current date-time
+    // timestamp (`YYYY-MM-DD HH:mm`, the staged name's format).
+    final field = tester.widget<TextField>(find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField)));
+    expect(field.controller!.text, matches(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$'));
+    expect(find.text('Stop recording'), findsOneWidget);
+    expect(find.text('Track name'), findsOneWidget);
+
+    // Cancel: the dialog closes and the session keeps recording — the
+    // stacked Stop action is still there, so the stop stays reachable.
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(model.recording, isNotNull);
+    expect(find.byTooltip('Stop'), findsOneWidget);
+
+    // Confirm finalizes: the session clears now (the import runs behind
+    // a real-file read that FakeAsync's zone never drains — covered at
+    // the model level, named and nameless).
+    await tester.tap(find.byTooltip('Stop'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'Bike home');
+    await tester.tap(find.descendant(
+        of: find.byType(AlertDialog), matching: find.text('Stop')));
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(model.recording, isNull);
   });
 
   testWidgets('a salvaged staged recording announces itself at startup',
@@ -822,23 +890,39 @@ void main() {
         reason: 'record sits directly above locate');
     expect(record.center.dx, closeTo(locateAfter.center.dx, 1.0));
 
-    // While recording the slot holds Pause (Stop above it), still in the
-    // bottom-left stack; the header keeps Tracks and Settings only.
+    // While recording the slot holds Pause, still in the bottom-left
+    // stack; the header keeps Tracks and Settings only.
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
     await tester.pump();
     await tester.pump();
     expect(find.text('Record'), findsNothing);
-    final stop = rectOf('Stop');
+    expect(find.text('Stop'), findsNothing,
+        reason: 'stop only appears once paused');
     final pause = rectOf('Pause');
     final locateRec = rectOf('Center on current position');
-    expect(stop.top, greaterThan(mapRect.height * 0.5));
     expect(pause.bottom, closeTo(locateRec.top, 1.0),
         reason: 'pause occupies the record slot directly above locate');
-    expect(stop.bottom, closeTo(pause.top, 1.0),
-        reason: 'stop sits before the pause button in the stack');
+
+    // Paused: the slot reads Resume and Stop appears before it in the
+    // stack, all still bottom-left.
+    await tester.tap(find.byTooltip('Pause'));
+    await tester.pump();
+    final stop = rectOf('Stop');
+    final resume = rectOf('Resume');
+    final locatePaused = rectOf('Center on current position');
+    expect(stop.top, greaterThan(mapRect.height * 0.5));
+    expect(resume.bottom, closeTo(locatePaused.top, 1.0),
+        reason: 'resume occupies the record slot directly above locate');
+    expect(stop.bottom, closeTo(resume.top, 1.0),
+        reason: 'stop sits before the resume button in the stack');
+    expect(stop.center.dx, closeTo(resume.center.dx, 1.0));
     expect(find.text('Import'), findsNothing);
     expect(tester.getRect(find.text('Tracks')).top, lessThan(100));
+    // End the session without the dialog (its import never settles in
+    // the fake-async zone).
+    model.stopRecording();
+    await tester.pump();
   });
 
   testWidgets('dark theme darkens the tiles client-side, light leaves them',

@@ -61,6 +61,11 @@ abstract class AppStrings {
   String get pauseLabel;
   String get resumeLabel;
 
+  /// The stop-with-name dialog: the stop's title and the name field's
+  /// label (the field is seeded with the current date-time timestamp).
+  String get stopRecordingTitle;
+  String get recordingNameLabel;
+
   // Recording dashboard (labels of the stats panel; the values carry
   // their units code-side like the distances do).
   String get statAvgSpeed;
@@ -217,6 +222,10 @@ class EnglishStrings extends AppStrings {
   String get pauseLabel => 'Pause';
   @override
   String get resumeLabel => 'Resume';
+  @override
+  String get stopRecordingTitle => 'Stop recording';
+  @override
+  String get recordingNameLabel => 'Track name';
   @override
   @override
   String get statAvgSpeed => 'Avg speed';
@@ -441,6 +450,10 @@ class ItalianStrings extends AppStrings {
   String get pauseLabel => 'Pausa';
   @override
   String get resumeLabel => 'Riprendi';
+  @override
+  String get stopRecordingTitle => 'Ferma la registrazione';
+  @override
+  String get recordingNameLabel => 'Nome della traccia';
   @override
   @override
   String get statAvgSpeed => 'Media';

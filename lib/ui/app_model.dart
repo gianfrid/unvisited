@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:isolate';
 
@@ -23,7 +24,7 @@ import '../recording/android_position_source.dart'
     show AndroidPositionSource;
 import '../recording/recording_session.dart';
 import '../recording/staging_gpx.dart'
-    show FileStageSink, GpxStageWriter, salvageGpx;
+    show FileStageSink, GpxStageWriter, renameGpxTrack, salvageGpx;
 import 'fog_of_war.dart' show unlockCenters;
 
 /// Why a position could not be obtained; each maps to a message that
@@ -564,7 +565,7 @@ class AppModel extends ChangeNotifier {
         '${start.millisecondsSinceEpoch}.gpx');
     final sink = FileStageSink(file);
     final session = RecordingSession(
-      stage: GpxStageWriter(sink, name: _recordingName(start)),
+      stage: GpxStageWriter(sink, name: recordingName(start)),
       // The dashboard's tick: every delivered fix, after the engine
       // processed it, repaints the HUD and moves the follow-camera.
       onFix: (_) => notifyRecordingFix(),
@@ -582,7 +583,13 @@ class AppModel extends ChangeNotifier {
   /// deleted — the catalog owns the copy under `tracks/`. A killed
   /// process never gets here: its un-finalized file stays behind, and
   /// the startup salvage imports the partial track.
-  Future<void> stopRecording() async {
+  ///
+  /// [name], when supplied (the stop-with-name dialog), becomes the
+  /// track's GPX `<name>` — and so the catalog name — in place of the
+  /// staged header's start timestamp; it is written into the finalized
+  /// bytes before the import, so dedup, fog and road matching all see
+  /// the final bytes.
+  Future<void> stopRecording({String? name}) async {
     final session = _recording;
     final file = _recordingFile;
     if (session == null || file == null) return;
@@ -592,7 +599,12 @@ class AppModel extends ChangeNotifier {
     await session.stop();
     final bytes = await file.readAsBytes();
     if (bytes.isNotEmpty) {
-      _importRecordingBytes(bytes, session.stage.trackName);
+      var gpx = utf8.decode(bytes);
+      if (name != null && name != session.stage.trackName) {
+        gpx = renameGpxTrack(gpx, name);
+      }
+      _importRecordingBytes(
+          utf8.encode(gpx), (name ?? session.stage.trackName));
     }
     // The staged file is spent; the catalog's copy is the one that stays.
     if (file.existsSync()) file.deleteSync();
@@ -714,10 +726,11 @@ class AppModel extends ChangeNotifier {
     }
   }
 
-  /// A staged track's name inside the GPX: the UTC start's numerals, so a
-  /// recorded track reads by when it was taken (locale-independent — model
-  /// classes never build sentences).
-  String _recordingName(DateTime start) =>
+  /// A staged track's name inside the GPX, and the stop dialog's text
+  /// default: the current time's numerals (`recordingName(DateTime.now())`
+  /// at stop, the start at staging), so a recorded track reads by when it
+  /// was taken (locale-independent — model classes never build sentences).
+  String recordingName(DateTime start) =>
       '${start.year.toString().padLeft(4, '0')}-'
       '${start.month.toString().padLeft(2, '0')}-'
       '${start.day.toString().padLeft(2, '0')} '

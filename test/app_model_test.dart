@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show utf8;
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart'
@@ -791,6 +792,33 @@ void main() {
       expect(stored.unlockedWays.keys, contains('1001'),
           reason: 'a recorded track is an ordinary catalog track: the '
               'corridor matching applies');
+    });
+
+    test("the stop name dialog's choice lands as the catalog name",
+        () async {
+      final source = FakePositionSource();
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
+      await Future<void>.delayed(Duration.zero);
+      await model.stopRecording(name: 'Bike home');
+      await Future<void>.delayed(Duration.zero);
+
+      final stored = model.tracks.single;
+      expect(stored.name, 'Bike home');
+      // The stored file's GPX header carries the name — the parser read
+      // it from there, not from the filename fallback.
+      final storedFile = File(
+          '${root.path}${Platform.pathSeparator}tracks'
+          '${Platform.pathSeparator}${stored.file}');
+      expect(utf8.decode(storedFile.readAsBytesSync()),
+          contains('<name>Bike home</name>'));
+      // The staged copy is spent either way.
+      expect(
+          Directory(
+                  '${root.path}${Platform.pathSeparator}recording')
+              .listSync(),
+          isEmpty);
     });
   });
 

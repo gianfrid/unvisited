@@ -363,6 +363,43 @@ void main() {
     expect(session.elapsed, Duration.zero);
   });
 
+  group('renameGpxTrack (stop with name)', () {
+    String stagedGpx(String trackName) {
+      final sink = MemoryStageSink();
+      final writer = GpxStageWriter(sink, name: trackName);
+      writer.appendPoint(
+          lat: 52.5200, lon: 13.4050, time: DateTime.utc(2026, 11, 14, 9));
+      writer.finalize();
+      return sink.buffer.toString();
+    }
+
+    test('the renamed file re-imports under the new name, points intact', () {
+      final renamed = renameGpxTrack(stagedGpx('Rena'), 'Morning ride');
+      final data = TrackImporter().import(renamed.codeUnits);
+      expect(data.name, 'Morning ride');
+      expect(data.points, hasLength(1));
+    });
+
+    test('escapes XML special characters in the new name', () {
+      final renamed = renameGpxTrack(
+          stagedGpx('Rena'), 'Ride & <test> "quoted"');
+      expect(renamed,
+          contains('<name>Ride &amp; &lt;test&gt; "quoted"</name>'));
+    });
+
+    test('a GPX without a name element passes through unchanged', () {
+      final bare = stagedGpx('Rena').replaceFirst('<name>Rena</name>', '');
+      expect(renameGpxTrack(bare, 'Morning ride'), bare);
+    });
+
+    test('the first name element only (the header trk name)', () {
+      final gpx = stagedGpx('Rena');
+      final renamed = renameGpxTrack(gpx, 'Morning ride');
+      expect(renamed, isNot(contains('Rena')));
+    });
+  });
+
+
   test('the checked-in writer fixture re-imports (writer to reader)', () {
     // The fixture is produced by the stage writer itself
     // (tool/make_fixtures.dart): an app-shaped recording must satisfy the
