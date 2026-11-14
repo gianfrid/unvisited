@@ -774,6 +774,74 @@ void main() {
     await tester.tap(find.byTooltip('Delete track'));
     await tester.pump();
 
+    // The button's tap asks first: declining keeps track and file.
+    expect(find.text('Delete "Morning walk"?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    expect(model.tracks, isNotEmpty);
+    expect(tracksDir.listSync(), isNotEmpty);
+
+    // Confirming removes the track and its file.
+    await tester.tap(find.byTooltip('Delete track'));
+    await tester.pump();
+    await tester.tap(find.text('Delete'));
+    await tester.pump();
+
+    expect(model.tracks, isEmpty);
+    expect(tracksDir.listSync(), isEmpty);
+  });
+
+  testWidgets('a drawer swipe deletes only after confirmation',
+      (tester) async {
+    final root = createRoot();
+    final cache = Directory.systemTemp.createTempSync('unvisited-cache');
+    addTearDown(() {
+      try {
+        cache.deleteSync(recursive: true);
+      } on Exception {
+        // Best-effort cleanup; a failure to delete temp dirs must not
+        // fail the test.
+      }
+    });
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await tester.pumpWidget(
+      MaterialApp(home: MapPage(model: model, cacheDir: cache, versionFuture: Future.value('2026-11-12 12:00'))),
+    );
+    await tester.tap(find.byTooltip('Tracks')); // open the drawer
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    final tracksDir = Directory('${root.path}${Platform.pathSeparator}tracks');
+    expect(tracksDir.listSync().length, 1);
+
+    // A swipe pops the dialog first; cancelling keeps everything.
+    await tester.drag(find.byType(Dismissible), const Offset(-600, 0));
+    await tester.pump();
+    expect(find.text('Delete "Morning walk"?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    // Let the dialog's exit animation finish before touching the tile
+    // again: a drag during it would land on the scrim, not the tile.
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.tracks, isNotEmpty);
+    expect(find.byType(Dismissible), findsOneWidget);
+
+    // Swipe again, confirm: the track and its file are gone.
+    await tester.drag(find.byType(Dismissible), const Offset(-600, 0));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Delete "Morning walk"?'), findsOneWidget,
+        reason: 'the second swipe must reopen the dialog');
+    await tester.tap(find.text('Delete'));
+    await tester.pump();
+    // The confirmed dismissal still walks its slide-out animation; given
+    // generous fake-async time it completes and fires onDismissed.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(Dismissible), findsNothing,
+        reason: 'confirmed dismissal removes the tile');
     expect(model.tracks, isEmpty);
     expect(tracksDir.listSync(), isEmpty);
   });

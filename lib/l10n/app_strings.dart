@@ -173,6 +173,17 @@ abstract class AppStrings {
   String get deselectAllTracks;
   String get nothingImportedYet;
   String get deleteTrack;
+
+  /// The confirmation before a delete runs (swipe or button): names the
+  /// track, says the file goes with it irreversibly, and offers
+  /// [deleteConfirmGo] vs [deleteConfirmCancel]. A swipe always shows it —
+  /// one accidental gesture must not destroy the track.
+  String deleteConfirmTitle(String trackName);
+  String get deleteConfirmBody;
+
+  /// The confirmation's destructive and dismissive actions.
+  String get deleteConfirmGo;
+  String get deleteConfirmCancel;
   String pointCount(int count);
 
   // Tint swatch names (keys live in track_colors.dart).
@@ -381,6 +392,15 @@ class EnglishStrings extends AppStrings {
   String get nothingImportedYet => 'Nothing imported yet';
   @override
   String get deleteTrack => 'Delete track';
+  @override
+  String deleteConfirmTitle(String trackName) => 'Delete "$trackName"?';
+  @override
+  String get deleteConfirmBody =>
+      'The track file is deleted with it. This cannot be undone.';
+  @override
+  String get deleteConfirmGo => 'Delete';
+  @override
+  String get deleteConfirmCancel => 'Cancel';
   @override
   String pointCount(int count) => '$count pts';
 
@@ -605,6 +625,16 @@ class ItalianStrings extends AppStrings {
   String get nothingImportedYet => 'Ancora niente importato';
   @override
   String get deleteTrack => 'Elimina traccia';
+  @override
+  String deleteConfirmTitle(String trackName) => 'Eliminare "$trackName"?';
+  @override
+  String get deleteConfirmBody =>
+      'Il file della traccia viene eliminato con essa. Operazione '
+      'irreversibile.';
+  @override
+  String get deleteConfirmGo => 'Elimina';
+  @override
+  String get deleteConfirmCancel => 'Annulla';
   @override
   String pointCount(int count) => '$count punti';
 

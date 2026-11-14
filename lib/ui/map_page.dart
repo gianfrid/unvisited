@@ -1797,6 +1797,33 @@ class _TrackTile extends StatelessWidget {
   final AppModel model;
   final StoredTrack track;
 
+  /// The confirmation both destructive entry points (swipe and button)
+  /// share: one accidental gesture must not destroy the track. A cancel
+  /// or bar dismissal is a no-op; the drawer stays open and the list
+  /// updates the moment the delete lands. Returns whether the user
+  /// confirmed — [Dismissible.confirmDismiss] consumes the same signal.
+  Future<bool> _confirmDelete(
+      BuildContext context, AppStrings strings) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(strings.deleteConfirmTitle(track.name)),
+            content: Text(strings.deleteConfirmBody),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(strings.deleteConfirmCancel),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(strings.deleteConfirmGo),
+              ),
+            ],
+          ),
+        ) ==
+        true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
@@ -1813,6 +1840,9 @@ class _TrackTile extends StatelessWidget {
         padding: const EdgeInsets.only(right: 24),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
+      // The swipe only dismisses after a confirmation; a declined dialog
+      // leaves the tile in place and nothing deleted.
+      confirmDismiss: (_) => _confirmDelete(context, strings),
       onDismissed: (_) => model.delete(track),
       child: CheckboxListTile(
         value: track.visible,
@@ -1830,7 +1860,9 @@ class _TrackTile extends StatelessWidget {
           tooltip: strings.deleteTrack,
           icon: const Icon(Icons.delete_outline),
           visualDensity: VisualDensity.compact,
-          onPressed: () => model.delete(track),
+          onPressed: () async {
+            if (await _confirmDelete(context, strings)) await model.delete(track);
+          },
         ),
         dense: true,
       ),

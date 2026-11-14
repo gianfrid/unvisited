@@ -31,10 +31,6 @@ Track list — catalog UX:
 
 Bugs — high priority:
 
-- [] slice 13 — deleting a track from the drawer asks no confirmation.
-  `Dismissible` swipes straight to `model.delete`; add a confirmation
-  dialog before the delete runs, with the track name in the message.
-  Widget test: swipe, decline → track kept; swipe, confirm → deleted.
 - [] slice 14 — a paused recording's elapsed timer keeps counting wall
   clock: resume jumps by all the paused seconds. The session's elapsed
   must accumulate only while running (freeze on pause, resume from the
