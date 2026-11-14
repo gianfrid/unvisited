@@ -1,3 +1,5 @@
+import 'dart:convert' show utf8;
+
 import 'package:xml/xml.dart';
 
 import '../models/track.dart';
@@ -109,4 +111,9 @@ DateTime? _dateTime(XmlElement node, String tag) {
   return DateTime.tryParse(t.first.innerText.trim());
 }
 
-String _text(List<int> bytes) => String.fromCharCodes(bytes);
+/// File bytes to text: UTF-8 — every XML producer in scope (OpenTracks,
+/// Garmin, Strava, the app's own stage writer) writes UTF-8, and decoding
+/// 1:1 as code units like the ASCII sniffer does would mangle every
+/// non-ASCII track name inside the document. Throws FormatException on
+/// bytes that are not valid UTF-8 (the parser maps it).
+String _text(List<int> bytes) => utf8.decode(bytes);

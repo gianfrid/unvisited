@@ -1,3 +1,5 @@
+import 'dart:convert' show utf8;
+
 import 'package:xml/xml.dart';
 
 import '../models/track.dart';
@@ -19,7 +21,9 @@ class TcxParser implements TrackParser {
   TrackData parse(List<int> bytes, {String? sourceFilename}) {
     final XmlDocument doc;
     try {
-      doc = XmlDocument.parse(String.fromCharCodes(bytes));
+      doc = XmlDocument.parse(utf8.decode(bytes));
+    } on FormatException {
+      throw const TrackParseException('TCX', 'not valid UTF-8');
     } on XmlException catch (e) {
       throw TrackParseException('TCX', e.message);
     }

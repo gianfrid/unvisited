@@ -30,13 +30,7 @@ staged file as a partial track on next start. Desktop recording is backlog
 Technical debt — high priority (owner-approved 2026-11-14; findings above
 the rest of the backlog by intent):
 
-1. - [ ] Fix the startup-salvage UTF-8 corruption: `_salvageRecordings`
-   re-encodes the read GPX with `gpx.codeUnits` (lib/ui/app_model.dart:666)
-   — UTF-16, not UTF-8 — so any non-ASCII character in a staged track name
-   (an accented name from the stop dialog) lands corrupt. Use
-   `utf8.encode`; add a unit test with a non-ASCII name; fix the same
-   pattern in test/app_model_test.dart:837 while there.
-2. - [ ] Split lib/ui/map_page.dart (2K lines, 14 classes) into `ui/`
+1. - [ ] Split lib/ui/map_page.dart (2K lines, 14 classes) into `ui/`
    modules: `_SettingsSheet`, `_StatsPanel`, the zoom slider, the drawer
    (make `TrackDrawer` private) + `_TrackTile`, the bottom-left action
    stack and toolbar widgets. No behavior change; widget tests assert by

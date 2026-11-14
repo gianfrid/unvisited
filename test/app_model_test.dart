@@ -834,7 +834,8 @@ void main() {
       writer.appendPoint(
           lat: 52.5201, lon: 13.4050, time: base.add(const Duration(seconds: 1)));
       final text = sink.buffer.toString();
-      return (text.substring(0, text.length - 1)).codeUnits;
+      return utf8.encode(
+          text.substring(0, text.length - 1)); // byte-level mid-newline cut
     }
 
     Directory recordingDir() =>
@@ -855,6 +856,30 @@ void main() {
       expect(stored.pointCount, 2);
       // The staged copy is spent; the catalog owns its file.
       expect(dir.listSync(), isEmpty);
+    });
+
+    test('a non-ASCII track name survives the salvage byte-exact', () async {
+      // Regression (utf8 vs String.codeUnits): the salvage path used to
+      // re-encode the read string's UTF-16 code units as file bytes, so
+      // any character above U+00FF — a name the stop dialog accepts —
+      // landed corrupted.
+      final dir = recordingDir();
+      final sink = MemoryStageSink();
+      final writer = GpxStageWriter(sink, name: 'Anello dei Grumé');
+      writer.appendPoint(lat: 52.5200, lon: 13.4050, time: base);
+      writer.appendPoint(
+          lat: 52.5201, lon: 13.4050, time: base.add(
+              const Duration(seconds: 1)));
+      writer.finalize();
+      File('${dir.path}${Platform.pathSeparator}1763040000000.gpx')
+          .writeAsBytesSync(utf8.encode(sink.buffer.toString()));
+
+      await model.load();
+
+      expect(model.salvagedRecordingNames, ['Anello dei Grumé']);
+      final stored = model.tracks.single;
+      expect(stored.name, 'Anello dei Grumé');
+      expect(stored.pointCount, 2);
     });
 
     test('a complete staged file (kill between finalize and import) '

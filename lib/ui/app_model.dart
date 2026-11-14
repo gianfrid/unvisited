@@ -663,7 +663,7 @@ class AppModel extends ChangeNotifier {
         continue;
       }
       final result =
-          _importRecordingBytes(gpx.codeUnits, entry.uri.pathSegments.last);
+          _importRecordingBytes(utf8.encode(gpx), entry.uri.pathSegments.last);
       entry.deleteSync();
       if (result.imported) {
         salvagedRecordingNames.add(result.track!.name);

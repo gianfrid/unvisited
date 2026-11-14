@@ -1,3 +1,5 @@
+import 'dart:convert' show utf8;
+
 import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
 
@@ -45,7 +47,12 @@ class KmzParser implements TrackParser {
       throw const TrackParseException('KMZ', 'no .kml entry found in archive');
     }
 
-    final kmlText = String.fromCharCodes(kmlEntries.first.content);
+    final String kmlText;
+    try {
+      kmlText = utf8.decode(kmlEntries.first.content);
+    } on FormatException {
+      throw const TrackParseException('KMZ', 'KML entry is not valid UTF-8');
+    }
     final points = parseKml(kmlText);
     if (points.isEmpty) {
       throw const TrackParseException(
@@ -160,7 +167,12 @@ class KmlParser implements TrackParser {
 
   @override
   TrackData parse(List<int> bytes, {String? sourceFilename}) {
-    final text = String.fromCharCodes(bytes);
+    final String text;
+    try {
+      text = utf8.decode(bytes);
+    } on FormatException {
+      throw const TrackParseException('KML', 'not valid UTF-8');
+    }
     final points = _kmz.parseKml(text);
     if (points.isEmpty) {
       throw const TrackParseException(
