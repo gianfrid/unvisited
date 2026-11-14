@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:isolate';
 
@@ -7,26 +6,21 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart' show Locale;
-import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../host_channel.dart';
 import '../l10n/app_strings.dart';
-import '../models/track.dart' show TrackData;
 import '../road/road_bench.dart' show benchReport, runRoadBench;
 import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_matcher.dart';
 import '../road/road_store.dart';
-import 'recording_live.dart';
-import '../storage/track_store.dart';
 import '../recording/position_source.dart' show PositionSource;
-import '../recording/android_position_source.dart'
-    show AndroidPositionSource;
-import '../recording/recording_session.dart';
-import '../recording/staging_gpx.dart'
-    show FileStageSink, GpxStageWriter, renameGpxTrack, salvageGpx;
+import '../recording/recording_session.dart' show RecordingSession;
+import '../storage/track_store.dart';
 import 'fog_of_war.dart' show unlockCenters;
+import 'import_coordinator.dart';
+import 'recording_controller.dart';
+import 'recording_live.dart' show RecordingLiveState;
 
 /// Why a position could not be obtained; each maps to a message that
 /// tells the user what to do about it.
@@ -73,52 +67,33 @@ enum RoadFileFailure {
   missing,
 }
 
-class ImportSummary {
-  ImportSummary() : imported = 0, duplicates = 0, skipped = 0, failed = 0;
-
-  int imported;
-  int duplicates;
-  int skipped;
-  int failed;
-
-  void add(ImportResult r) {
-    switch (r.reason) {
-      case 'duplicate':
-        duplicates++;
-      case null:
-        imported++;
-      default:
-        if (r.reason!.startsWith('skipped:')) {
-          skipped++;
-        } else {
-          failed++;
-        }
-    }
-  }
-
-  bool get isEmpty => imported + duplicates + skipped + failed == 0;
-
-  /// The summary as one line of user-facing text. The strings come from
-  /// the caller's locale: this class is UI state, not a place to bake in
-  /// English.
-  String describe(AppStrings strings) {
-    final parts = <String>[
-      if (imported > 0) strings.importedCount(imported),
-      if (duplicates > 0) strings.duplicateCount(duplicates),
-      if (skipped > 0) strings.skippedCount(skipped),
-      if (failed > 0) strings.failedCount(failed),
-    ];
-    return parts.isEmpty ? strings.nothingToImport : parts.join(', ');
-  }
-}
-
-/// UI state root: owns the store, caches each visible track's points for
-/// the fog-of-war overlay, exposes actions.
+/// UI state root: owns the store, the road region, the track catalog's
+/// visibility and the settings, and exposes the two extracted concerns —
+/// [imports] (every import path) and [recorder] (the recording session) —
+/// as thin delegating members so the UI keeps one access point.
 class AppModel extends ChangeNotifier {
-  AppModel(this.store);
+  AppModel(this.store) {
+    imports = ImportCoordinator(
+      store: store,
+      roadMatcher: () => _roadMatcher,
+      onChanged: notifyListeners,
+    );
+    recorder = RecordingController(
+      store: store,
+      imports: imports,
+      onChanged: notifyListeners,
+    );
+  }
 
   final TrackStore store;
-  final _pointCache = <String, List<LatLng>>{};
+
+  /// The import concern: every import path collapses onto one helper
+  /// (store + roads + point-cache + summary choreography).
+  late final ImportCoordinator imports;
+
+  /// The recording concern: session lifecycle, staging, salvage, the
+  /// per-fix repaint channel and the battery advisory.
+  late final RecordingController recorder;
 
   /// The active road file, if any (user side-loaded; see
   /// `lib/road/road_format.dart`). Null means roads are not matched: the
@@ -128,6 +103,7 @@ class AppModel extends ChangeNotifier {
   RoadStore? get roadStore => _roadStore;
 
   /// Activates a side-loaded road file for matching (null deactivates).
+  ///
   /// Imports compute unlock state for new tracks while it is active.
   void setRoadFile(String? path) {
     // Release the previous file handle before swapping (the store reads
@@ -146,10 +122,10 @@ class AppModel extends ChangeNotifier {
   }
 
   /// Profile-mode development benchmark: measures the road pipeline against
-  /// the just-activated region file (TODO "profiling follow-ups") and prints
-  /// the report to the console. Guarded by [kProfileMode], so debug and
-  /// release builds never run it; the isolate keeps the region scan off the
-  /// UI thread, and the bench opens its own store.
+  /// the just-activated region file and prints the report to the console.
+  /// Guarded by [kProfileMode], so debug and release builds never run it;
+  /// the isolate keeps the region scan off the UI thread, and the bench
+  /// opens its own store.
   void _runRoadBench(String path) {
     unawaited(() async {
       try {
@@ -166,28 +142,12 @@ class AppModel extends ChangeNotifier {
 
   List<StoredTrack> get tracks => store.tracks;
 
-  bool _busy = false;
-  bool get busy => _busy;
-
-  /// Points of the tracks added by the most recent import operation, so the
-  /// map can refit its camera on what was just imported. [importEpoch] is
-  /// bumped on every change; readers compare it against the epoch they last
-  /// handled.
-  List<LatLng> lastImportedPoints = const [];
-  int importEpoch = 0;
-
-  void _noteImported(List<LatLng> out, ImportResult result) {
-    final data = result.data;
-    if (!result.imported || data == null || data.isEmpty) return;
-    out.addAll(data.points.map((p) => LatLng(p.lat, p.lon)));
-  }
-
   Future<void> load() async {
     await store.load();
     _restoreRoadFile();
     // After the road file (if any) is active, so a salvaged recording
     // matches its corridors in the same pass.
-    await _salvageRecordings();
+    await recorder.salvageRecordings();
     notifyListeners();
   }
 
@@ -210,57 +170,6 @@ class AppModel extends ChangeNotifier {
     }
     setRoadFile(null);
     store.clearRoadsFile();
-  }
-
-  /// Reads a picked file (or share-intent temp file) through the pipeline.
-  Future<void> importFromFile(String path, {String? name}) async {
-    final newPoints = <LatLng>[];
-    _busy = true;
-    notifyListeners();
-    try {
-      final f = File(path);
-      final result = store.importBytes(
-        f.readAsBytesSync(),
-        filename: name ?? path,
-      );
-      _noteImported(newPoints, result);
-      _matchRoads(result);
-      if (result.imported) _pointCache.remove(result.track!.id);
-      notifyListeners();
-    } finally {
-      _recordNewImports(newPoints);
-      _busy = false;
-      notifyListeners();
-    }
-  }
-
-  void _recordNewImports(List<LatLng> newPoints) {
-    if (newPoints.isEmpty) return;
-    lastImportedPoints = newPoints;
-    importEpoch++;
-  }
-
-  /// Computes road unlock state for a freshly imported track and persists
-  /// it on the catalog entry. No-op without an active road file — the
-  /// overlay stays circles-only and the index field stays absent. Matching
-  /// runs on the same cell-coalesced unlock centers the circles use, so
-  /// roads and circles always tell the same story.
-  void _matchRoads(ImportResult result) {
-    final matcher = _roadMatcher;
-    final data = result.data;
-    if (!result.imported || matcher == null || data == null) return;
-    _matchTrack(result.track!, data);
-  }
-
-  /// Computes and persists one track's unlock state under the active
-  /// matcher (the caller guarantees one is set).
-  void _matchTrack(StoredTrack track, TrackData data) {
-    final match = _roadMatcher!.match(
-      unlockCenters(data.points.map((p) => LatLng(p.lat, p.lon))),
-    );
-    if (match.corridors.isNotEmpty) {
-      store.saveUnlockedWays(track, match.corridors);
-    }
   }
 
   /// Opens the system file picker to choose a road region file (any file —
@@ -288,13 +197,11 @@ class AppModel extends ChangeNotifier {
       return RoadFileFailure.missing;
     }
     final storedPath = store.adoptRoadFile(pickedPath);
-    _busy = true;
     notifyListeners();
     try {
       setRoadFile(storedPath);
       await _rematchAllTracks();
     } finally {
-      _busy = false;
       notifyListeners();
     }
     return null;
@@ -332,149 +239,64 @@ class AppModel extends ChangeNotifier {
         }
         if (changed) store.saveUnlockedWays(t, merged);
       }
-      _pointCache.remove(t.id);
+      imports.invalidateCache(t.id);
       // Yield between tracks so a slow recompute repaints the busy
       // indicator instead of freezing the UI for the whole catalog.
       await Future<void>.delayed(Duration.zero);
     }
   }
 
-  /// Runs one candidate file through the unified pipeline, recording it in
-  /// [summary] and collecting its points for the camera refit.
-  void _importBytes(
-    List<int> bytes,
-    String name,
-    ImportSummary summary,
-    List<LatLng> newPoints,
-  ) {
-    final result = store.importBytes(bytes, filename: name);
-    _noteImported(newPoints, result);
-    _matchRoads(result);
-    summary.add(result);
-  }
+  // --- Import concern, delegated to [imports] -----------------------------
 
-  /// Recursively imports every supported track file below [directoryPath]
-  /// (platform-picker folder on desktop, where directories are real paths).
-  Future<ImportSummary> importFromDirectory(String directoryPath) async {
-    final summary = ImportSummary();
-    final newPoints = <LatLng>[];
-    final dir = Directory(directoryPath);
-    if (!dir.existsSync()) return summary;
-    await for (final entry in dir.list(recursive: true, followLinks: false)) {
-      if (entry is! File) continue;
-      final name = entry.uri.pathSegments.last;
-      final ext = name.toLowerCase().split('.').last;
-      if (!const {'gpx', 'fit', 'kmz', 'kml', 'tcx'}.contains(ext)) {
-        continue;
-      }
-      try {
-        _importBytes(entry.readAsBytesSync(), name, summary, newPoints);
-      } on Exception {
-        summary.failed++;
-      }
-    }
-    _pointCache.clear();
-    _recordNewImports(newPoints);
-    notifyListeners();
-    return summary;
-  }
+  bool get busy => imports.busy;
+  List<LatLng> get lastImportedPoints => imports.lastImportedPoints;
+  int get importEpoch => imports.importEpoch;
 
-  /// Opens the SAF folder picker and imports every supported file below the
-  /// chosen folder (Android), or opens the platform directory picker
-  /// (desktop, where the host channel is missing and picked folders are real
-  /// paths dart:io can walk). Returns null when the user cancelled.
-  Future<ImportSummary?> importViaDirectoryPicker() async {
-    final String? treeUri;
-    try {
-      treeUri = await hostChannel.invokeMethod<String>('pickDirectory');
-    } on MissingPluginException {
-      // Desktop run: no host-side implementation, fall through to
-      // file_picker's platform portal directory picker.
-      final dir = await FilePicker.getDirectoryPath();
-      if (dir == null) return null;
-      return importFromDirectory(dir);
-    }
-    if (treeUri == null) return null; // user cancelled
-    return _importSafTree(treeUri);
-  }
+  Future<void> importFromFile(String path, {String? name}) =>
+      imports.importFromFile(path, name: name);
 
-  /// Android SAF folder import. The system tree picker grants access to a
-  /// content:// tree URI — no storage permission can grant raw-path access
-  /// to it (scoped storage killed that on Android 13+, and USB-OTG providers
-  /// never had real paths). The host channel scans the tree and copies the
-  /// supported files into a staging directory; the unified pipeline consumes
-  /// those bytes and the staged copies are deleted again.
-  Future<ImportSummary> _importSafTree(String treeUri) async {
-    final summary = ImportSummary();
-    final newPoints = <LatLng>[];
-    _busy = true;
-    notifyListeners();
-    try {
-      final staged =
-          await hostChannel.invokeListMethod<Map<Object?, Object?>>(
-            'listTrackFiles',
-            treeUri,
-          ) ??
-          const <Map<Object?, Object?>>[];
-      for (final entry in staged) {
-        final path = entry['path'] as String?;
-        final name = entry['name'] as String?;
-        if (path == null || name == null) continue;
-        final file = File(path);
-        try {
-          _importBytes(file.readAsBytesSync(), name, summary, newPoints);
-        } on Exception {
-          summary.failed++;
-        } finally {
-          try {
-            file.deleteSync();
-          } on Exception {
-            // Staging lives in the app cache dir; a leftover is harmless.
-          }
-        }
-      }
-    } finally {
-      _pointCache.clear();
-      _recordNewImports(newPoints);
-      _busy = false;
-      notifyListeners();
-    }
-    return summary;
-  }
+  Future<ImportSummary> importFromDirectory(String directoryPath) =>
+      imports.importFromDirectory(directoryPath);
 
-  /// Opens the system file picker and imports the chosen files.
-  Future<ImportSummary> importViaFilePicker() async {
-    final summary = ImportSummary();
-    final newPoints = <LatLng>[];
-    final picked = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['gpx', 'fit', 'kmz', 'kml', 'tcx'],
-    );
-    for (final pf in picked) {
-      final path = pf.path;
-      if (path == null) continue;
-      try {
-        _importBytes(File(path).readAsBytesSync(), pf.name, summary, newPoints);
-      } on Exception {
-        summary.failed++;
-      }
-    }
-    _pointCache.clear();
-    _recordNewImports(newPoints);
-    notifyListeners();
-    return summary;
-  }
+  Future<ImportSummary?> importViaDirectoryPicker() =>
+      imports.importViaDirectoryPicker();
+
+  Future<ImportSummary> importViaFilePicker() => imports.importViaFilePicker();
+
+  // --- Recording concern, delegated to [recorder] --------------------------
+
+  RecordingSession? get recording => recorder.recording;
+  bool get isRecording => recorder.isRecording;
+  RecordingLiveState get recordingLive => recorder.recordingLive;
+  List<String> get salvagedRecordingNames => recorder.salvagedRecordingNames;
+  void notifyRecordingFix() => recorder.notifyRecordingFix();
+  Future<String?> startRecording(
+          {PositionSource? source, bool permissionGate = true}) =>
+      recorder.startRecording(source: source, permissionGate: permissionGate);
+  Future<void> stopRecording({String? name}) =>
+      recorder.stopRecording(name: name);
+  void pauseRecording() => recorder.pauseRecording();
+  void resumeRecording() => recorder.resumeRecording();
+  String recordingName(DateTime start) => recorder.recordingName(start);
+  Future<bool?> batteryOptimizationExcluded() =>
+      recorder.batteryOptimizationExcluded();
+  Future<bool?> requestPostNotifications() =>
+      recorder.requestPostNotifications();
+  Future<void> openBatteryOptimizationSettings() =>
+      recorder.openBatteryOptimizationSettings();
+
+  // --- Catalog -------------------------------------------------------------
 
   List<MapTrack> get visibleTracks {
     final out = <MapTrack>[];
     for (final t in store.tracks) {
       if (!t.visible) continue;
-      var pts = _pointCache[t.id];
+      var pts = imports.cachedPoints(t);
       if (pts == null) {
         final data = store.loadPoints(t);
         if (data == null) continue;
         pts = data.points.map((p) => LatLng(p.lat, p.lon)).toList();
-        _pointCache[t.id] = pts;
+        imports.rememberPoints(t, pts);
       }
       if (pts.isEmpty) continue;
       out.add(MapTrack(meta: t, points: pts));
@@ -498,14 +320,14 @@ class AppModel extends ChangeNotifier {
 
   Future<void> delete(StoredTrack t) async {
     await store.remove(t);
-    _pointCache.remove(t.id);
+    imports.invalidateCache(t.id);
     notifyListeners();
   }
 
   /// Deletes every stored track (files and catalog entries).
   Future<void> deleteAll() async {
     await store.clearAll();
-    _pointCache.clear();
+    imports.clearCache();
     notifyListeners();
   }
 
@@ -515,234 +337,7 @@ class AppModel extends ChangeNotifier {
       ? null
       : LatLng(store.lastPositionLat!, store.lastPositionLon!);
 
-  /// The live recording session, or null. The map's HUD chip reads this.
-  RecordingSession? _recording;
-  RecordingSession? get recording => _recording;
-
-  /// The file the live session stages its fixes into, or null.
-  File? _recordingFile;
-  bool get isRecording => _recording != null;
-
-  /// The per-fix repaint channel: the session's 1 Hz fixes notify only
-  /// this, so the live HUD, marker and trace rebuild without dragging the
-  /// whole model tree (fog overlay, toolbar) along.
-  final recordingLive = RecordingLiveState();
-
-  /// Repaints the UI for one delivered recording fix: the recording live
-  /// subtree rebuilds off the session's intake, whose 1 Hz fixes are the
-  /// tick it needs. Wraps the live notifier's notification so listeners
-  /// outside the model's own members stay legal.
-  void notifyRecordingFix() => recordingLive.notify();
-
-  /// Starts recording: the while-in-use permission is requested up front
-  /// (same flow as the locate attempt — a session is never started from
-  /// the background), the engine consumes the Android source, and fixes
-  /// stage into `<app root>/recording/<start timestamp>.gpx` as they
-  /// arrive. Returns the staged file's name, or null when the
-  /// user declined (or no host plugin answers — widget tests run here);
-  /// desktop runs never get here, the Record action stays hidden where
-  /// the platform has no location support. Spec rule: desktop recording
-  /// is backlog, Linux ships no location source at all.
-  Future<String?> startRecording(
-      {PositionSource? source, bool permissionGate = true}) async {
-    if (_recording != null) return null; // One at a time.
-    if (permissionGate) {
-      try {
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-        if (permission == LocationPermission.denied ||
-            permission == LocationPermission.deniedForever) {
-          return null;
-        }
-      } catch (_) {
-        // No host plugin (widget tests, a broken setup): the gate fails
-        // closed instead of half-starting a session nobody can feed.
-        return null;
-      }
-    }
-    final start = DateTime.now();
-    final recordingDir = Directory(
-        '${store.root.path}${Platform.pathSeparator}recording');
-    recordingDir.createSync(recursive: true);
-    final file = File(
-        '${recordingDir.path}${Platform.pathSeparator}'
-        '${start.millisecondsSinceEpoch}.gpx');
-    final sink = FileStageSink(file);
-    final session = RecordingSession(
-      stage: GpxStageWriter(sink, name: recordingName(start)),
-      // The dashboard's tick: every delivered fix, after the engine
-      // processed it, repaints the HUD and moves the follow-camera.
-      onFix: (_) => notifyRecordingFix(),
-    );
-    _recording = session;
-    _recordingFile = file;
-    session.start(source ?? const AndroidPositionSource());
-    notifyListeners();
-    return file.uri.pathSegments.last;
-  }
-
-  /// Stops recording: the finalized GPX goes through the unified import
-  /// pipeline like any other source (dedup, fog, road corridors all
-  /// behave identically for a recorded track), and the staged file is
-  /// deleted — the catalog owns the copy under `tracks/`. A killed
-  /// process never gets here: its un-finalized file stays behind, and
-  /// the startup salvage imports the partial track.
-  ///
-  /// [name], when supplied (the stop-with-name dialog), becomes the
-  /// track's GPX `<name>` — and so the catalog name — in place of the
-  /// staged header's start timestamp; it is written into the finalized
-  /// bytes before the import, so dedup, fog and road matching all see
-  /// the final bytes.
-  Future<void> stopRecording({String? name}) async {
-    final session = _recording;
-    final file = _recordingFile;
-    if (session == null || file == null) return;
-    _recording = null;
-    _recordingFile = null;
-    notifyListeners(); // The chip is gone while the import still runs.
-    await session.stop();
-    final bytes = await file.readAsBytes();
-    if (bytes.isNotEmpty) {
-      var gpx = utf8.decode(bytes);
-      if (name != null && name != session.stage.trackName) {
-        gpx = renameGpxTrack(gpx, name);
-      }
-      _importRecordingBytes(
-          utf8.encode(gpx), (name ?? session.stage.trackName));
-    }
-    // The staged file is spent; the catalog's copy is the one that stays.
-    if (file.existsSync()) file.deleteSync();
-  }
-
-  /// Pauses the live session: the current `<trkseg>` closes, the paused
-  /// stretch changes neither distance nor moving time, and the resume —
-  /// the next accepted fix — opens a new segment. No-op when no session
-  /// runs or none is paused.
-  void pauseRecording() {
-    final session = _recording;
-    if (session == null) return;
-    session.pause();
-    notifyListeners();
-  }
-
-  /// Resumes a paused session (see [pauseRecording]): the next accepted
-  /// fix opens a new `<trkseg>`. No-op when no session runs or none is
-  /// paused.
-  void resumeRecording() {
-    final session = _recording;
-    if (session == null || session.state != RecordingState.paused) return;
-    session.resume();
-    notifyListeners();
-  }
-
-  /// Un-finalized (or un-imported) recordings found and imported at
-  /// startup — the staged files of killed sessions. The UI announces
-  /// these once; the names are the catalog names the GPX carries, so
-  /// sentence-building stays with the strings.
-  final List<String> salvagedRecordingNames = [];
-
-  /// Imports every staged recording left over under `recording/`: a
-  /// kill between finalize and the catalog import leaves a complete
-  /// file, which imports as-is; a kill mid-session leaves one missing
-  /// the closers, which salvage repairs first; a kill before the first
-  /// flushed point leaves nothing usable, which is junk and is removed.
-  /// Unreadable files stay put — unknown bytes are not destroyed on a
-  /// guess, they surface again next start.
-  Future<void> _salvageRecordings() async {
-    final dir = Directory(
-        '${store.root.path}${Platform.pathSeparator}recording');
-    if (!dir.existsSync()) return;
-    for (final entry in dir.listSync()) {
-      if (entry is! File || !entry.path.endsWith('.gpx')) continue;
-      String text;
-      try {
-        text = await entry.readAsString();
-      } on Exception {
-        continue; // unreadable: leave it for a later run
-      }
-      final gpx = text.contains('</gpx>') ? text : salvageGpx(text);
-      if (gpx == null) {
-        // Nothing was ever staged (header only): junk, removed.
-        entry.deleteSync();
-        continue;
-      }
-      final result =
-          _importRecordingBytes(utf8.encode(gpx), entry.uri.pathSegments.last);
-      entry.deleteSync();
-      if (result.imported) {
-        salvagedRecordingNames.add(result.track!.name);
-        notifyListeners();
-      }
-    }
-  }
-
-  /// Imports finalized recording bytes (a deliberate stop, or a salvage)
-  /// through the unified pipeline: a recorded track is an ordinary
-  /// catalog track — dedup, fog and road corridors all apply — and the
-  /// point cache is invalidated so the overlay picks the points up.
-  ImportResult _importRecordingBytes(List<int> bytes, String filename) {
-    final result = store.importBytes(bytes, filename: filename);
-    if (result.imported) _pointCache.remove(result.track!.id);
-    _matchRoads(result);
-    notifyListeners();
-    return result;
-  }
-
-  /// Whether Android's battery manager exempts the app — the risk the
-  /// recording robustness note in Settings is about (OEM battery managers
-  /// kill foreground services regardless of the OS's own). Null when the
-  /// platform cannot say (no host plugin; desktop runs, tests).
-  Future<bool?> batteryOptimizationExcluded() async {
-    try {
-      return await hostChannel
-          .invokeMethod<bool>('batteryOptimizationExcluded');
-    } on MissingPluginException {
-      return null;
-    } on PlatformException {
-      return null;
-    }
-  }
-
-  /// The soft POST_NOTIFICATIONS ask (API 33+): one non-blocking dialog,
-  /// fired from the Record tap, whose grant result decides only whether
-  /// the recording foreground service's notification is shown — a
-  /// refusal leaves the session mute, never stopped. Null when the
-  /// platform cannot say (no host plugin; desktop runs, tests).
-  Future<bool?> requestPostNotifications() async {
-    try {
-      return await hostChannel.invokeMethod<bool>('requestPostNotifications');
-    } on MissingPluginException {
-      return null;
-    } on PlatformException {
-      return null;
-    }
-  }
-
-  /// Opens Android's battery-optimization settings screen: the advisory's
-  /// soft tap-through. Never an automated exemption request (the intent
-  /// Play flags; see the recording research report).
-  Future<void> openBatteryOptimizationSettings() async {    try {
-      await hostChannel.invokeMethod('openBatteryOptimizationSettings');
-    } on MissingPluginException {
-      // No host plugin: nothing to open.
-    } on PlatformException {
-      // The settings screen is unavailable: nothing to open.
-    }
-  }
-
-  /// A staged track's name inside the GPX, and the stop dialog's text
-  /// default: the current time's numerals (`recordingName(DateTime.now())`
-  /// at stop, the start at staging), so a recorded track reads by when it
-  /// was taken (locale-independent — model classes never build sentences).
-  String recordingName(DateTime start) =>
-      '${start.year.toString().padLeft(4, '0')}-'
-      '${start.month.toString().padLeft(2, '0')}-'
-      '${start.day.toString().padLeft(2, '0')} '
-      '${start.hour.toString().padLeft(2, '0')}:'
-      '${start.minute.toString().padLeft(2, '0')}';
-
+  // --- Settings ------------------------------------------------------------
 
   /// Exploration overlay tint key (see the tints in track_colors.dart),
   /// persisted in the index.
@@ -808,6 +403,8 @@ class AppModel extends ChangeNotifier {
     await store.saveLanguage(code);
     notifyListeners();
   }
+
+  // --- Locate --------------------------------------------------------------
 
   /// The device's current position, or null when it cannot be obtained
   /// (permission denied, location services off, or no plugin). Use
@@ -875,7 +472,7 @@ class AppModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    recordingLive.dispose();
+    recorder.recordingLive.dispose();
     super.dispose();
   }
 }

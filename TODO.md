@@ -1,14 +1,5 @@
 <!-- Open work lives here; completed items are deleted, not ticked. -->
 
-Technical debt — high priority (owner-approved 2026-11-14; findings above
-the rest of the backlog by intent):
-
-1. - [ ] Split lib/ui/app_model.dart (868 lines, 6 concerns): a recording
-   controller (start/stop-with-name/pause/salvage staging) and an import
-   coordinator (the three near-parallel import paths collapsed onto one
-   helper for the store+roads+cache+summary choreography), keeping
-   settings/locate on the model.
-
 Track list — catalog UX:
 
 1. - [ ] Per-track menu: a ⋮ button on each track tile opening a menu with
