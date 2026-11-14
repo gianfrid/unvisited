@@ -42,6 +42,22 @@ Track list — catalog UX:
 
 Bugs — high priority:
 
+1. - [ ] Course-up camera rotation is lagged and imprecise (owner report
+   after field use): the camera rides `RecordingSession.currentCourse`,
+   which at 1 Hz is mostly the per-fix bridged bearing — a short noisy
+   fix-to-fix window, re-spun for every wobble. First split the two
+   sources in the engine: expose whether the course is the device's own
+   reported heading or a bridged bearing (`currentHeading` vs
+   `currentCourse`), with unit tests both ways.
+2. - [ ] Gate the course-up camera rotation on the device-reported
+   heading — the magnetometer-backed signal — so a sensor-less or
+   bearing-only stream keeps the camera north-up with the marker still
+   rotating; and smooth what remains (apply the rotation only above a
+   course-delta threshold/hysteresis so per-fix jitter cannot spin the
+   camera). No new packages: a dedicated magnetometer plugin would be a
+   package decision beyond the established set — the gate rides the
+   heading the position fixes already report.
+
 Recording — live trace on the map:
 
 - [] backlog — map tilt / OsmAnd-style 3D view: excluded for now
