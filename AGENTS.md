@@ -25,16 +25,17 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md). This list c
 ## Task workflow
 
 - When asked to add an item to TODO.md, decompose it into units of work (each completable and committable independently) and append them as numbered checklist entries under the item.
-- Every non-trivial change — a TODO.md unit or not — goes through PLAN.md:
-  1. Create PLAN.md with concrete implementation steps for the change.
+- Every non-trivial change — a TODO.md unit or not — goes through a plan file at `docs/plans/<date>-<slug>.md`:
+  1. Write the plan file with concrete implementation steps. Its first line links the work: `Implements: TODO.md #<n>` for a TODO unit, `Implements: —` when there is no TODO entry.
   2. Show the plan and wait for explicit confirmation before touching code. Investigation (reading files, searching, read-only checks) needs no confirmation, and there is no pre-authorization: "keep working on TODO.md" does not skip this step.
-  3. On confirmation, implement, run tests, and commit with a message describing what was done. PLAN.md itself is part of that commit — the plan is committed with the change it implements, together with the removal of the completed TODO.md entry when it is one. PLAN.md is not truncated afterwards: it stays as committed until the next task overwrites it with the next plan, whose writing then again waits for confirmation (step 2).
+  3. On confirmation, implement, run tests, and commit with a message describing what was done. The plan file is part of that commit — committed with the change it implements, together with the removal of the completed TODO.md entry when it is one. Plan files are never edited after their commit; a revised plan is a new file, so `docs/plans/` accumulates one immutable record per task.
   4. After committing a TODO.md item, run `tool/build_release_apk.sh` and do not wait for it: the release APK build (`flutter build apk --release --split-per-abi --target-platform=android-arm64`) runs detached in the background and must never block the next prompt. The script enforces the window itself (at least 5 minutes between builds, from the previous build's end; a build in flight or inside the window skips, no queueing).
-- Commit messages are the permanent record; write them to stand alone — the plan they describe is only history until overwritten, never the working reference.
+- Trivial changes skip the plan: doc-only edits (README/ARCHITECTURE/SPEC/AGENTS and comments), typo fixes, and mechanical regeneration of committed artifacts with their own tool (`dart tool/make_fixtures.dart`, `dart tool/make_icons.dart`). Anything that changes behavior in `lib/`, `android/`, tests, or dependencies is non-trivial.
+- Commit messages are the permanent record; write them to stand alone — the plan in `docs/plans/` is provenance, never the working reference.
 
 ## Agent guidelines
 
-0. Plan before acting: every non-trivial change follows the Task workflow above — PLAN.md first, then explicit confirmation before editing or running any write action.
+0. Plan before acting: every non-trivial change follows the Task workflow above — a plan file in `docs/plans/` first, then explicit confirmation before editing or running any write action.
 1. Read [SPEC.md](SPEC.md) before starting any change; read [ARCHITECTURE.md](ARCHITECTURE.md) before structural or cross-component changes.
 2. Keep changes minimal and vertical: one slice, with its tests, per change.
 3. Always commit successful changes once a slice is verified (analyze clean, tests pass). Do not leave completed work sitting uncommitted; leave the working tree clean at the end of a task.
