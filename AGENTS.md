@@ -13,7 +13,7 @@ This is a meta-document for coding agents. The project knowledge lives in three 
 The rules that most often matter; full detail in [SPEC.md](SPEC.md). This list condenses SPEC.md — when the two disagree, SPEC.md wins; don't restate SPEC rules here verbatim.
 
 - Flutter app, Android first, with a desktop Linux target (`flutter run -d linux`) for development testing. It imports GPS tracks (OpenTracks, Garmin FIT, Strava) and plots them all on one OpenStreetMap-based map; Android additionally gains active track recording with a ride/walk dashboard (in delivery — geolocator's foreground service, staging GPX through the same unified pipeline; desktop has no location plugin, so recording is Android-only).
-- One unified import pipeline. Format detection is content-based (magic bytes / root element), never by extension. Priority: GPX, FIT, KMZ, TCX.
+- One unified import pipeline. Format detection is content-based (magic bytes / root element), never by extension. Priority: GPX, FIT, KMZ, TCX (plain KML alongside KMZ).
 - FIT: key off the File Id message (type 4 = activity, 32 = monitoring) — never filename or folder path. Skip monitoring files; tolerate truncated files and Smart Recording.
 - Data is local only. Never add network calls beyond fetching OSM tiles. JSON index by design — no database.
 - Byte-identical re-imports dedup by 64-bit FNV-1a content hash (id = hash); cross-format dedup rules live in SPEC.md.

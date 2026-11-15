@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <name>Afternoon ride</name>
+    <Placemark>
+      <name>Afternoon ride</name>
+      <gx:Track>
+        <when>2024-05-01T15:00:00.000Z</when>
+        <gx:coord>13.405 52.52 40</gx:coord>
+        <when>2024-05-01T15:02:00.000Z</when>
+        <gx:coord>13.406 52.521 42</gx:coord>
+        <when>2024-05-01T15:04:00.000Z</when>
+        <gx:coord>13.407 52.522 44</gx:coord>
+      </gx:Track>
+    </Placemark>
+  </Document>
+</kml>

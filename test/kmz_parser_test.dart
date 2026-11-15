@@ -81,5 +81,32 @@ void main() {
       expect(data.points.first.lon, closeTo(13.40, 1e-9));
       expect(data.points.first.lat, closeTo(52.52, 1e-9));
     });
+
+    test('accepts plain KML XML, rejects GPX and ZIP', () {
+      expect(kmlParser.accepts(fixture('afternoon_ride.kml')), isTrue);
+      expect(kmlParser.accepts(fixture('morning_walk.gpx')), isFalse);
+      expect(kmlParser.accepts(fixture('afternoon_ride.kmz')), isFalse);
+      expect(kmlParser.accepts(fixture('activity_ride.fit')), isFalse);
+    });
+
+    test('parses the plain KML fixture (lon-first, name from Document)', () {
+      final data = kmlParser.parse(fixture('afternoon_ride.kml'),
+          sourceFilename: 'afternoon_ride.kml');
+      expect(data.format, 'KML');
+      expect(data.name, 'Afternoon ride');
+      expect(data.points.length, 3);
+      expect(data.points.first.lat, closeTo(52.52, 1e-9));
+      expect(data.points.first.lon, closeTo(13.405, 1e-9));
+      expect(data.points.first.time, DateTime.parse('2024-05-01T15:00:00.000Z'));
+    });
+
+    test('throws on KML with no coordinates', () {
+      const empty = '<?xml version="1.0"?><kml><Document><name>x</name>'
+          '</Document></kml>';
+      expect(
+        () => kmlParser.parse(empty.codeUnits),
+        throwsA(isA<TrackParseException>()),
+      );
+    });
   });
 }

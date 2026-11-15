@@ -10,12 +10,14 @@ import 'helpers.dart';
 void main() {
   final importer = TrackImporter();
 
-  group('TrackImporter format detection (priority GPX > FIT > KMZ > TCX)', () {
+  group('TrackImporter format detection (priority GPX > FIT > KMZ > TCX > KML)',
+      () {
     test('knows each fixture format', () {
       expect(importer.detect(fixture('morning_walk.gpx'))?.format, 'GPX');
       expect(importer.detect(fixture('activity_ride.fit'))?.format, 'FIT');
       expect(importer.detect(fixture('afternoon_ride.kmz'))?.format, 'KMZ');
       expect(importer.detect(fixture('eiffel_ride.tcx'))?.format, 'TCX');
+      expect(importer.detect(fixture('afternoon_ride.kml'))?.format, 'KML');
     });
 
     test('content wins over misleading file extensions', () {
@@ -23,6 +25,10 @@ void main() {
       final fitBytes = fixture('activity_ride.fit');
       final data = importer.import(fitBytes, filename: 'export.gpx');
       expect(data.format, 'FIT');
+      // KML bytes arriving as .gpx
+      final kmlBytes = fixture('afternoon_ride.kml');
+      final kml = importer.import(kmlBytes, filename: 'export.gpx');
+      expect(kml.format, 'KML');
     });
 
     test('monitoring FIT files surface as skipped', () {
@@ -78,6 +84,21 @@ void main() {
       expect(r.track!.pointCount, 5);
       expect(Directory('${tmp.path}/tracks').existsSync(), isTrue);
       expect(File('${tmp.path}/index.json').existsSync(), isTrue);
+    });
+
+    test('plain KML imports through the store (regression: the wired parser '
+        'list used to omit KmlParser)', () async {
+      // The store's own importer — not the TrackImporter default — is what
+      // the app runs, so detect through it.
+      expect(store.importer.detect(fixture('afternoon_ride.kml'))?.format,
+          'KML');
+      final r = store.importBytes(fixture('afternoon_ride.kml'),
+          filename: 'afternoon_ride.kml');
+      expect(r.imported, isTrue);
+      expect(r.track!.format, 'KML');
+      expect(r.track!.name, 'Afternoon ride');
+      expect(r.track!.pointCount, 3);
+      expect(store.tracks.length, 1);
     });
 
     test('re-import of identical bytes is a dedup no-op', () {

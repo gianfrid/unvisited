@@ -295,6 +295,7 @@ class TrackStore {
               FitParser(),
               KmzParser(),
               TcxParser(),
+              KmlParser(KmzParser()),
             ]);
 
   /// Store root directory (e.g. the app's documents dir).

@@ -184,8 +184,8 @@ Uint8List monitoringFile() {
   return w.build();
 }
 
-// ---- OpenTracks-style KMZ (zipped KML with gx:Track) ----
-Uint8List opentracksKmz() {
+// ---- OpenTracks-style KML (gx:Track), also zipped as KMZ ----
+String opentracksKml() {
   final track = <double>[52.52, 13.405, 52.521, 13.406, 52.522, 13.407];
   final buffer = StringBuffer();
   buffer.writeln('<?xml version="1.0" encoding="UTF-8"?>');
@@ -208,9 +208,12 @@ Uint8List opentracksKmz() {
   buffer.writeln('    </Placemark>');
   buffer.writeln('  </Document>');
   buffer.writeln('</kml>');
+  return buffer.toString();
+}
 
+Uint8List opentracksKmz() {
+  final content = Uint8List.fromList(opentracksKml().codeUnits);
   final archive = Archive();
-  final content = Uint8List.fromList(buffer.toString().codeUnits);
   archive.add(ArchiveFile('doc.kml', content.length, content));
   archive.add(ArchiveFile('google-logo.png', 3, Uint8List.fromList([1, 2, 3])));
   return Uint8List.fromList(ZipEncoder().encode(archive));
@@ -525,6 +528,8 @@ void main() {
   _write('test/fixtures/truncated_ride.fit', truncatedRide());
   _write('test/fixtures/monitoring.fit', monitoringFile());
   _write('test/fixtures/afternoon_ride.kmz', opentracksKmz());
+  _write('test/fixtures/afternoon_ride.kml',
+      Uint8List.fromList(opentracksKml().codeUnits));
   _write('test/fixtures/town.osm.pbf', townOsmPbf());
   _write('test/fixtures/recorded_ride.gpx', recordedRideGpx());
   print('fixtures written');

@@ -1,50 +1,49 @@
-# Trim the *.md files: dedup, history, and code-verified corrections
+# Implement plain KML support in the app's import pipeline
 
-Approved by the user after a docs-vs-code audit (read-only child agent) plus a
-grilled design tree. Nothing is applied before this plan is confirmed.
+## Findings (read-only investigation)
+
+- `KmlParser` already exists (`lib/import/kmz_parser.dart:155`) and is in
+  `TrackImporter`'s *default* parser list — but the app never uses that
+  default: `TrackStore` (`lib/storage/track_store.dart:291-299`) wires an
+  explicit list `[GpxParser(), FitParser(), KmzParser(), TcxParser()]` with no
+  `KmlParser`, so plain KML is rejected as "unrecognized track format".
+- The file picker already allows `.kml` (`import_coordinator.dart:259`) and
+  the Android share-intent filter already accepts
+  `application/vnd.google-earth.kml+xml` (AndroidManifest.xml:52); the SAF
+  folder scan passes every file to the sniffer since the extension pre-filter
+  was removed. So the one-line wiring fix covers all three import paths.
+- Format priority stays GPX > FIT > KMZ > TCX > KML (KML sniffing is
+  `<kml` in the XML head; last position is safest and matches the default
+  list).
 
 ## Changes
 
-1. **SPEC.md**
-   - Scope item 6 (recording): strip the design narrative, keep a short scope
-     statement; the invariants stay in the "Hard rules → Recording" section and
-     the design lives in ARCHITECTURE.md.
-   - Conventions: remove the stale "~40 strings" count (the class declares 98).
-   - Format priority: drop the "plain KML is handled alongside KMZ" claim —
-     the wired parser list has no KML parser (code-verified contradiction).
+1. **Code**: `lib/storage/track_store.dart` — add `KmlParser(KmzParser())`
+   after `TcxParser()` in the wired parser list (import already present).
 
-2. **ARCHITECTURE.md**
-   - Recording section: replace the "slice 1–4" shipped-history bullets with
-     present-tense component descriptions (engine, Android session, dashboard,
-     robustness), per AGENTS.md rule that built history belongs in commits.
-   - Align the course-up rotation text with the code: rotation follows the
-     device-reported heading (compass substitute below 1 m/s), not a bridged
-     bearing (`recording_dashboard.dart:249-270`).
-   - Drop the never-implemented "chip's screen-lock icon" opt-out sentence —
-     the screen latch is controlled only by the Settings switch.
-   - Fix the caching misattribution: `tile_source.dart` holds only URL
-     templates; the caching provider is wired in `map_page.dart`.
-   - `kmz_parser.dart` bullet and the OpenTracks bullet: drop the plain-KML
-     claims (KMZ only).
+2. **Fixture**: `tool/make_fixtures.dart` — extract the OpenTracks KML text
+   into `opentracksKml()`, have `opentracksKmz()` zip it, and also write
+   `test/fixtures/afternoon_ride.kml`. Regenerate with
+   `dart tool/make_fixtures.dart`; if the KMZ fixture churns only in its zip
+   timestamp (known caveat), keep the committed KMZ byte-identical.
 
-3. **README.md**
-   - Drop the "How this project is documented" section (AGENTS.md owns the
-     doc map).
-   - Formats line: `KMZ/KML` → `KMZ`.
+3. **Tests**:
+   - `test/track_importer_test.dart` — detect the `.kml` fixture as KML;
+     content-wins-over-extension case (KML bytes named `.gpx`); update the
+     priority group title; add a TrackStore round-trip test importing
+     `afternoon_ride.kml` through `store.importBytes` (regression test for
+     the wiring bug).
+   - `test/kmz_parser_test.dart` — `KmlParser.accepts` accepts KML XML and
+     rejects GPX/ZIP; parse the new fixture (name, point count, lon/lat
+     order).
 
-4. **AGENTS.md**
-   - Quick reference: drop "cross-format dedup is future work" (implemented in
-     `track_store.dart:516-551`, specified in SPEC.md); point at SPEC.md
-     instead of restating the rule.
-   - Add an anti-drift note: when the quick reference and SPEC.md disagree,
-     SPEC.md wins.
-   - Priority list: drop "(plain KML alongside KMZ)".
-
-5. **PLAN.md / TODO.md / BACKLOG.md** — PLAN.md is this file (overwritten per
-   its lifecycle rule); TODO.md and BACKLOG.md untouched.
+4. **Docs** (re-add what the last cleanup removed, now true):
+   - README.md formats line: `KMZ` -> `KMZ/KML`.
+   - SPEC.md item 2 and the manual verification list: include KML.
+   - AGENTS.md priority line: `(plain KML alongside KMZ)`.
+   - ARCHITECTURE.md: kmz_parser bullet and the format-priority line.
 
 ## Verification
 
-- `flutter analyze` clean, `flutter test` passes (docs-only change, but run
-  both per repo rules).
-- Commit PLAN.md + the doc edits together.
+- `flutter analyze` clean, `flutter test` passes.
+- Commit PLAN.md + code + tests + fixture + docs in one commit.

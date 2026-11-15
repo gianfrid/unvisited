@@ -19,7 +19,7 @@ On desktop Linux the app runs identically (`flutter run -d linux`); only the pla
 - `track_parser.dart` — the `TrackParser` interface plus content-sniffing helpers. A parser declares a `format` label, an `accepts(bytes)` predicate used for content sniffing independent of file extensions, and a `parse(bytes)` method. Also defines `TrackParseException` (parse failure) and `UnsupportedTrackException` (expected skips, e.g. FIT monitoring files — not an error).
 - `track_importer.dart` (`TrackImporter`) — orchestrates detection and parsing; all sources flow through this one path.
 - `gpx_parser.dart`, `tcx_parser.dart` — XML-based formats via `package:xml`.
-- `kmz_parser.dart` — ZIP container via `package:archive`, then the KML coordinate path inside it.
+- `kmz_parser.dart` — ZIP container via `package:archive`, then the same KML coordinate path (plain KML is handled alongside KMZ via `KmlParser` — OpenTracks exports both).
 - `fit_parser.dart` — pure-Dart FIT decoder for the MVP: compressed timestamps, chained headers, developer fields, little/big endianness and truncation tolerance.
 
 ### Storage (`lib/storage/track_store.dart`)
@@ -88,7 +88,7 @@ SVG rasterization is delegated to an external renderer (resvg) rather than a Dar
 - **Garmin** (Instinct gen 1 and Instinct 3 test devices) — FIT files in `GARMIN/Activity/` (older firmware: `GARMIN/ACTIVITY/` — folder picking scans recursively, extensions are matched case-insensitively). On Android, USB-OTG + SAF DocumentsProvider can browse the watch storage directly.
 - **Strava** — GPX exports or the bulk archive (original FIT files).
 
-Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX.
+Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX, then plain KML.
 
 ## Data flow
 

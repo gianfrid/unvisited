@@ -5,7 +5,7 @@ The rules: scope, invariants, testing, conventions and acceptance criteria. How 
 ## Scope (MVP)
 
 1. Import tracks from local files via Storage Access Framework (SAF) folder access and share intents (Android) or file/folder pickers (desktop). No per-service integrations, no cloud, no backend, no accounts.
-2. Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX. All sources flow through one unified import pipeline.
+2. Format priority, in order: GPX first (universal), then FIT, then KMZ, then TCX (plain KML is handled alongside KMZ — OpenTracks exports both). All sources flow through one unified import pipeline.
 3. Persist imported tracks locally as files under an app-private storage root; catalog metadata lives in a JSON index (`index.json`) next to a `tracks/` directory. No database package.
 4. Show every imported track together on a single map using OpenStreetMap-based tiles, with a selectable base style in Settings: standard OSM raster (default) or CyclOSM. Both are ODbL data; attribution rides with the tiles (the standard notice, plus OpenStreetMap France for CyclOSM) and is shown on the map.
 5. The map shows an exploration overlay in fog-of-war style: every track point unlocks the area around it (15 m radius circles drawn translucently over the tiles, which stay a fully legible map), and a section of an OSM road/trail that runs close to unlocked points is matched and unlocked with it. Road matching is offline and decided (research: `docs/offline-road-matching-for-unvisited-research-report.md`): road data comes from a Geofabrik extract filtered to `highway=*` ways, preprocessed on the desktop into a flattened, spatially bucketed file (varint polylines + JSON sidecar) that the user side-loads into the app — nothing road-related is bundled or fetched at runtime. Matching is geometric (point-to-segment within the ~15 m unlock radius against the same cell coalescing the circles use), per-segment: only the sub-length of a way actually walked unlocks, a way is flagged complete at ≥90% matched length. Attribution is sticky (hybrid scoring, measured 2026-11-14): each unlock center's coverage is credited to one way — the previously matched way while any rival stays within a ~5 m switch margin of the nearest candidate, else the nearest way — so GPS wobble between parallel ways (400+ attribution hops across 24 real recordings) cannot let an un-ridden parallel way complete on wobble alone. No Overpass, no routing graph, no HMM. ODbL attribution is covered by the existing OSM notice.
@@ -70,7 +70,7 @@ The live tile-server checks (`test/tile_server_test.dart`) hit the real OSM/Cycl
 Desktop Linux (no phone needed):
 
 1. `flutter run -d linux`
-2. Import GPX/FIT/KMZ/TCX files via the Import button; verify they render on the map.
+2. Import GPX/FIT/KMZ/KML/TCX files via the Import button; verify they render on the map.
 3. Import a folder (e.g. one containing `GARMIN/Activity/`) via Import → A folder; verify recursive import of all supported files.
 4. Re-import the same file; verify no duplicate track appears (dedup by content hash).
 5. Restart the app; verify tracks and catalog persist under `$XDG_DATA_HOME/unvisited`.
