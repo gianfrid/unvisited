@@ -1,24 +1,24 @@
-# Fix faint swatches in the multitrack color selector
+# Bottom column order: new bars anchored at the bottom edge
 
-## Problem
-The selection bar's color popup (`lib/ui/map_actions.dart` SelectionBar)
-renders each swatch with the raw palette color from `explorationTints`
-(`lib/ui/track_colors.dart`), whose values are translucent overlay colors
-with alpha `0x33` (~20%). On the popup's solid surface this looks faint.
-
-Every other swatch site already converts to solid:
-- Settings TintSwatch: `color.withValues(alpha: 1)` (`settings_sheet.dart`)
-- Track list dot: `... .withValues(alpha: 1)` (`track_list.dart`)
+## Problem (user-tested)
+In `MapPage`'s bottom `Positioned(bottom: 0)` column the order is:
+SelectionBar -> RecordingDashboard -> RecordingSpeedReadout ->
+BottomActionStack. So while recording (or with an aggregate selected) the
+new bars stack *above* the record/locate action stack, pushing the speed
+readout toward mid-screen; the new bars are not at the bottom edge.
 
 ## Change
-1. In `map_actions.dart` (SelectionBar color menu item), render the swatch
-   icon with `entry.value.withValues(alpha: 1)`.
+In `lib/ui/map_page.dart` (~line 790 column children), move the
+`BottomActionStack` block to be the FIRST child of the column and let the
+selection bar / recording chip / speed readout follow it, so the new bars
+end at the bottom edge (bottom: 0). When idle (no selection, no session)
+only the action stack renders and it still sits at the bottom edge, since
+the column is `mainAxisSize: MainAxisSize.min` inside `bottom: 0`.
 
-The stored tint key and the map overlay rendering are untouched; only the
-popup preview becomes solid.
+No widget code changes; only child order in the one column.
 
 ## Verification
-- `flutter analyze` clean
-- `flutter test` passes (selection/popup widget tests unaffected)
-
-Plan confirmed by user (2025 col. conversation: "yes").
+- `flutter analyze` clean, `flutter test` passes
+- Manual/desktop check: record button bar stays bottom-left when idle;
+  while recording the chip + speed sit at the very bottom, action stack
+  above them.

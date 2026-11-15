@@ -204,7 +204,8 @@ void main() {
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
     expect(speedCard, findsOneWidget);
-    // The speed readout sits in the bottom column, above the action stack.
+    // The speed readout sits in the bottom column, below the action stack
+    // at the bottom edge.
     final mapRect = tester.getRect(find.byType(FlutterMap));
     final speedRect = tester.getRect(speedCard);
     final pauseRect = tester.getRect(find.byTooltip('Pause'));
@@ -214,9 +215,9 @@ void main() {
       reason: 'the speed readout sits in the bottom half of the map',
     );
     expect(
-      speedRect.bottom,
-      lessThanOrEqualTo(pauseRect.top),
-      reason: 'the speed readout sits above the action stack',
+      speedRect.top,
+      greaterThanOrEqualTo(pauseRect.bottom),
+      reason: 'the speed readout sits below the action stack',
     );
     expect(find.text('10.8 km/h'), findsOneWidget);
 
@@ -986,7 +987,11 @@ void main() {
       final stop = rectOf('Stop');
       final resume = rectOf('Resume');
       final locatePaused = rectOf('Center on current position');
-      expect(stop.top, greaterThan(mapRect.height * 0.5));
+      expect(
+        stop.top,
+        greaterThan(mapRect.height * 0.4),
+        reason: 'stop stays in the bottom-left stack, clear of the top bar',
+      );
       expect(
         resume.bottom,
         closeTo(locatePaused.top, 1.0),
@@ -1273,7 +1278,7 @@ void main() {
   });
 
   testWidgets(
-    'selection bar and recording chip stack in the bottom column, above the actions',
+    'selection bar and recording chip stack in the bottom column, below the actions',
     (tester) async {
       // Narrow phone surface: the bars must not overlap each other, the
       // action stack, or the top toolbar.
@@ -1305,7 +1310,7 @@ void main() {
       // Select the aggregate (a map tap is owned by the recording UI once
       // a session runs, so set the selection directly), then start a
       // session: both bars must show in the bottom half, stacked in the
-      // column without overlap, above the action stack.
+      // column without overlap, below the action stack at the bottom edge.
       model.selectedAnchor = model.aggregates.single.anchorId;
       model.notifyListeners();
       await tester.pump();
@@ -1327,13 +1332,20 @@ void main() {
         find.byTooltip('Center on current position'),
       );
       // All bars sit below the toolbar (at the bottom of the map), stacked
-      // in the column without overlap, with the action stack last.
+      // in the column without overlap, with the bars ending at the bottom
+      // edge below the action stack.
       for (final r in [selection, chip, speed]) {
         expect(r.top, greaterThan(toolbar.bottom));
       }
+      expect(selection.top, greaterThanOrEqualTo(locate.bottom));
       expect(chip.top, greaterThanOrEqualTo(selection.bottom));
       expect(speed.top, greaterThanOrEqualTo(chip.bottom));
-      expect(locate.top, greaterThanOrEqualTo(speed.bottom));
+      expect(
+        mapRect.bottom - speed.bottom,
+        closeTo(20.0, 1.0),
+        reason:
+            'the speed readout clears the bottom safe-area inset plus its own padding',
+      );
 
       // End the session without the dialog (its import never settles in
       // the fake-async zone).

@@ -775,12 +775,11 @@ class _MapPageState extends State<MapPage> {
               ),
             ),
           ),
-          // One non-overlapping vertical column at the bottom: the
-          // selection bar while an aggregate is selected, then the
-          // recording chip and headline speed while a session runs, then
-          // the action stack (locate / record / pause / stop) at the very
-          // bottom-left. One column, so none of them can overlap on narrow
-          // screens.
+          // One non-overlapping vertical column at the bottom: the action
+          // stack (locate / record / pause / stop) on top, then the selection
+          // bar while an aggregate is selected, then the recording chip and
+          // headline speed while a session runs, ending at the bottom edge.
+          // One column, so none of them can overlap on narrow screens.
           Positioned(
             left: 0,
             right: 0,
@@ -790,6 +789,26 @@ class _MapPageState extends State<MapPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // The action stack (locate / record / pause / stop) at the
+                  // top of the bottom column (see `BottomActionStack`; its
+                  // record slot only shows once a real fix has arrived), so
+                  // the bars below it end at the bottom edge of the map.
+                  if (widget.locationSupported)
+                    SizedBox(
+                      width: double.infinity,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: BottomActionStack(
+                            model: widget.model,
+                            locating: _locating,
+                            gpsWorking: _gpsWorking,
+                            onLocate: _locate,
+                          ),
+                        ),
+                      ),
+                    ),
                   // The aggregate selection's actions pill: hide, color,
                   // fit, dismiss — a temporary state at the bottom of the
                   // map, above the recording chip and the action stack.
@@ -822,25 +841,6 @@ class _MapPageState extends State<MapPage> {
                   // The dashboard's primary readout: the live speed, just
                   // under the chip while a session runs.
                   RecordingSpeedReadout(model: widget.model),
-                  // The action stack at the very bottom-left of the column
-                  // (see `BottomActionStack`; its record slot only shows
-                  // once a real fix has arrived).
-                  if (widget.locationSupported)
-                    SizedBox(
-                      width: double.infinity,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 12),
-                          child: BottomActionStack(
-                            model: widget.model,
-                            locating: _locating,
-                            gpsWorking: _gpsWorking,
-                            onLocate: _locate,
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
