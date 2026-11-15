@@ -15,7 +15,8 @@
    2. Unit test: after `stop`, delivered fixes are no longer processed.
    3. Manual verification on Android: the "Recording" notification is gone after Stop and after Discard.
 
-4. Automatic release-APK build on task completion — a script that runs `flutter build apk --release --split-per-abi --target-platform=android-arm64` in the background when a task is completed, blocks a new prompt until the build finishes, and enforces at least 5 minutes between builds.
-   1. Write the script (e.g. `tool/build_release_apk.sh`): no-op when a build finished less than 5 minutes ago (timestamp file), otherwise launch the build in the background with a lock file so concurrent invocations don't overlap.
-   2. Define the "block a new prompt" mechanism (the agent waits on the lock/background process before ending a task) and wire it into the task workflow.
-   3. Verify: two consecutive task completions within 5 minutes trigger only one build; a build older than 5 minutes triggers a new one.
+4. Automatic release-APK build on TODO-item completion — a script that runs `flutter build apk --release --split-per-abi --target-platform=android-arm64` when a TODO.md item is completed; the agent runs it synchronously and blocks the turn until the build finishes (no new prompt mid-build). At least 5 minutes between builds, measured from the previous build's end; a completion inside the window skips (no queueing).
+   1. Write the script (e.g. `tool/build_release_apk.sh`): a timestamp file records the last build's end; inside the 5-minute window it exits without building, otherwise it runs the build synchronously and updates the timestamp on completion.
+   2. Wire it into the task workflow: after committing a TODO.md item, run the script and wait for it before ending the task.
+   3. On build failure: log to a file, no retry loop — the next TODO-item completion after the window tries again.
+   4. Verify: two TODO-item completions inside 5 minutes trigger only one build; a completion after the window triggers a new one.
