@@ -690,6 +690,12 @@ void main() {
       // Course-up: the east-heading fixes rotate the camera 90, and the
       // marker's own rotation nets to 0 — the nose points up on screen.
       expect(camera().rotation, closeTo(90.0, 1.0));
+      // The marker keeps a solid backdrop disc so it stays visible over
+      // the live trace.
+      expect(
+        find.byKey(const ValueKey('recording-marker-disc')),
+        findsOneWidget,
+      );
       expect(markerAngle(), closeTo(0.0, 0.05));
 
       // A user pan releases the follow — and the rotation with it: the next

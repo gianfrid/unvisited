@@ -325,11 +325,24 @@ class _MapPageState extends State<MapPage> {
                         _mapController.camera.rotation) *
                     math.pi /
                     180,
-                child: Icon(
-                  Icons.navigation,
-                  size: 32,
-                  color: Theme.of(context).colorScheme.primary,
-                  shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
+                child: Container(
+                  key: const ValueKey('recording-marker-disc'),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Theme.of(context).colorScheme.surface,
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(blurRadius: 4, color: Colors.black38),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.navigation,
+                    size: 32,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
               ),
             ),
