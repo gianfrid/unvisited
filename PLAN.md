@@ -1,39 +1,50 @@
-# Code review findings — fix all six TODO.md items
+# Trim the *.md files: dedup, history, and code-verified corrections
 
-Six small, independent fixes from the 2026-12-19 full-codebase review.
+Approved by the user after a docs-vs-code audit (read-only child agent) plus a
+grilled design tree. Nothing is applied before this plan is confirmed.
 
 ## Changes
 
-1. **`lib/l10n/app_strings.dart`** — remove the duplicate `@override` line on
-   `fitTooltip` and `statAvgSpeed` in both `EnglishStrings` and `ItalianStrings`
-   (4 spots total).
+1. **SPEC.md**
+   - Scope item 6 (recording): strip the design narrative, keep a short scope
+     statement; the invariants stay in the "Hard rules → Recording" section and
+     the design lives in ARCHITECTURE.md.
+   - Conventions: remove the stale "~40 strings" count (the class declares 98).
+   - Format priority: drop the "plain KML is handled alongside KMZ" claim —
+     the wired parser list has no KML parser (code-verified contradiction).
 
-2. **`lib/ui/stats_panel.dart`** — remove the duplicated first doc-comment line.
+2. **ARCHITECTURE.md**
+   - Recording section: replace the "slice 1–4" shipped-history bullets with
+     present-tense component descriptions (engine, Android session, dashboard,
+     robustness), per AGENTS.md rule that built history belongs in commits.
+   - Align the course-up rotation text with the code: rotation follows the
+     device-reported heading (compass substitute below 1 m/s), not a bridged
+     bearing (`recording_dashboard.dart:249-270`).
+   - Drop the never-implemented "chip's screen-lock icon" opt-out sentence —
+     the screen latch is controlled only by the Settings switch.
+   - Fix the caching misattribution: `tile_source.dart` holds only URL
+     templates; the caching provider is wired in `map_page.dart`.
+   - `kmz_parser.dart` bullet and the OpenTracks bullet: drop the plain-KML
+     claims (KMZ only).
 
-3. **`SPEC.md` + `AGENTS.md`** — add `flutter_compass` to the established
-   package set (it is already a shipped dependency used by the recording
-   dashboard's compass heading; documenting it is less destructive than
-   ripping out a working feature).
+3. **README.md**
+   - Drop the "How this project is documented" section (AGENTS.md owns the
+     doc map).
+   - Formats line: `KMZ/KML` → `KMZ`.
 
-4. **`lib/ui/import_coordinator.dart` + `android/.../MainActivity.kt`** —
-   remove the extension-based pre-filter in folder scans so every file
-   reaches the content-sniffing pipeline. In `importFromDirectory` drop the
-   `ext` check entirely; in `scanSafTree` copy every regular file (the
-   staging copy is the only cost) and let Dart's sniffer decide.
+4. **AGENTS.md**
+   - Quick reference: drop "cross-format dedup is future work" (implemented in
+     `track_store.dart:516-551`, specified in SPEC.md); point at SPEC.md
+     instead of restating the rule.
+   - Add an anti-drift note: when the quick reference and SPEC.md disagree,
+     SPEC.md wins.
+   - Priority list: drop "(plain KML alongside KMZ)".
 
-5. **`lib/recording/recording_session.dart`** — add `FixDisposition.ignored`
-   and return it from `processFix` when the session is not recording
-   (paused/stopped), matching the doc comment's "neither accepted nor
-   rejected".
-
-6. **`AGENTS.md`** — add `geolocator` to the quick-reference package list.
-
-## Tests
-- `flutter analyze` clean, `flutter test` passes (307+).
-- Item 4: existing importer tests already cover content sniffing; the
-  folder-scan path is exercised by `import_coordinator_test.dart`.
-- Item 5: `recording_session_test.dart` may assert on `FixDisposition` —
-  update if it references the paused case.
+5. **PLAN.md / TODO.md / BACKLOG.md** — PLAN.md is this file (overwritten per
+   its lifecycle rule); TODO.md and BACKLOG.md untouched.
 
 ## Verification
-analyze clean, all tests pass; commit PLAN.md + changes + TODO.md removal.
+
+- `flutter analyze` clean, `flutter test` passes (docs-only change, but run
+  both per repo rules).
+- Commit PLAN.md + the doc edits together.

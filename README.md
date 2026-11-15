@@ -2,17 +2,11 @@
 
 A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog. The map stays north-up by default (dynamic rotation is backlog; Settings can opt into course-up while recording).
 
-Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
+Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
 
 The map's base style is selectable in Settings → Map layer: the standard OSM raster or **CyclOSM** (a cycle-focused style from OpenStreetMap France, same ODbL data).
 
 The interface is available in **English** and **Italian**. By default it follows the system language (falling back to English for anything else); Settings → Language switches it, and the choice is remembered.
-
-How this project is documented:
-
-- [README.md](README.md) — what the app is and how to run it (this file)
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system overview, components, data flow, tech choices
-- [SPEC.md](SPEC.md) — scope, hard rules and invariants, testing, conventions
 
 ## Project layout
 
