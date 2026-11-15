@@ -707,7 +707,9 @@ void main() {
         const Offset(0, 80),
       );
       final panned = camera().center;
-      fakeFix(source, 16, lat: 52.5202, heading: 180);
+      // Continue forward from the last fix (a backward jump would be
+      // rejected by the speed-outlier filter).
+      fakeFix(source, 16, lat: 52.5216 + 1e-4, heading: 180);
       await tester.pump();
 
       expect(
@@ -760,17 +762,21 @@ void main() {
       expect(camera().rotation, closeTo(90.0, 1.0));
 
       // Slow fix with a different heading: the camera holds its rotation
-      // (no standstill spin) but still centers on the fix.
-      fakeFix(source, 16, lat: 52.5202, heading: 180, speed: 0.2);
+      // (no standstill spin) but still centers on the fix. The fix moves
+      // only ~5.5 m from the last one — a backward jump would be rejected
+      // by the speed-outlier filter.
+      fakeFix(source, 16, lat: 52.5216 + 0.00005, heading: 180, speed: 0.2);
       await tester.pump();
       expect(camera().rotation, closeTo(90.0, 1.0));
       // The camera centers behind the fix along the course (south), so
       // the center sits north of the fix.
-      expect(camera().center.latitude, greaterThan(52.5202));
+      expect(camera().center.latitude, greaterThan(52.5216 + 0.00005));
 
-      // Moving again: the rotation eases over to the new course.
+      // Moving again: the rotation eases over to the new course. Continue
+      // forward from the last accepted fix (i=16 at 52.5216 + 0.00005).
       for (var i = 17; i < 32; i++) {
-        fakeFix(source, i, lat: 52.5202 + i * 1e-4, heading: 180, speed: 3.0);
+        fakeFix(source, i, lat: 52.5216 + 0.00005 + (i - 16) * 1e-4,
+            heading: 180, speed: 3.0);
       }
       await tester.pump();
       expect(camera().rotation, closeTo(180.0, 1.0));

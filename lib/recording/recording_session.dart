@@ -19,7 +19,13 @@ import 'staging_gpx.dart';
 enum RecordingState { idle, recording, paused, stopped }
 
 /// What the session did with the last fix handed to it.
-enum FixDisposition { accepted, rejectedAccuracy, rejectedStale, ignored }
+enum FixDisposition {
+  accepted,
+  rejectedAccuracy,
+  rejectedStale,
+  rejectedSpeed,
+  ignored,
+}
 
 /// Consumes fixes from a [PositionSource] into a [GpxStageWriter] while
 /// tracking the dashboard's statistics.
@@ -36,6 +42,13 @@ enum FixDisposition { accepted, rejectedAccuracy, rejectedStale, ignored }
 /// - **fix loss**: a gap of more than [segmentGap] between consecutive
 ///   accepted fixes closes the `<trkseg>` — unrecorded time must not join
 ///   two far-apart points with a straight line.
+/// - **speed outliers**: within a continuous segment, a fix whose implied
+///   displacement speed is beyond [maxSpeedMps], or — once [speedWindow]
+///   step speeds are on record — above the Hampel-style threshold
+///   `max(median + speedMadK·1.4826·MAD, minSpeedThresholdMps)` of that
+///   window (median/MAD, not mean/σ: the outlier must not move its own
+///   yardstick), is dropped as an outlier. The floor keeps a standstill
+///   (median = MAD = 0) from rejecting a legitimate start.
 /// A **pause** closes the segment too; a **resume** opens a new one.
 ///
 /// Statistics measure only what was recorded: distance is the haversine
@@ -49,6 +62,10 @@ class RecordingSession {
     this.maxAccuracy = 50,
     this.segmentGap = const Duration(seconds: 30),
     this.movingSpeed = 0.5,
+    this.speedWindow = 9,
+    this.speedMadK = 3.0,
+    this.maxSpeedMps = 45,
+    this.minSpeedThresholdMps = 12,
   });
 
   final GpxStageWriter stage;
@@ -67,6 +84,26 @@ class RecordingSession {
   /// Displacement speed above which time between fixes counts as moving,
   /// in m/s.
   final double movingSpeed;
+
+  /// Ring buffer of recent implied step speeds, in m/s; also the minimum
+  /// sample count before the MAD test applies.
+  final int speedWindow;
+
+  /// Hampel multiplier: a step speed above `median + speedMadK·1.4826·MAD`
+  /// of the window is an outlier.
+  final double speedMadK;
+
+  /// Absolute implied-speed cap in m/s — the backstop for cold starts and
+  /// teleports, where the window is empty or polluted.
+  final double maxSpeedMps;
+
+  /// Floor for the MAD threshold in m/s, so a standstill window (median =
+  /// MAD = 0) does not reject the first real movement.
+  final double minSpeedThresholdMps;
+
+  /// Recent accepted implied step speeds (oldest first), capped at
+  /// [speedWindow]. Segment breaks and resumes do not feed it.
+  final List<double> _recentSpeeds = [];
 
   RecordingState state = RecordingState.idle;
 
@@ -209,6 +246,19 @@ class RecordingSession {
     // A pause arms a fresh segment: the gap bridging a resume spans
     // parked time and counts nowhere, whatever its length.
     final resumedAfterPause = !first && _segmentOpen;
+    // Speed-outlier filter, inside a continuous segment only — across a
+    // segment break or resume the gap spans unrecorded time and the
+    // implied speed is meaningless.
+    double? impliedSpeed;
+    if (!first && !brokeSegment && !resumedAfterPause && gap.inMilliseconds > 0) {
+      final step = haversineMeters(_lastLat!, _lastLon!, fix.lat, fix.lon);
+      impliedSpeed = step / (gap.inMilliseconds / 1000);
+      if (impliedSpeed > maxSpeedMps) return FixDisposition.rejectedSpeed;
+      if (_recentSpeeds.length >= speedWindow &&
+          impliedSpeed > _speedOutlierThreshold()) {
+        return FixDisposition.rejectedSpeed;
+      }
+    }
     if (brokeSegment) stage.breakSegment();
     if (_segmentOpen || brokeSegment) {
       _liveSegments.add([]);
@@ -222,6 +272,10 @@ class RecordingSession {
     if (!first) {
       final step = haversineMeters(_lastLat!, _lastLon!, fix.lat, fix.lon);
       _distance += step;
+      if (impliedSpeed != null) {
+        _recentSpeeds.add(impliedSpeed);
+        if (_recentSpeeds.length > speedWindow) _recentSpeeds.removeAt(0);
+      }
       final fused = (fix.speed != null && fix.speed! >= 0)
           ? fix.speed!
           : gap.inMilliseconds == 0
@@ -248,6 +302,25 @@ class RecordingSession {
     _currentEle = fix.ele;
     _points++;
     return FixDisposition.accepted;
+  }
+
+  /// Hampel-style outlier threshold over [_recentSpeeds]: the window median
+  /// plus [speedMadK] scaled MADs, floored at [minSpeedThresholdMps].
+  /// The median and MAD (not mean/σ) keep a single outlier from inflating
+  /// its own threshold.
+  double _speedOutlierThreshold() {
+    final median = _median(_recentSpeeds);
+    final mad = _median(_recentSpeeds.map((s) => (s - median).abs()).toList());
+    final threshold = median + speedMadK * 1.4826 * mad;
+    return threshold < minSpeedThresholdMps ? minSpeedThresholdMps : threshold;
+  }
+
+  static double _median(List<double> values) {
+    final sorted = [...values]..sort();
+    final mid = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[mid]
+        : (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
   void _onFix(PositionFix fix) {

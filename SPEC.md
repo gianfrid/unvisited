@@ -41,7 +41,7 @@ Out of scope: route planning, turn-by-turn navigation, per-service integrations,
 - A recording session is state, not a second storage path: its points stream into a staging GPX under the app root and finalize through the unified pipeline on stop (content-hash dedup and unlock matching apply unchanged). Never add a parallel catalog or a second track format.
 - The session logic (`RecordingSession`, filters, GPX writer, stats) is pure Dart behind a `PositionSource` interface — no Flutter imports, unit-testable against synthetic position streams, Android-swappable like the parsers.
 - Recording only ever starts in the foreground (Record action). Never request `ACCESS_BACKGROUND_LOCATION`; never start the location service from the background.
-- Accept filters and staging semantics are part of the contract: fixes worse than the accuracy threshold (~50 m) are dropped, flush cadence keeps the loss window bounded, pause/fix-loss resume as new `<trkseg>` breaks with one track per session.
+- Accept filters and staging semantics are part of the contract: fixes worse than the accuracy threshold (~50 m) are dropped, fixes whose implied displacement speed is an outlier (absolute cap, or above the recent speed window's median + k·MAD Hampel threshold) are dropped, flush cadence keeps the loss window bounded, pause/fix-loss resume as new `<trkseg>` breaks with one track per session.
 
 ## Testing strategy
 

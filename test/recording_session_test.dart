@@ -113,6 +113,50 @@ void main() {
     expect(session.pointCount, 2);
   });
 
+  test('a single speed spike is rejected as an outlier and not recorded', () {
+    final session = newSession('Spike')..start(FakeSource());
+    // Ride at ~22.2 m/s (0.0002 deg lat per 1 s fix) until the window fills,
+    // so the MAD threshold (median ~22.2 m/s), not the 12 m/s floor, binds.
+    var lat = 52.5200;
+    for (var s = 0; s <= 9; s++) {
+      expect(session.processFix(fix(s, lat: lat)), FixDisposition.accepted);
+      lat += 0.0002;
+    }
+    final distanceBefore = session.distanceMeters;
+    // The outlier: a 0.0036 deg jump (~40 m) in 1 s = ~40 m/s, far beyond
+    // the window's median + 3·1.4826·MAD (~22.2 m/s).
+    expect(session.processFix(fix(10, lat: lat + 0.0036)),
+        FixDisposition.rejectedSpeed);
+    expect(session.pointCount, 10, reason: 'the outlier is not staged');
+    expect(session.distanceMeters, distanceBefore,
+        reason: 'the outlier adds no distance');
+    // The window is not polluted by the rejected speed: the next normal
+    // fix is still accepted.
+    expect(session.processFix(fix(11, lat: lat + 0.00003)),
+        FixDisposition.accepted);
+  });
+
+  test('the absolute cap rejects a teleport even with an empty window', () {
+    final session = newSession('Teleport')..start(FakeSource());
+    session.processFix(fix(0));
+    // ~5.5 km in 1 s, way past maxSpeedMps (45 m/s), window still empty.
+    expect(session.processFix(fix(1, lat: 52.57)), FixDisposition.rejectedSpeed);
+    expect(session.pointCount, 1);
+  });
+
+  test('the threshold floor keeps a standstill start from eating real '
+      'movement', () {
+    final session = newSession('Standstill')..start(FakeSource());
+    // Ten stationary fixes fill the window with zeros (median = MAD = 0).
+    for (var s = 0; s <= 9; s++) {
+      session.processFix(fix(s, lat: 52.5200));
+    }
+    // 11.1 m in 1 s = 11.1 m/s: above the zero window's median+MAD, but
+    // below the 12 m/s floor, so a real start is accepted.
+    expect(session.processFix(fix(10, lat: 52.5201)), FixDisposition.accepted);
+    expect(session.pointCount, 11);
+  });
+
   test('jitter between close fixes accumulates as real distance', () {
     final session = newSession('Jitter')..start(FakeSource());
     // 0.0001 deg of latitude ~ 11.1 m in 1 s steps, i.e. ~11.1 m/s — the
