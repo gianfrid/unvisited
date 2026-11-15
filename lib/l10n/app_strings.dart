@@ -388,7 +388,7 @@ class EnglishStrings extends AppStrings {
   @override
   String get zoomSliderSubtitle => 'Screen edge the zoom slider sits on';
   @override
-  String get mapLayer => 'Map layer';
+  String get mapLayer => 'Map type';
   @override
   String get mapLayerSubtitle => 'Tiles of the base map';
   @override
@@ -676,7 +676,7 @@ class ItalianStrings extends AppStrings {
   @override
   String get zoomSliderSubtitle => 'Lato dello schermo su cui si trova';
   @override
-  String get mapLayer => 'Livello mappa';
+  String get mapLayer => 'Tipo mappa';
   @override
   String get mapLayerSubtitle => 'Tile della mappa base';
   @override
