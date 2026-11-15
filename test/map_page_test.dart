@@ -25,6 +25,7 @@ import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/fog_of_war.dart';
 import 'package:unvisited/ui/map_actions.dart';
 import 'package:unvisited/ui/map_page.dart';
+import 'package:unvisited/ui/recording_dashboard.dart';
 import 'package:unvisited/ui/track_colors.dart';
 
 import 'helpers.dart';
@@ -340,59 +341,60 @@ void main() {
     expect(model.recording, isNull);
   });
 
-  testWidgets('stop offers Discard behind a confirmation; declined keeps recording', (
-    tester,
-  ) async {
-    final root = createRoot();
-    final cache = createCache();
-    final model = await createModel(root);
-    final source = FakePositionSource();
+  testWidgets(
+    'stop offers Discard behind a confirmation; declined keeps recording',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
 
-    await pumpMapPage(
-      tester,
-      model: model,
-      cache: cache,
-      locationSupported: true,
-    );
-    await tester.pump();
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
 
-    await model.startRecording(source: source, permissionGate: false);
-    fakeFix(source, 0);
-    fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
-    await tester.pump();
-    await tester.tap(find.byTooltip('Pause'));
-    await tester.pump();
-    await tester.tap(find.byTooltip('Stop'));
-    await tester.pump();
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
+      await tester.pump();
+      await tester.tap(find.byTooltip('Pause'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Stop'));
+      await tester.pump();
 
-    // The stop dialog offers Save and a red Discard. Discard opens the
-    // confirmation rather than acting on its own — it destroys the whole
-    // staged track, an irreversible act.
-    expect(find.byKey(const ValueKey('stop-discard')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('stop-discard')));
-    await tester.pump();
+      // The stop dialog offers Save and a red Discard. Discard opens the
+      // confirmation rather than acting on its own — it destroys the whole
+      // staged track, an irreversible act.
+      expect(find.byKey(const ValueKey('stop-discard')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('stop-discard')));
+      await tester.pump();
 
-    // The confirm dialog: a declined Discard keeps the session recording.
-    expect(find.text('Discard this recording?'), findsOneWidget);
-    await tester.tap(find.text('Cancel'));
-    await tester.pump();
-    expect(model.recording, isNotNull);
-    expect(find.byType(AlertDialog), findsNothing);
+      // The confirm dialog: a declined Discard keeps the session recording.
+      expect(find.text('Discard this recording?'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pump();
+      expect(model.recording, isNotNull);
+      expect(find.byType(AlertDialog), findsNothing);
 
-    // The second attempt discards: the session ends, no track appears.
-    // (The staged-file deletion settles behind a real-file read that
-    // FakeAsync's zone never drains — see the stop test above; the model
-    // test asserts the file is gone and salvage finds nothing.)
-    await tester.tap(find.byTooltip('Stop'));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('stop-discard')));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('stop-discard-confirm')));
-    await tester.pump();
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(model.recording, isNull);
-    expect(model.tracks, isEmpty);
-  });
+      // The second attempt discards: the session ends, no track appears.
+      // (The staged-file deletion settles behind a real-file read that
+      // FakeAsync's zone never drains — see the stop test above; the model
+      // test asserts the file is gone and salvage finds nothing.)
+      await tester.tap(find.byTooltip('Stop'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('stop-discard')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('stop-discard-confirm')));
+      await tester.pump();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(model.recording, isNull);
+      expect(model.tracks, isEmpty);
+    },
+  );
 
   testWidgets('a salvaged staged recording announces itself at startup', (
     tester,

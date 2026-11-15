@@ -7,16 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../host_channel.dart';
 import '../l10n/app_strings.dart';
 import '../recording/recording_session.dart';
 import '../tile_source.dart';
 import 'app_model.dart';
 import 'fog_of_war.dart';
-import 'format.dart';
 import 'map_actions.dart';
+import 'recording_dashboard.dart';
 import 'settings_sheet.dart';
-import 'stats_panel.dart';
 import 'track_colors.dart';
 import 'track_list.dart';
 import 'zoom_slider.dart';
@@ -46,13 +44,6 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-/// The angle equivalent to [course] (mod 360) closest to [reference] —
-/// the camera rotation the course is applied against — so a course
-/// crossing the 0/360 boundary rotates through the short arc, never the
-/// long way around.
-double nearestEquivalentRotation(double course, double reference) =>
-    course + 360 * ((reference - course) / 360).roundToDouble();
-
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   StreamSubscription<MapEvent>? _mapEvents;
@@ -65,11 +56,6 @@ class _MapPageState extends State<MapPage> {
   /// Zoom the locate action settles on: close enough to see the streets
   /// around the user, far enough to keep their bearings.
   static const _locateZoom = 16.0;
-
-  /// Hysteresis for the course-up camera rotation: only rotate the
-  /// camera when the course delta vs its current rotation reaches this
-  /// many degrees; below, leave the rotation untouched.
-  static const double courseDeltaThreshold = 1.0;
 
   @override
   void initState() {
@@ -90,9 +76,6 @@ class _MapPageState extends State<MapPage> {
       );
     }
     widget.model.addListener(_onModelChanged);
-    // The 1 Hz per-fix channel: only the live subtrees below listen to
-    // it — the fog overlay and toolbar rebuild on model changes only.
-    widget.model.recordingLive.addListener(_onRecordingFix);
     // Cross a zoom level: the fog coarseness is keyed to the zoom, so the
     // overlay must be rebuilt when the view moves between zoom levels
     // (the cell grid doubles per band — see fogCellSizeFor).
@@ -101,14 +84,7 @@ class _MapPageState extends State<MapPage> {
         zoom: event.camera.zoom,
         latitude: event.camera.center.latitude,
       );
-      // The follow-camera releases on any gesture move — including the
-      // fling/double-tap-zoom animations that report through their own
-      // sources after the gesture ends.
       var dirty = cell != _fogCellSize;
-      if (_followRecording && !_programmaticEvents.contains(event.source)) {
-        _followRecording = false;
-        dirty = true;
-      }
       if (!dirty && _locatedPosition != null) {
         // The position marker shows the last fix; once the user pans away
         // from it, it would sit somewhere they are not — drop it.
@@ -129,20 +105,6 @@ class _MapPageState extends State<MapPage> {
     // asks.
     _silentPositionUpdate();
     _startFixRetryTimer();
-    _announceSalvagedRecordings();
-  }
-
-  /// The startup salvage notice: a killed session's staged recording was
-  /// imported during [AppModel.load]; one toast says so. Read once at
-  /// initState — the names are cleared by nothing, the toast is not
-  /// re-shown on later rebuilds.
-  void _announceSalvagedRecordings() {
-    final names = widget.model.salvagedRecordingNames;
-    if (names.isEmpty) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _toast(AppStrings.ofContext(context).salvagedRecording(names.join(', ')));
-    });
   }
 
   late final bool _cacheUsable;
@@ -193,53 +155,14 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  /// Whether the map follows the recording fixes (the dashboard's
-  /// follow-camera): a new session arms it, a user pan releases it —
-  /// a fix must never pull the view back against the user's hand.
-  bool _followRecording = false;
-  bool _wasRecording = false;
+  /// The recording dashboard (HUD chip, stats panel, headline speed,
+  /// screen latch, follow-camera): see `RecordingDashboard`. Its state is
+  /// reached by key — the locate button's shortcut re-arms the follow.
+  final _dashboardKey = GlobalKey<RecordingDashboardState>();
 
   /// The fit-request epoch MapPage handled last (see the import epoch):
   /// a track-tile tap asks for a fit to its aggregate.
   int _seenFitRequestEpoch = 0;
-
-  /// Whether the recording dashboard's stats panel is expanded; the
-  /// HUD chip toggles it.
-  bool _dashboardOpen = false;
-
-  /// The recording's screen latch: the session keeps the screen on so the
-  /// dashboard stays readable on a bike or in a pocket-free hand. The
-  /// latch is a per-session default-on that the chip's screen-lock icon
-  /// toggles; the flag itself lives on the Android window (see the host
-  /// channel's `keepScreenOn`), so it dies with the window — no stale
-  /// latch survives a session's end even on a process kill.
-  bool _screenLockOff = false;
-  bool _screenOn = false;
-
-  /// Applies the latch if it changed. Best effort: a platform without the
-  /// host channel (desktop, tests) has no window to latch; its OS timeout
-  /// applies.
-  Future<void> _applyScreenOn() async {
-    final on = widget.model.isRecording && !_screenLockOff;
-    if (on == _screenOn) return;
-    _screenOn = on;
-    try {
-      await hostChannel.invokeMethod('keepScreenOn', on);
-    } on MissingPluginException {
-      // No host side (desktop, tests): nothing to latch.
-    } on PlatformException {
-      // The host refused (a headless window?): the OS timeout applies.
-    }
-  }
-
-  /// Map-event sources that are not the user's hand: programmatic moves
-  /// (the follow-camera itself, the zoom slider), camera fits, customs.
-  /// Everything else runs the follow-camera release below.
-  static const _programmaticEvents = <MapEventSource>{
-    MapEventSource.mapController,
-    MapEventSource.fitCamera,
-    MapEventSource.custom,
-  };
 
   /// Cached unlock centers keyed to the current overlay inputs (visible
   /// track ids + cell size), so pans and transient item rebuilds do not
@@ -265,7 +188,6 @@ class _MapPageState extends State<MapPage> {
     _mapEvents?.cancel();
     _fixRetryTimer?.cancel();
     widget.model.removeListener(_onModelChanged);
-    widget.model.recordingLive.removeListener(_onRecordingFix);
     super.dispose();
   }
 
@@ -297,64 +219,7 @@ class _MapPageState extends State<MapPage> {
         );
       }
     }
-    // A session boundary re-arms the follow-camera (the old marker and
-    // any open panel are gone with it) and resets the screen latch's
-    // opt-out: a new session keeps the screen on again.
-    final recording = widget.model.isRecording;
-    if (recording != _wasRecording) {
-      _wasRecording = recording;
-      _followRecording = recording;
-      _dashboardOpen = false;
-      _screenLockOff = false;
-    }
-    // Applied best-effort from here and from the chip's toggle: the
-    // window flag matters only while the dashboard is in front anyway.
-    _applyScreenOn();
     setState(() {});
-  }
-
-  /// The follow-camera rides each accepted fix while it is armed; the
-  /// marker, HUD and trace rebuild off the session's own getters. No
-  /// setState: fixes arrive at 1 Hz, so the live subtrees rebuild through
-  /// the recording-live Listenable and the rest of the map stays still.
-  void _onRecordingFix() {
-    if (!mounted) return;
-    if (!widget.model.isRecording || !_followRecording) return;
-    final session = widget.model.recording;
-    final lat = session?.currentLat;
-    final lon = session?.currentLon;
-    if (lat == null || lon == null) return;
-    // Course-up: while the follow holds, the camera rotates to the
-    // current course so where the user is going stays ahead of them —
-    // course-up makes the motion read upward on screen. The rotation
-    // emits controller events (programmatic sources), so this never
-    // releases the follow; any hand gesture still does, and with it
-    // the rotation. nearestEquivalentRotation keeps the short arc
-    // where the course crosses 0/360. The rotation is gated on the
-    // device's *reported* heading, not the bridged course: a
-    // magnetometer-less or bearing-only fix stream keeps the camera
-    // north-up (the marker still rotates with the course), because a
-    // bearing between fixes says where the user was, not where they
-    // face. No heading yet — a first fix — leaves the camera
-    // rotation alone.
-    final heading = session?.currentHeading;
-    if (heading == null) {
-      _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
-    } else {
-      // With a reported heading, currentCourse is that same heading.
-      final courseDelta =
-          nearestEquivalentRotation(heading, _mapController.camera.rotation) -
-          _mapController.camera.rotation;
-      if (courseDelta.abs() >= courseDeltaThreshold) {
-        _mapController.moveAndRotate(
-          LatLng(lat, lon),
-          _mapController.camera.zoom,
-          nearestEquivalentRotation(heading, _mapController.camera.rotation),
-        );
-      } else {
-        _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
-      }
-    }
   }
 
   /// Tap tolerance for aggregate selection: ~24 screen px worth of meters
@@ -528,122 +393,6 @@ class _MapPageState extends State<MapPage> {
     await widget.model.stopRecording(name: name);
   }
 
-  /// While recording, the dashboard: the HUD chip — the pulsing dot with
-  /// its live duration and distance, tap to expand — and the stats panel
-  /// it opens, both re-rendering off the recording-live per-fix channel
-  /// (the engine's numbers, not a straight-line snapshot). Absent while
-  /// no session runs.
-  Widget _recordingDashboard(AppStrings strings) {
-    final session = widget.model.recording;
-    if (session == null) return const SizedBox.shrink();
-    final meters = session.distanceMeters;
-    return Positioned(
-      top: kToolbarHeight + 16,
-      left: 12,
-      right: 12,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Align(
-            child: Card(
-              child: InkWell(
-                key: const ValueKey('recording-chip'),
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => setState(() => _dashboardOpen = !_dashboardOpen),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.fiber_manual_record,
-                        size: 12,
-                        color: Colors.redAccent,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        formatDuration(session.elapsed),
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      if (meters > 0) ...[
-                        const SizedBox(width: 12),
-                        Text(
-                          formatDistance(meters),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                      const SizedBox(width: 8),
-                      // The screen latch's toggle: lit while the screen
-                      // stays on, dimmed while it may sleep (see the
-                      // state notes on the latch). The chip only exists
-                      // while a session runs, so does the toggle.
-                      IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        visualDensity: VisualDensity.compact,
-                        icon: Icon(
-                          Icons.screen_lock_portrait,
-                          size: 16,
-                          color: _screenLockOff
-                              ? Theme.of(context).hintColor
-                              : Theme.of(context).colorScheme.primary,
-                        ),
-                        tooltip: _screenLockOff
-                            ? strings.screenMayTurnOff
-                            : strings.screenStaysOn,
-                        onPressed: () {
-                          setState(() => _screenLockOff = !_screenLockOff);
-                          _applyScreenOn();
-                        },
-                      ),
-                      Icon(
-                        _dashboardOpen ? Icons.expand_less : Icons.expand_more,
-                        size: 18,
-                        color: Theme.of(context).hintColor,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (_dashboardOpen) StatsPanel(session: session, strings: strings),
-        ],
-      ),
-    );
-  }
-
-  /// The dashboard's primary readout: the live speed, big and
-  /// bottom-center — the stem display a bike computer shows the rider.
-  /// Absent while no session runs; before the first fix and while paused
-  /// (paused sessions are silent) it shows a dash, like the stats panel's
-  /// not-yet-measured values.
-  Widget _recordingSpeed() {
-    final session = widget.model.recording;
-    if (session == null) return const SizedBox.shrink();
-    final speed = session.currentSpeed;
-    return Positioned(
-      bottom: 24,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: Card(
-          key: const ValueKey('recording-speed'),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Text(
-              speed == null ? '—' : '${(speed * 3.6).toStringAsFixed(1)} km/h',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// The recording marker: at the last accepted fix, rotating to the
   /// course relative to the camera's rotation, so the nose points along
   /// the course on screen — straight up while the follow-camera holds the
@@ -788,8 +537,10 @@ class _MapPageState extends State<MapPage> {
       final lat = session?.currentLat;
       final lon = session?.currentLon;
       if (lat != null && lon != null) {
-        setState(() => _followRecording = true);
-        _mapController.move(LatLng(lat, lon), _mapController.camera.zoom);
+        // The follow-camera's shortcut back: re-center on the session's
+        // own fix at the user's zoom and re-arm (camera and course-up
+        // rotation both) — no second GPS request, no spinner.
+        _dashboardKey.currentState?.rearmFollow();
         return;
       }
       // No session fix yet: a real attempt is the only way to answer
@@ -808,12 +559,10 @@ class _MapPageState extends State<MapPage> {
         _toast(_locateFailureMessage(strings, result.failure));
         return;
       }
-      setState(() {
-        _locatedPosition = pos;
-        // The attempt landed while a session runs: its fix is the one to
-        // follow — arm the follow so the next fix takes the camera over.
-        if (widget.model.isRecording) _followRecording = true;
-      });
+      // The attempt landed while a session runs: its fix is the one to
+      // follow — arm the follow so the next fix takes the camera over.
+      if (widget.model.isRecording) _dashboardKey.currentState?.armFollow();
+      setState(() => _locatedPosition = pos);
       // A deliberated locate is also evidence the GPS works: it opens the
       // Record button, no silent retry needed.
       _gpsWorking = true;
@@ -1315,15 +1064,14 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
             ),
-          // The HUD chip and stats panel rebuild per fix through the
-          // recording-live channel; the chip's tap-to-open toggles the
-          // panel through the model-wide setState, which rebuilds this
-          // builder too.
-          ListenableBuilder(
-            listenable: widget.model.recordingLive,
-            builder: (context, _) => _recordingDashboard(strings),
+          // The recording dashboard: HUD chip, stats panel, headline
+          // speed, screen latch and the follow-camera, with its own
+          // per-fix listeners — a 1 Hz fix rebuilds the dashboard only.
+          RecordingDashboard(
+            key: _dashboardKey,
+            model: widget.model,
+            mapController: _mapController,
           ),
-          _recordingSpeed(),
           // The empty-state hint only for a genuinely empty, idle map:
           // while a session records (even with nothing plotted yet) and
           // while the catalog has tracks — selected or not — it would
