@@ -1,33 +1,32 @@
-# TODO unit 1: speed-gate the course-up rotation
+# TODO unit 2: smooth the course-up rotation approach
 
-Source: docs/map-rotation-research-report.md §5 item 1 — apply rotation
-only when ground speed is above ~1 m/s; below the gate, hold the last
-rotation (kills standstill spin / low-speed jitter).
+Source: docs/map-rotation-research-report.md §5 item 2 — keep the 1°
+hysteresis and short-arc wrap, but approach the target with exponential
+smoothing per fix instead of an instant `moveAndRotate` snap. At 1 Hz
+fixes, smoothing in Dart is enough; no new package.
 
 ## Change
-`lib/ui/recording_dashboard.dart`, `_onRecordingFix()` (the
-`mapRotation == 'on'` branch):
+`lib/ui/recording_dashboard.dart`, `_onRecordingFix()` rotation branch:
 
-- Add a constant, e.g. `rotationSpeedGateMps = 1.0` next to
-  `courseDeltaThreshold`.
-- When rotating, also require the session's ground speed to clear the
-  gate: `session.currentSpeed` is already fused (reported fix speed,
-  else haversine between fixes — recording_session.dart:215). If speed
-  is null (source reports none, first fix), keep today's behavior and
-  rotate — the gate only bites when we *know* we are slow.
-- Below the gate: plain `move()` (center follows the fix, rotation is
-  held — same as the sub-hysteresis path today).
-
-No model/store changes; the setting stays opt-in as-is.
+- Add `rotationSmoothingFactor` (k ≈ 0.4) next to the other constants.
+- When the course delta clears `courseDeltaThreshold`, instead of
+  snapping to `nearestEquivalentRotation(heading, rotation)`, step part
+  way: `rotation + courseDelta * k` (courseDelta is already the
+  short-arc delta, so the wrap handling is unchanged), and
+  `moveAndRotate` to that intermediate value.
+- Below the threshold (or below the speed gate): plain `move()`, as
+  today.
 
 ## Tests
-- Widget test in test/map_page_test.dart (recording camera group, next to
-  the existing rotation assertions ~line 684): a fix with
-  `speed: 0.2` and a heading leaves `camera().rotation` unchanged while
-  still centering; a following fix with `speed: 3.0` rotates as before.
-- Keep all existing rotation tests green (they use speed 3.0 fixes).
+- Extend/add widget tests in test/map_page_test.dart: after one fix with
+  a heading 90° off the camera's rotation, the camera's rotation moves
+  toward 90 but not all the way in one fix (with k=0.4, ~40% of the
+  delta), and converges on the next same-heading fix.
+- Existing rotation tests use single fixes and assert the final
+  rotation — check whether they need two same-heading fixes now to
+  reach the target exactly, and adjust minimally.
 
 ## Verification
 - `flutter analyze` clean, `flutter test` passes.
-- Commit PLAN.md + change + tests together, remove TODO.md unit 1 in
-  the same commit, then detached release build per workflow step 4.
+- Commit PLAN.md + change + tests, remove TODO.md unit in the same
+  commit, detached release build per workflow step 4.

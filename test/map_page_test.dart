@@ -677,13 +677,18 @@ void main() {
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0, heading: 90);
       fakeFix(source, 1, lat: 52.5201, heading: 90);
+      // The rotation eases in over several fixes (exponential smoothing),
+      // converging on the course.
+      for (var i = 2; i < 16; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90);
+      }
       await tester.pump();
       await tester.pump();
 
       // Course-up: the east-heading fixes rotate the camera 90, and the
       // marker's own rotation nets to 0 — the nose points up on screen.
-      expect(camera().rotation, closeTo(90.0, 0.1));
-      expect(markerAngle(), closeTo(0.0, 1e-6));
+      expect(camera().rotation, closeTo(90.0, 1.0));
+      expect(markerAngle(), closeTo(0.0, 0.05));
 
       // A user pan releases the follow — and the rotation with it: the next
       // fix re-centers nothing and leaves the rotation where the pan put it.
@@ -694,12 +699,12 @@ void main() {
         const Offset(0, 80),
       );
       final panned = camera().center;
-      fakeFix(source, 2, lat: 52.5202, heading: 180);
+      fakeFix(source, 16, lat: 52.5202, heading: 180);
       await tester.pump();
 
       expect(
         camera().rotation,
-        closeTo(90.0, 0.1),
+        closeTo(90.0, 1.0),
         reason: 'the pan released the rotation with the follow',
       );
       expect(
@@ -709,7 +714,7 @@ void main() {
       );
       // The marker matches the new course against the camera's rotation, so
       // it still points along the course on screen.
-      expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
+      expect(markerAngle(), closeTo(math.pi / 2, 0.05));
     },
   );
 
@@ -734,23 +739,31 @@ void main() {
           MapController.of(tester.element(find.byType(TileLayer))).camera;
 
       await model.startRecording(source: source, permissionGate: false);
+      // One fix moves the rotation only part of the way (smoothing k=0.4):
+      // 0 -> ~36, not straight to 90.
       fakeFix(source, 0, heading: 90, speed: 5.0);
-      fakeFix(source, 1, lat: 52.5201, heading: 90, speed: 5.0);
+      await tester.pump();
+      expect(camera().rotation, closeTo(36.0, 0.1));
+      for (var i = 1; i < 16; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
+      }
       await tester.pump();
       await tester.pump();
-      expect(camera().rotation, closeTo(90.0, 0.1));
+      expect(camera().rotation, closeTo(90.0, 1.0));
 
       // Slow fix with a different heading: the camera holds its rotation
       // (no standstill spin) but still centers on the fix.
-      fakeFix(source, 2, lat: 52.5202, heading: 180, speed: 0.2);
+      fakeFix(source, 16, lat: 52.5202, heading: 180, speed: 0.2);
       await tester.pump();
-      expect(camera().rotation, closeTo(90.0, 0.1));
+      expect(camera().rotation, closeTo(90.0, 1.0));
       expect(camera().center.latitude, closeTo(52.5202, 1e-6));
 
-      // Moving again: the rotation follows the course once more.
-      fakeFix(source, 3, lat: 52.5203, heading: 180, speed: 3.0);
+      // Moving again: the rotation eases over to the new course.
+      for (var i = 17; i < 32; i++) {
+        fakeFix(source, i, lat: 52.5202 + i * 1e-4, heading: 180, speed: 3.0);
+      }
       await tester.pump();
-      expect(camera().rotation, closeTo(180.0, 0.1));
+      expect(camera().rotation, closeTo(180.0, 1.0));
     },
   );
 

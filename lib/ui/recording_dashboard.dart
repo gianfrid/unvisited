@@ -77,6 +77,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// with unknown speed does not trip the gate.
   static const double rotationSpeedGateMps = 1.0;
 
+  /// Exponential smoothing for the course-up rotation: each fix that
+  /// clears the hysteresis moves the camera this fraction of the way to
+  /// the target instead of snapping, so the rotation eases in over a few
+  /// 1 Hz fixes rather than stepping.
+  static const double rotationSmoothingFactor = 0.4;
+
   /// Map-event sources that are not the user's hand: programmatic moves
   /// (the follow-camera itself, the zoom slider), camera fits, customs.
   /// Everything else releases the follow.
@@ -188,7 +194,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         widget.mapController.moveAndRotate(
           LatLng(lat, lon),
           widget.mapController.camera.zoom,
-          nearestEquivalentRotation(heading, rotation),
+          rotation + courseDelta * rotationSmoothingFactor,
         );
       } else {
         widget.mapController.move(
