@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:unvisited/road/road_bench.dart';
 import 'package:unvisited/road/road_store.dart';
 
+import '../tool/road_bench.dart';
 import 'helpers.dart';
 
 void main() {

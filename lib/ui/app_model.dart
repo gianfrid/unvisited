@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show ChangeNotifier;
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart' show Locale;
@@ -15,7 +14,6 @@ import '../aggregate/aggregate_tracks.dart'
 import '../geo.dart' show haversineMeters;
 import '../host_channel.dart' show hostChannel;
 import '../l10n/app_strings.dart';
-import '../road/road_bench.dart' show benchReport, runRoadBench;
 import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_matcher.dart';
 import '../road/road_store.dart';
@@ -122,24 +120,8 @@ class AppModel extends ChangeNotifier {
       final road = RoadStore.open(path);
       _roadStore = road;
       _roadMatcher = GeometricRoadMatcher(road);
-      if (kProfileMode) _runRoadBench(path);
     }
     notifyListeners();
-  }
-
-  /// Profile-mode development benchmark: measures the road pipeline against
-  /// the just-activated region file and prints the report to the console.
-  /// Guarded by [kProfileMode], so debug and release builds never run it;
-  /// the isolate keeps the region scan off the UI thread, and the bench
-  /// opens its own store.
-  void _runRoadBench(String path) {
-    unawaited(() async {
-      try {
-        debugPrint(benchReport(await Isolate.run(() => runRoadBench(path))));
-      } catch (e) {
-        debugPrint('road bench failed: $e');
-      }
-    }());
   }
 
   /// The region file's display name as the settings sheet shows it, or

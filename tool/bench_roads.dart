@@ -23,9 +23,10 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
-import 'package:unvisited/road/road_bench.dart';
 import 'package:unvisited/road/road_matcher.dart';
 import 'package:unvisited/road/road_store.dart';
+
+import 'road_bench.dart';
 
 import 'build_roads.dart' show buildRoadFile;
 

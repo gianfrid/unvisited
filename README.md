@@ -38,8 +38,7 @@ lib/
 ├── road/                    # offline road matching (side-loaded region files)
 │   ├── road_format.dart     #   the .unvisited-roads container, polyline5 encoding
 │   ├── road_store.dart      #   lazy z12-bucket reader with an LRU
-│   ├── road_matcher.dart    #   geometric matching against unlock centers
-│   └── road_bench.dart      #   profiling (desktop CLI + profile-mode in-app run)
+│   └── road_matcher.dart    #   geometric matching against unlock centers
 ├── l10n/app_strings.dart    # every user-visible string, English + Italian
 ├── models/track.dart        # TrackData model
 ├── storage/track_store.dart # app-private track files + index.json catalog
@@ -54,6 +53,7 @@ tool/make_icons.dart         # regenerates every platform icon from the SVG
 tool/build_roads.dart        # builds .unvisited-roads road files (PBF or JSON ways in)
 tool/pbf_reader.dart         # hand-written OSM PBF reader for the build CLI
 tool/bench_roads.dart        # benchmarks the road parse/match pipeline
+tool/road_bench.dart         # the bench library the CLI runs (one region file)
 ```
 
 ## Prerequisites

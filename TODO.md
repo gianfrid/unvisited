@@ -3,11 +3,7 @@
 Technical debt backlog (from the codebase debt analysis — refactoring,
 code smells, doc drift, test gaps):
 
-1. - [ ] Collapse `AppModel`'s persisted-settings boilerplate (~15
-   getter/save pairs) into one settings value object written via
-   `_saveIndex`; move `lib/road/road_bench.dart` profiling code out of
-   the runtime `lib/` tree.
-2. - [ ] Extract the recording dashboard out of `_MapPageState`
+1. - [ ] Extract the recording dashboard out of `_MapPageState`
    (`map_page.dart`, 1344 lines, the churn hotspot): follow-camera +
    course-up, HUD chip / stats panel wiring, screen latch and salvage
    toast into their own widget; update `map_page_test.dart`.

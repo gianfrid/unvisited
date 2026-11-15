@@ -171,6 +171,102 @@ class ImportResult {
 /// (within 10%) together count as a duplicate; either signal alone
 /// never dedups, and a track without a start time is only caught by
 /// the byte hash.
+/// The persisted user preferences — the index's `settings` entry as one
+/// value object. Immutable: a save builds a new snapshot and persists the
+/// index, so settings are never observed half-updated. A save survives
+/// [TrackStore.clearAll]: preferences are the user's, not catalog content.
+class AppSettings {
+  const AppSettings({
+    this.tint = 'green',
+    this.recordingTint = 'red',
+    this.zoomSliderSide = 'right',
+    this.language = 'system',
+    this.themeMode = 'system',
+    this.tileLayer = 'standard',
+    this.roadsFile,
+    this.aggregateColors = const {},
+  });
+
+  final String tint;
+  final String recordingTint;
+
+  /// Which screen edge the zoom slider hugs: 'left' or 'right'.
+  final String zoomSliderSide;
+
+  /// UI language: 'system' (follow the device) or a language code such as
+  /// 'it'. Stored as a raw string so an unknown value from a hand-edited
+  /// index can never break startup — the UI falls back to the system
+  /// language for anything it does not recognize.
+  final String language;
+
+  /// Theme mode: 'system' (follow the device), 'light', or 'dark'.
+  final String themeMode;
+
+  /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
+  final String tileLayer;
+
+  /// The side-loaded road region file's *name* (relative to `roads/` under
+  /// the root), or null when none is set. The app owns a copy of the file;
+  /// see `TrackStore.adoptRoadFile`.
+  final String? roadsFile;
+
+  /// Per-aggregate color overrides, keyed by the aggregate's anchor track
+  /// id — content hashes that survive re-imports, so the override survives
+  /// membership changes.
+  final Map<String, String> aggregateColors;
+
+  /// Tolerant read: a missing or malformed field falls back to the
+  /// default, so even a hand-edited index cannot break startup.
+  factory AppSettings.fromMap(Map<dynamic, dynamic> m) => AppSettings(
+        tint: (m['tint'] as String?) ?? 'green',
+        recordingTint: (m['recordingTint'] as String?) ?? 'red',
+        zoomSliderSide: (m['zoomSliderSide'] as String?) ?? 'right',
+        language: (m['language'] as String?) ?? 'system',
+        themeMode: (m['themeMode'] as String?) ?? 'system',
+        tileLayer: (m['tileLayer'] as String?) ?? 'standard',
+        roadsFile: m['roadsFile'] as String?,
+        aggregateColors:
+            (m['aggregateColors'] as Map<Object?, Object?>? ?? {})
+                .map((k, v) => MapEntry(k as String, v as String)),
+      );
+
+  AppSettings copyWith({
+    String? tint,
+    String? recordingTint,
+    String? zoomSliderSide,
+    String? language,
+    String? themeMode,
+    String? tileLayer,
+    String? roadsFile,
+    bool clearRoadsFile = false,
+    Map<String, String>? aggregateColors,
+  }) =>
+      AppSettings(
+        tint: tint ?? this.tint,
+        recordingTint: recordingTint ?? this.recordingTint,
+        zoomSliderSide: zoomSliderSide ?? this.zoomSliderSide,
+        language: language ?? this.language,
+        themeMode: themeMode ?? this.themeMode,
+        tileLayer: tileLayer ?? this.tileLayer,
+        roadsFile:
+            clearRoadsFile ? null : roadsFile ?? this.roadsFile,
+        aggregateColors: aggregateColors ?? this.aggregateColors,
+      );
+
+  /// The index's `settings` entry, in the field names `load` reads.
+  Map<String, Object?> toMap() => {
+        'tint': tint,
+        'zoomSliderSide': zoomSliderSide,
+        'language': language,
+        'themeMode': themeMode,
+        'tileLayer': tileLayer,
+        'recordingTint': recordingTint,
+        if (roadsFile != null) 'roadsFile': roadsFile,
+        if (aggregateColors.isNotEmpty)
+          'aggregateColors': Map<String, String>.of(aggregateColors),
+      };
+}
+
 class TrackStore {
   TrackStore(this.root, {TrackImporter? importer})
       : importer = importer ??
@@ -199,51 +295,32 @@ class TrackStore {
   /// All cataloged tracks, insertion ordered.
   List<StoredTrack> get tracks => List.unmodifiable(_tracks);
 
+  /// The persisted user preferences — one [AppSettings] snapshot in the
+  /// index. The getters below delegate; saving produces a new snapshot
+  /// (see `_apply`).
+  AppSettings _settings = const AppSettings();
+
   /// Last known device position (map start center), restored from the index.
-  /// Null when the app has never obtained a fix.
+  /// Null when the app has never obtained a fix. Its own top-level index
+  /// key: the user's location, not a settings-sheet preference.
   double? _lastPositionLat;
   double? _lastPositionLon;
   double? get lastPositionLat => _lastPositionLat;
   double? get lastPositionLon => _lastPositionLon;
 
-  /// Overlay tint key (see the exploration tints in the UI). Persisted in
-  /// the index like the last position: a user preference, not track data.
-  String _tint = 'green';
-  String get tint => _tint;
+  String get tint => _settings.tint;
+  String get recordingTint => _settings.recordingTint;
+  String get zoomSliderSide => _settings.zoomSliderSide;
+  String get language => _settings.language;
+  String get themeMode => _settings.themeMode;
+  String get tileLayer => _settings.tileLayer;
+  String? get roadsFile => _settings.roadsFile;
 
-  /// Which screen edge the zoom slider hugs: 'left' or 'right'.
-  String _zoomSliderSide = 'right';
-
-  /// The live recording trace's tint key (the fog aggregates color by
-  /// palette/overrides now; this drives only the recording trace).
-  /// Persisted like the other appearance settings: survives [clearAll].
-  String _recordingTint = 'red';
-  String get recordingTint => _recordingTint;
-  String get zoomSliderSide => _zoomSliderSide;
-
-  /// UI language: 'system' (follow the device) or a language code such as
-  /// 'it'. Stored as a raw string so an unknown value from a hand-edited
-  /// index can never break startup - the UI falls back to the system
-  /// language for anything it does not recognize.
-  String _language = 'system';
-  String get language => _language;
-
-  /// Theme mode: 'system' (follow the device), 'light', or 'dark'.
-  /// Persisted in the index like other preferences.
-  String _themeMode = 'system';
-  String get themeMode => _themeMode;
-
-  /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
-  /// Persisted like other preferences.
-  String _tileLayer = 'standard';
-  String get tileLayer => _tileLayer;
-
-  /// The side-loaded road region file's *name* (relative to `roads/` under
-  /// the root), or null when none is set. The picked file is copied into
-  /// the store root on activation — a picked path's access can be revoked
-  /// or its file deleted later, so the app owns its copy instead.
-  String? _roadsFile;
-  String? get roadsFile => _roadsFile;
+  /// Applies a new settings snapshot and persists the index.
+  Future<void> _apply(AppSettings s) async {
+    _settings = s;
+    _saveIndex();
+  }
 
   Directory get _roadsDir =>
       Directory('${root.path}${Platform.pathSeparator}roads')
@@ -258,14 +335,14 @@ class TrackStore {
   /// the stored copy's path.
   String adoptRoadFile(String sourcePath) {
     final name = File(sourcePath).uri.pathSegments.last;
-    final old = _roadsFile;
+    final old = _settings.roadsFile;
     final stored = roadFileFor(name);
     if (old != null && old != name) {
       final previous = roadFileFor(old);
       if (previous.existsSync()) previous.deleteSync();
     }
     File(sourcePath).copySync(stored.path);
-    _roadsFile = name;
+    _settings = _settings.copyWith(roadsFile: name);
     _saveIndex();
     return stored.path;
   }
@@ -274,8 +351,8 @@ class TrackStore {
   /// already recorded on tracks survives: it is exploration data (the
   /// matched corridors are materialized polylines), not cache.
   Future<void> clearRoadsFile() async {
-    final old = _roadsFile;
-    _roadsFile = null;
+    final old = _settings.roadsFile;
+    _settings = _settings.copyWith(clearRoadsFile: true);
     if (old != null) {
       final previous = roadFileFor(old);
       if (previous.existsSync()) previous.deleteSync();
@@ -293,60 +370,43 @@ class TrackStore {
 
   /// Saves the exploration overlay tint. Survives [clearAll] like the
   /// position: a preference, not catalog content.
-  Future<void> saveTint(String tint) async {
-    _tint = tint;
-    _saveIndex();
-  }
+  Future<void> saveTint(String tint) async =>
+      _apply(_settings.copyWith(tint: tint));
 
-  Future<void> saveZoomSliderSide(String side) async {
-    _zoomSliderSide = side;
-    _saveIndex();
-  }
+  Future<void> saveZoomSliderSide(String side) async =>
+      _apply(_settings.copyWith(zoomSliderSide: side));
 
   /// Saves the UI language choice ('system' or a language code). A
   /// preference like the tint: it survives [clearAll].
-  Future<void> saveLanguage(String language) async {
-    _language = language;
-    _saveIndex();
-  }
+  Future<void> saveLanguage(String language) async =>
+      _apply(_settings.copyWith(language: language));
 
   /// Saves the theme mode choice ('system', 'light', or 'dark').
-  Future<void> saveThemeMode(String mode) async {
-    _themeMode = mode;
-    _saveIndex();
-  }
+  Future<void> saveThemeMode(String mode) async =>
+      _apply(_settings.copyWith(themeMode: mode));
 
-  /// Saves the base tile style ('standard' or 'cycle'). A preference like
-  /// the theme: it survives [clearAll].
-  Future<void> saveTileLayer(String layer) async {
-    _tileLayer = layer;
-    _saveIndex();
-  }
+  /// Saves the base tile style choice ('standard' or 'cycle').
+  Future<void> saveTileLayer(String layer) async =>
+      _apply(_settings.copyWith(tileLayer: layer));
 
-  /// Saves the recording trace's tint key. A preference like the others:
-  /// it survives [clearAll].
-  Future<void> saveRecordingTint(String tint) async {
-    _recordingTint = tint;
-    _saveIndex();
-  }
+  /// Saves the live recording trace's tint key.
+  Future<void> saveRecordingTint(String tint) async =>
+      _apply(_settings.copyWith(recordingTint: tint));
 
-  /// Per-aggregate color overrides, keyed by the aggregate's anchor track
-  /// id (the earliest-starting member — stable when other tracks join or
-  /// leave, so the override survives membership changes). Persisted in the
-  /// index like the tint: a user preference, and the track ids are content
-  /// hashes that survive re-imports.
-  final Map<String, String> aggregateColors = {};
+  String? aggregateColor(String anchorId) =>
+      _settings.aggregateColors[anchorId];
 
-  String? aggregateColor(String anchorId) => aggregateColors[anchorId];
-
-  /// Saves the color override for the aggregate anchored at [anchorId].
+  /// Saves the color override for the aggregate anchored at [anchorId] (an
+  /// empty [tintKey] clears it), persisted in the index with the rest of
+  /// the settings.
   Future<void> saveAggregateColor(String anchorId, String tintKey) async {
+    final colors = Map.of(_settings.aggregateColors);
     if (tintKey.isEmpty) {
-      aggregateColors.remove(anchorId);
+      colors.remove(anchorId);
     } else {
-      aggregateColors[anchorId] = tintKey;
+      colors[anchorId] = tintKey;
     }
-    _saveIndex();
+    await _apply(_settings.copyWith(aggregateColors: colors));
   }
 
   Future<void> load() async {
@@ -362,20 +422,7 @@ class TrackStore {
         _lastPositionLon = (pos['lon'] as num?)?.toDouble();
       }
       final settings = map['settings'];
-      if (settings is Map) {
-        _tint = (settings['tint'] as String?) ?? _tint;
-        _zoomSliderSide =
-            (settings['zoomSliderSide'] as String?) ?? _zoomSliderSide;
-        _language = (settings['language'] as String?) ?? _language;
-        _themeMode = (settings['themeMode'] as String?) ?? _themeMode;
-        _tileLayer = (settings['tileLayer'] as String?) ?? _tileLayer;
-        _recordingTint = (settings['recordingTint'] as String?) ?? _recordingTint;
-        _roadsFile = settings['roadsFile'] as String?;
-        aggregateColors
-          ..clear()
-          ..addAll((settings['aggregateColors'] as Map<String, dynamic>? ?? {})
-              .map((k, v) => MapEntry(k, v as String)));
-      }
+      if (settings is Map) _settings = AppSettings.fromMap(settings);
       final list = map['tracks'] as List;
       for (final raw in list) {
         try {
@@ -535,17 +582,7 @@ class TrackStore {
       'tracks': _tracks.map((t) => t.toMap()).toList(),
       if (_lastPositionLat != null && _lastPositionLon != null)
         'lastPosition': {'lat': _lastPositionLat, 'lon': _lastPositionLon},
-      'settings': {
-        'tint': _tint,
-        'zoomSliderSide': _zoomSliderSide,
-        'language': _language,
-        'themeMode': _themeMode,
-        'tileLayer': _tileLayer,
-        'recordingTint': _recordingTint,
-        if (_roadsFile != null) 'roadsFile': _roadsFile,
-        if (aggregateColors.isNotEmpty)
-          'aggregateColors': Map<String, String>.of(aggregateColors),
-      },
+      'settings': _settings.toMap(),
     };
     root.createSync(recursive: true);
     indexFile.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(map),

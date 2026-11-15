@@ -1,13 +1,13 @@
 // ignore_for_file: avoid_print
 // Development benchmark for one road-region file — the measured numbers
-// behind the bucket-payload and Rust-core decisions (TODO "profiling
-// follow-ups"; research report docs/offline-road-matching-for-unvisited-
-// research-report.md).
+// behind the bucket-payload and Rust-core decisions (research report
+// docs/offline-road-matching-for-unvisited-research-report.md).
 //
-// Pure Dart, no Flutter: the same function backs the desktop CLI
-// (`tool/bench_roads.dart --roads <file>`) and the profile-mode in-app run
-// (printed to the console by `AppModel.activateRoadFile`), so device and
-// desktop numbers stay directly comparable.
+// Pure Dart, no Flutter; run through the desktop CLI
+// (`dart tool/bench_roads.dart --roads <file>`). It lives in tool/ (not
+// lib/) because it is dev tooling: it used to sit in lib/ to let a
+// profile-mode in-app trigger run it on a device, which was dropped in
+// favor of the CLI.
 //
 // What it measures, in the order a real session costs it:
 //  1. open — the directory JSON parse (the only whole-file cost at launch);
@@ -18,8 +18,8 @@
 //  3. match — a serpentine walk inside the densest bucket, first cold
 //     (bucket parse + segment index build + match) then warm.
 //
-// Results are plain maps of numbers (the in-app trigger ships them across
-// an isolate boundary; no custom result class to keep that portable).
+// Results are plain maps of numbers (no custom result class to keep that
+// portable).
 library;
 
 import 'dart:io';
@@ -27,8 +27,8 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
-import 'road_matcher.dart';
-import 'road_store.dart';
+import 'package:unvisited/road/road_matcher.dart';
+import 'package:unvisited/road/road_store.dart';
 
 /// Formats a [benchRoadStore]/[runRoadBench] result as the console summary
 /// the CLI and the in-app profile run both print.
