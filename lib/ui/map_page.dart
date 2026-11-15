@@ -1253,58 +1253,68 @@ class _MapPageState extends State<MapPage> {
               bottom: 0,
               child: SafeArea(
                 minimum: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.model.recording?.state == RecordingState.paused)
-                      HeaderAction(
-                        icon: const Icon(Icons.stop),
-                        label: strings.stopLabel,
-                        tooltip: strings.stopLabel,
-                        onTap: _stopRecording,
-                      ),
-                    if (_gpsWorking || widget.model.isRecording)
-                      HeaderAction(
-                        icon: Icon(
-                          widget.model.isRecording
+                child: Material(
+                  elevation: 2,
+                  borderRadius: BorderRadius.circular(24),
+                  color: Theme.of(context).colorScheme.surface,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.model.recording?.state ==
+                          RecordingState.paused)
+                        HeaderAction(
+                          icon: const Icon(Icons.stop),
+                          label: strings.stopLabel,
+                          tooltip: strings.stopLabel,
+                          onTap: _stopRecording,
+                        ),
+                      if (_gpsWorking || widget.model.isRecording)
+                        HeaderAction(
+                          icon: Icon(
+                            widget.model.isRecording
+                                ? (widget.model.recording?.state ==
+                                          RecordingState.paused
+                                      ? Icons.play_arrow
+                                      : Icons.pause)
+                                : Icons.fiber_manual_record,
+                          ),
+                          label: widget.model.isRecording
                               ? (widget.model.recording?.state ==
                                         RecordingState.paused
-                                    ? Icons.play_arrow
-                                    : Icons.pause)
-                              : Icons.fiber_manual_record,
+                                    ? strings.resumeLabel
+                                    : strings.pauseLabel)
+                              : strings.recordLabel,
+                          tooltip: widget.model.isRecording
+                              ? (widget.model.recording?.state ==
+                                        RecordingState.paused
+                                    ? strings.resumeLabel
+                                    : strings.pauseLabel)
+                              : strings.recordLabel,
+                          onTap: widget.model.isRecording
+                              ? (widget.model.recording?.state ==
+                                        RecordingState.paused
+                                    ? widget.model.resumeRecording
+                                    : widget.model.pauseRecording)
+                              : _startRecording,
                         ),
-                        label: widget.model.isRecording
-                            ? (widget.model.recording?.state ==
-                                      RecordingState.paused
-                                  ? strings.resumeLabel
-                                  : strings.pauseLabel)
-                            : strings.recordLabel,
-                        tooltip: widget.model.isRecording
-                            ? (widget.model.recording?.state ==
-                                      RecordingState.paused
-                                  ? strings.resumeLabel
-                                  : strings.pauseLabel)
-                            : strings.recordLabel,
-                        onTap: widget.model.isRecording
-                            ? (widget.model.recording?.state ==
-                                      RecordingState.paused
-                                  ? widget.model.resumeRecording
-                                  : widget.model.pauseRecording)
-                            : _startRecording,
+                      HeaderAction(
+                        icon: _locating
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.my_location),
+                        label: _locating
+                            ? strings.locating
+                            : strings.locateLabel,
+                        tooltip: strings.locateTooltip,
+                        onTap: _locating ? null : _locate,
                       ),
-                    HeaderAction(
-                      icon: _locating
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.my_location),
-                      label: _locating ? strings.locating : strings.locateLabel,
-                      tooltip: strings.locateTooltip,
-                      onTap: _locating ? null : _locate,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
