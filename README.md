@@ -119,9 +119,11 @@ Load the built file via Settings → Road data: it is copied into the app's priv
 ## Tests
 
 ```bash
-flutter test       # all parsing/storage logic is pure Dart, covered by unit tests
+flutter test       # all parsing/storage logic is pure Dart, covered by unit tests (runs offline)
 flutter analyze
 ```
+
+The live tile-server checks (`test/tile_server_test.dart`) are opt-in so the default run stays offline: `flutter test --dart-define=TILE_SERVER_TESTS=true`.
 
 - The build time (shown in Settings → About) is the latest git commit's time: desktop dev runs read it from the checkout at runtime, and APK builds bake it automatically via gradle (`flutter build apk` needs no extra flags). A `BUILD_TIME` dart-define overrides both.
 

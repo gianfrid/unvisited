@@ -52,9 +52,11 @@ Out of scope: route planning, turn-by-turn navigation, per-service integrations,
 - App icons are generated from `assets/icon/icon.svg` by `dart tool/make_icons.dart` and committed; edit the SVG, never the generated PNG/ICO files. The tool needs an external SVG renderer (`cargo install resvg`, or `--renderer "npx --yes @resvg/resvg-js-cli"`) — it deliberately does not add a rasterizer to the app's dependencies.
 
 ```bash
-flutter test       # unit tests (parsers, store, importer, model, map, tile server)
+flutter test       # unit tests (parsers, store, importer, model, map) — runs offline
 flutter analyze    # must be clean
 ```
+
+The live tile-server checks (`test/tile_server_test.dart`) hit the real OSM/CyclOSM endpoints and are opt-in so the default run stays offline and deterministic: `flutter test --dart-define=TILE_SERVER_TESTS=true`.
 
 ## Conventions
 
