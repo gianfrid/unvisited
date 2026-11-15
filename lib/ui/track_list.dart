@@ -61,7 +61,8 @@ class TrackDrawer extends StatelessWidget {
                     ),
                     onPressed: model.tracks.isEmpty
                         ? null
-                        : () => model.setAllVisible(!model.allTracksVisible),
+                        : () => model.setAllVisibleWithFeedback(
+                            !model.allTracksVisible),
                   ),
                 ],
               ),

@@ -1112,14 +1112,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(model.allTracksVisible, isTrue);
+    // Two-phase with feedback: the tap flips the busy flag synchronously,
+    // so the first frame paints the progress indicator before the rebuild
+    // frame lands (one endOfFrame later).
     await tester.tap(find.byTooltip('Deselect all tracks'));
     await tester.pump();
+    expect(
+      find.byType(LinearProgressIndicator),
+      findsOneWidget,
+      reason: 'select-all shows loading feedback while rebuilding',
+    );
+    await tester.pump();
+    await tester.pump();
     expect(model.allTracksVisible, isFalse);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
     expect(find.byTooltip('Select all tracks'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Select all tracks'));
     await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    await tester.pump();
+    await tester.pump();
     expect(model.allTracksVisible, isTrue);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
   });
 
   testWidgets('a map tap selects the aggregate over it, the bar dismisses', (

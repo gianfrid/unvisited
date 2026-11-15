@@ -108,10 +108,14 @@ class UnionFindAggregateIndex implements AggregateIndex {
             if (cell == null) continue;
             for (final (other, q) in cell) {
               if (other == t) continue;
+              final ra = find(t), rb = find(other);
+              // Already in the same cluster: the union would be a no-op,
+              // so skip the haversine — the dominant cost on chained
+              // catalogs, where most pairs are already united.
+              if (ra == rb) continue;
               if (haversineMeters(p.latitude, p.longitude, q.latitude, q.longitude) <=
                   threshold) {
-                final ra = find(t), rb = find(other);
-                if (ra != rb) parent[ra] = rb;
+                parent[ra] = rb;
               }
             }
           }

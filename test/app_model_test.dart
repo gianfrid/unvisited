@@ -215,6 +215,19 @@ void main() {
     expect(exploredAreaColor('not-a-tint'), exploredAreaColor('green'));
   });
 
+  test('bulk visibility: plain calls and no-ops never flag busy', () async {
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    expect(model.busy, isFalse);
+    await model.setAllVisible(false);
+    expect(model.busy, isFalse);
+    expect(model.allTracksVisible, isFalse);
+    // A no-op feedback call (already in the target state) returns before
+    // flagging busy. (The busy-during-rebuild path needs frames; it is
+    // covered by the MapPage widget test.)
+    await model.setAllVisibleWithFeedback(false);
+    expect(model.busy, isFalse);
+  });
+
   test(
     'language choice persists, survives deleteAll and falls back safely',
     () async {

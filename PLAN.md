@@ -1,94 +1,55 @@
-# PLAN: TODO.md items 1–3 — top-area column, keep-screen-on setting, stop cancels the position subscription
+# PLAN: Select-all delay — profile findings + loading feedback (+ cheap clustering win)
 
-Three slices, each committed separately with its TODO.md entry removed in
-the same commit. After each slice's commit, `tool/build_release_apk.sh`
-runs detached (the script's own 5-minute window makes repeat runs skip).
-No new packages; the Android host channel already maps `keepScreenOn`.
+Trigger: tapping "Select all tracks" in the drawer visibly hangs the UI.
 
-## Slice 1 — Top-area vertical stack (TODO item 1)
+## Profile findings (throwaway benchmark, since removed)
 
-Files: `lib/ui/map_page.dart`, `lib/ui/map_actions.dart`,
-`lib/ui/recording_dashboard.dart`, `test/map_page_test.dart`
+100 synthetic tracks × 2000 points (200k points), cold caches, desktop VM:
 
-1. `map_page.dart`: replace the three independent top `Positioned`
-   overlays (`TopToolbar`, `SelectionBar`, the dashboard's chip) with ONE
-   `Positioned(top: 0, left: 0, right: 0)` → `SafeArea(minimum: top 8)` →
-   `Column(mainAxisSize: min)` holding the toolbar pill, the selection bar
-   (when an aggregate is selected, with a small top gap), and the
-   recording dashboard. One SafeArea, one column — nothing can overlap.
-2. `map_actions.dart`: `TopToolbar` and `SelectionBar` drop their
-   `Positioned`/`SafeArea` wrappers and return the pill itself.
-3. `recording_dashboard.dart`: the dashboard stays mounted always (its
-   state owns the salvage toast and the model/live listeners); its build
-   returns the chip + expandable stats panel as a plain column child
-   (`SizedBox.shrink` when idle). The bottom speed readout moves into a
-   small `RecordingSpeedReadout` widget in the same file, which `MapPage`
-   places as `Positioned(bottom: 24, ...)` — key `recording-speed` and the
-   `recordingLive` ListenableBuilder unchanged.
-4. Widget tests in `test/map_page_test.dart`: with a fixture imported and
-   selected and a fake-source session running, assert `selection-bar` and
-   `recording-chip` are both visible and strictly ordered without overlap
-   (toolbar bottom ≤ selection top, selection bottom ≤ chip top); idle
-   shows neither.
+| Step | Time |
+|---|---|
+| `setAllVisible` (index write + notify) | 0 ms |
+| `visibleTracks` — parses all 100 track files synchronously in the build frame | 1290 ms |
+| `aggregates` — `UnionFindAggregateIndex.build` over all 200k points | **5612 ms** |
+| `unlockCenters` (fog circles) | 14 ms |
+| Widget frame after tapping Select all | **4429 ms** |
 
-## Slice 2 — persistent keep-screen-on setting replaces the chip's lock toggle (TODO item 2)
+The delay is the rebuild frame triggered by the visibility change: point
+parsing + the union-find clustering run synchronously on the UI thread.
+The union-find dominates — it computes a haversine for every point pair in
+neighboring cells even when both tracks are already in the same cluster.
 
-Files: `lib/storage/track_store.dart`, `lib/ui/app_model.dart`,
-`lib/ui/recording_dashboard.dart`, `lib/ui/settings_sheet.dart`,
-`lib/l10n/app_strings.dart`, `test/app_model_test.dart`,
-`test/app_strings_test.dart`, `test/map_page_test.dart`
+## The change
 
-1. `track_store.dart`: `AppSettings.keepScreenOn` (default `true`),
-   tolerant `fromMap`, `copyWith`, `toMap`; `TrackStore.keepScreenOn`
-   getter + `saveKeepScreenOn(bool)`.
-2. `app_model.dart`: `keepScreenOn` getter + `setKeepScreenOn(bool)` with
-   the usual `notifyListeners` — the dashboard's model listener applies
-   the latch immediately, even mid-session.
-3. `recording_dashboard.dart`: remove the `screen_lock_portrait`
-   IconButton and `_screenLockOff`; `_applyScreenOn` becomes
-   `on = model.isRecording && model.keepScreenOn`, still called from
-   `_onModelChanged` on every model change.
-4. `settings_sheet.dart`: Android-only row (`Platform.isAndroid`, next to
-   the battery advisory) with a `Switch` bound to
-   `model.keepScreenOn` / `model.setKeepScreenOn`.
-5. `app_strings.dart`: remove `screenStaysOn`/`screenMayTurnOff`; add
-   `keepScreenOn` + `keepScreenOnSubtitle` in en and it;
-   `test/app_strings_test.dart` updated to match.
-6. Tests: `app_model_test.dart` — default true, persists across reload,
-   survives `deleteAll`, toggles. `map_page_test.dart` —
-   `Icons.screen_lock_portrait` is never rendered (idle and recording);
-   a mock on the `unvisited/host` channel records `keepScreenOn` calls:
-   `true` at session start, `false` immediately after
-   `setKeepScreenOn(false)` mid-session, `false` at stop.
-   (The Settings row is Android-only, so like the battery advisory it is
-   not built in desktop widget tests.)
-
-## Slice 3 — stop cancels the position stream subscription (TODO item 3)
-
-Files: `lib/recording/recording_session.dart`,
-`test/recording_session_test.dart`, `test/recording_controller_test.dart`
-
-1. `recording_session.dart`: `start` stores the `StreamSubscription`;
-   `stop()` awaits its cancellation before finalizing the stage, so
-   geolocator's foreground service and its notification end with the
-   session. `discardRecording` goes through the same `stop()`.
-2. `recording_session_test.dart`: after `stop`, a fix pushed to the fake
-   source is not processed (pointCount unchanged, `onFix` not called
-   again).
-3. `recording_controller_test.dart`: after `stopRecording`, a fix pushed
-   to the fake source produces no `recordingLive` tick.
-4. Manual verification on an Android device (not runnable here): the
-   "Recording" foreground-service notification is gone after Stop and
-   after Discard — noted in the commit message.
+1. **Loading feedback** (`lib/ui/app_model.dart`, `lib/ui/map_page.dart`):
+   `AppModel` gets its own `_busy` flag folded into the existing `busy`
+   getter (`imports.busy || _busy`), which `MapPage` already renders as the
+   top `LinearProgressIndicator`. `setAllVisible` becomes two-phase:
+   set `_busy`, notify (spinner paints on the next frame), yield one frame
+   (`Future.delayed(Duration.zero)`), then apply the visibility change and
+   notify (the heavy rebuild frame), and clear `_busy` in a post-frame
+   callback so the spinner stays up through the rebuild. Same treatment is
+   *not* needed for `toggleVisible` (one track — sub-frame).
+2. **Cheap clustering win** (`lib/aggregate/aggregate_tracks.dart`): in
+   `UnionFindAggregateIndex.build`, skip the haversine when
+   `find(t) == find(other)` — the union would be a no-op anyway, so this
+   is semantics-preserving and cuts most of the 5.6 s on chained catalogs.
+3. **Tests**: `test/app_model_test.dart` — `busy` is true during
+   `setAllVisible` and false after the post-frame clear. `test/aggregate_tracks_test.dart`
+   — clustering results unchanged with the early exit (existing tests cover
+   this; add one chained-catalog case asserting identical grouping).
+   `test/map_page_test.dart` — widget test: tapping "Select all tracks"
+   shows the progress indicator while busy and clears it after.
 
 ## Verification
 
-- `flutter analyze` clean; `flutter test` passes after each slice.
-- Three commits, each removing its TODO.md entry; after each,
-  `tool/build_release_apk.sh` is run detached and never awaited.
+- Re-run the same synthetic benchmark (as a scratch test, not committed)
+  to confirm the frame time drops and the spinner appears.
+- `flutter analyze` clean, `flutter test` passes.
+- Commit with PLAN.md; then `tool/build_release_apk.sh` detached.
 
 ## Out of scope
 
-- The manual Android notification check (item 3.3) — needs a device.
-- Any change to the host channel; `keepScreenOn` already maps to the
-  window flag in `MainActivity.kt`.
+- Async/chunked point parsing (would remove the 1.3 s parse too, but is a
+  bigger change than the reported ask); revisit if feedback alone isn't
+  enough on real catalogs.

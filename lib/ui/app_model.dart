@@ -5,7 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:flutter/material.dart' show ThemeMode;
-import 'package:flutter/widgets.dart' show Locale;
+import 'package:flutter/widgets.dart' show Locale, WidgetsBinding;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -236,7 +236,11 @@ class AppModel extends ChangeNotifier {
 
   // --- Import concern, delegated to [imports] -----------------------------
 
-  bool get busy => imports.busy;
+  /// True while a heavy catalog operation is in flight: an import, or a
+  /// visibility change that re-clusters and re-draws every track (see
+  /// [setAllVisible]). MapPage shows the top progress indicator for it.
+  bool get busy => imports.busy || _rebuilding;
+  bool _rebuilding = false;
   List<LatLng> get lastImportedPoints => imports.lastImportedPoints;
   int get importEpoch => imports.importEpoch;
 
@@ -304,6 +308,22 @@ class AppModel extends ChangeNotifier {
   /// Selects or deselects every track at once.
   Future<void> setAllVisible(bool visible) async {
     await store.setAllVisible(visible);
+    notifyListeners();
+  }
+
+  /// Select-all with loading feedback (the drawer's select/deselect-all
+  /// button): flags [busy] and waits one frame so the indicator paints
+  /// *before* the rebuild, then applies the change via [setAllVisible]
+  /// (whose rebuild frame re-parses and re-clusters every track), and
+  /// clears the flag once that frame has painted.
+  Future<void> setAllVisibleWithFeedback(bool visible) async {
+    if (allTracksVisible == visible) return;
+    _rebuilding = true;
+    notifyListeners();
+    await WidgetsBinding.instance.endOfFrame;
+    await setAllVisible(visible);
+    await WidgetsBinding.instance.endOfFrame;
+    _rebuilding = false;
     notifyListeners();
   }
 
