@@ -147,10 +147,10 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // The slot turns into the pause (Stop only appears once paused); the
-    // chip shows the live stats — the pulsing dot and the meters walked
-    // (the engine's haversine sum).
-    expect(find.byIcon(Icons.stop), findsNothing);
+    // The slot turns into the pause and Stop rides above it the whole
+    // session; the chip shows the live stats — the pulsing dot and the
+    // meters walked (the engine's haversine sum).
+    expect(find.byIcon(Icons.stop), findsOneWidget);
     expect(
       find.byIcon(Icons.fiber_manual_record),
       findsOneWidget,
@@ -194,12 +194,12 @@ void main() {
 
     // Recording: Import and Fit are hidden (they fight the dashboard for
     // space and attention) while Locate stays — its tap is the way back to
-    // the follow after panning away. The slot reads Pause, no Stop yet.
-    // The live speed is the primary readout, big and bottom-center, from
-    // the engine's fix speed.
+    // the follow after panning away. The slot reads Pause, with Stop above
+    // it the whole session. The live speed is the primary readout, big and
+    // bottom-center, from the engine's fix speed.
     expect(find.text('Import'), findsNothing);
     expect(find.text('Locate'), findsOneWidget);
-    expect(find.text('Stop'), findsNothing);
+    expect(find.text('Stop'), findsOneWidget);
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
     expect(speedCard, findsOneWidget);
@@ -270,8 +270,8 @@ void main() {
     expect(find.text('Resume'), findsNothing);
     expect(
       find.text('Stop'),
-      findsNothing,
-      reason: 'a running session hides the stop action again',
+      findsOneWidget,
+      reason: 'stop stays in the stack in every session state',
     );
 
     model.stopRecording();
@@ -879,8 +879,8 @@ void main() {
       expect(find.text('Record'), findsNothing);
       expect(
         find.text('Stop'),
-        findsNothing,
-        reason: 'stop only appears once paused',
+        findsOneWidget,
+        reason: 'stop is visible the whole session, running or paused',
       );
       final pause = rectOf('Pause');
       final locateRec = rectOf('Center on current position');

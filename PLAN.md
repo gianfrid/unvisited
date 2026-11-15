@@ -1,50 +1,40 @@
-# Plan — Stop popup: Save + Discard (TODO.md "Recording dashboard UX (triage)", unit 1)
+# PLAN: Stop button visible while recording, not only after Pause
 
-`_stopRecording` (`lib/ui/map_page.dart:458`) today offers Cancel +
-"Stop" (FilledButton). Rename the confirm action to **Save** and add a
-**Discard** action that ends the session and throws the recording away.
+TODO.md item: "Stop button visible while recording, not only after
+Pause".
 
-## Steps
+## Current state
 
-1. **Strings** (`lib/l10n/app_strings.dart`): add `saveLabel` ('Save' /
-   'Salva') and `discardLabel` ('Discard' / 'Scarta') to the abstract
-   interface, the English and the Italian class. The every-language
-   coverage test (`test/app_strings_test.dart:124`) enforces both.
-2. **Controller** (`lib/ui/recording_controller.dart`): add
-   `discardRecording()` — same session-teardown as `stopRecording`
-   (`_recording = null; _recordingFile = null; onChanged();
-   await session.stop();`) but the staged file is deleted and never read,
-   finalized or imported. Critical detail: the file must be deleted even
-   though startup salvage imports any leftover under `recording/` —
-   a discarded session must not resurrect on next launch.
-3. **Model passthrough** (`lib/ui/app_model.dart`):
-   `Future<void> discardRecording() => recorder.discardRecording();`
-   next to `stopRecording`.
-4. **Dialog** (`map_page.dart` `_stopRecording`): the dialog's
-   `showDialog<String>` result gets a third outcome. Layout:
-   - `TextButton` Cancel (unchanged, pops null),
-   - `TextButton` Discard (red `foregroundColor` from the error scheme)
-     popping a sentinel (e.g. the empty string) — not the name field's
-     value, so a stray empty-name result can't mean both;
-   - `FilledButton` Save (was "Stop") popping the trimmed-or-default name
-     as today.
-   After the dialog: name non-null → save path as today (`stopRecording`);
-   sentinel → a second confirmation dialog ("Discard recording?") whose
-   Cancel pops back to recording untouched and whose destructive Discard
-   → `discardRecording`. Two-step per user confirmation — the first
-   Discard button asks before data is destroyed.
-5. **Tests**:
-   - Controller unit test (Rec `recording_session_test.dart` or a new
-     block): start + feed + discard → staged file gone, nothing in the
-     catalog, a subsequent `salvageRecordings()` imports nothing.
-   - Widget test(s) in `map_page_test.dart` mirroring the existing
-     stop-dialog tests (FakeAsync-aware, see their comments): Save label
-     appears in the dialog and keeps the existing finalize flow; Discard
-     ends the session (chip gone, no new track); Cancel keeps recording.
-6. `flutter analyze` + `flutter test`; commit with this PLAN.md and the
-   unit-1 entry removed from TODO.md.
+In `lib/ui/map_page.dart`, the bottom-left action stack renders the Stop
+action only when the session is paused:
 
-## Notes
+    if (widget.model.recording?.state == RecordingState.paused)
+      HeaderAction(icon: Icon(Icons.stop), ..., onTap: _stopRecording),
 
-- Title stays "Stop recording"; only the action labels change (Save/Discard).
-- Desktop has no recording, no new platform concerns; UI-only + controller.
+So while actively recording the only exit is Pause -> Stop (two taps).
+`lib/ui/recording_controller.dart` and `lib/ui/recording_live.dart`
+need no change: `_stopRecording` already works from any session state
+(it asks for the track name, then finalizes or discards).
+
+## Change
+
+1. `lib/ui/map_page.dart`: widen the Stop gate from
+   `recording?.state == RecordingState.paused` to `isRecording`, so Stop
+   sits above the Pause/Resume slot in both the recording and paused
+   states. Order in the stack: Stop first, then the record/pause/resume
+   slot, then Locate (unchanged).
+2. `test/map_page_test.dart`: update the four tests that pin the old
+   "stop only appears once paused" behavior:
+   - 'record action starts a session the chip shows and stops it'
+   - 'record mode trims the header and shows the speed readout'
+   - 'the pause action flips to resume and back'
+   - 'locate and record live in the bottom-left stack, not the top bar'
+   Each now expects Stop present while recording and while paused.
+3. Remove the completed entry from TODO.md.
+
+## Verification
+
+- `flutter analyze` clean.
+- `flutter test`: all tests pass, including the updated widget tests
+  (Stop's position in the stack is asserted relative to the Pause/Resume
+  slot, which keeps the geometry contract intact).

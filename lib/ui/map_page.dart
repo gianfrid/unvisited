@@ -1260,8 +1260,7 @@ class _MapPageState extends State<MapPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (widget.model.recording?.state ==
-                          RecordingState.paused)
+                      if (widget.model.isRecording)
                         HeaderAction(
                           icon: const Icon(Icons.stop),
                           label: strings.stopLabel,
