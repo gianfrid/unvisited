@@ -21,16 +21,32 @@ lib/
 ├── main.dart                # entry point
 ├── host_channel.dart        # Android host channels (storage root, SAF, share intents)
 ├── tile_source.dart         # OSM tile provider
+├── geo.dart                 # shared geodesy (haversine distance, bearing)
+├── build_version.dart       # the git-derived About build time
+├── aggregate/               # union-find clustering of visible tracks into aggregates
 ├── import/                  # one unified import pipeline
-│   ├── track_parser.dart     #   TrackParser interface + content sniffing helpers
+│   ├── track_parser.dart    #   TrackParser interface + content sniffing helpers
 │   ├── track_importer.dart  #   orchestrates detection and parsing
 │   ├── gpx_parser.dart / tcx_parser.dart   # XML-based formats
 │   ├── fit_parser.dart      #   pure-Dart FIT decoder
 │   └── kmz_parser.dart      #   ZIP container → KML coordinate path
+├── recording/               # active-recording engine (Android), pure Dart
+│   ├── position_source.dart #   the platform seam geolocator plugs into
+│   ├── android_position_source.dart   # geolocator implementation
+│   ├── recording_session.dart  # state machine, filters, distance/speed stats
+│   └── staging_gpx.dart     # incremental GPX writer + crash salvage
+├── road/                    # offline road matching (side-loaded region files)
+│   ├── road_format.dart     #   the .unvisited-roads container, polyline5 encoding
+│   ├── road_store.dart      #   lazy z12-bucket reader with an LRU
+│   ├── road_matcher.dart    #   geometric matching against unlock centers
+│   └── road_bench.dart      #   profiling (desktop CLI + profile-mode in-app run)
 ├── l10n/app_strings.dart    # every user-visible string, English + Italian
 ├── models/track.dart        # TrackData model
 ├── storage/track_store.dart # app-private track files + index.json catalog
-└── ui/                      # app_model, map_page, track_colors
+└── ui/                      # app_model + its import_coordinator / recording_controller
+                              # / recording_live concerns, map_page and the modules it
+                              # composes (map_actions, zoom_slider, format, stats_panel,
+                              # settings_sheet, track_list, fog_of_war, track_colors)
 test/                        # unit tests, fixtures in test/fixtures/
 assets/icon/icon.svg         # the app icon (source of truth)
 tool/make_fixtures.dart      # regenerates binary FIT/KMZ/PBF test fixtures

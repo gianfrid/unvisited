@@ -134,10 +134,13 @@ class ImportResult {
 }
 
 /// Local-only track storage: original files under `tracks/`, catalog in
-/// `index.json`. Dedup is content-based (64-bit FNV-1a): the same activity
-/// exported both by OpenTracks and re-exported from Strava gets unique
-/// bytes and therefore may still appear twice *between* exports, but any
-/// byte-identical re-import (the common case) is a no-op.
+/// `index.json`. Dedup is content-based: byte-identical re-imports (the
+/// common case) dedup by the 64-bit FNV-1a content hash, and the same
+/// activity exported once as FIT and once as GPX is caught by the
+/// cross-format rule — matching start time (±2 s) and total distance
+/// (within 10%) together count as a duplicate; either signal alone
+/// never dedups, and a track without a start time is only caught by
+/// the byte hash.
 class TrackStore {
   TrackStore(this.root, {TrackImporter? importer})
       : importer = importer ??
