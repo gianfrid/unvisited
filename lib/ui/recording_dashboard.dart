@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -108,6 +109,16 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// GPS-loss hold: a fix arriving more than this long after the previous
   /// one is stale — hold the last rotation, never rotate on it.
   static const Duration gpsLossHold = Duration(seconds: 10);
+
+  /// Minimum zoom while the follow-camera rides a session, so the
+  /// recording view never gets too zoomed out.
+  static const double followZoomFloor = 17.0;
+
+  /// The follow-camera centers this fraction of the screen height
+  /// *behind* the fix along the course, so the position marker sits
+  /// centered horizontally but below the vertical center — more of what
+  /// is ahead stays in view.
+  static const double followLeadFraction = 0.18;
 
   /// Compass stream override for tests; production reads
   /// [FlutterCompass.events].
@@ -256,14 +267,35 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     final belowGate = speed != null && speed < rotationSpeedGateMps;
     final effectiveHeading =
         (belowGate && _compassHeading != null) ? _compassHeading : heading;
+    // Frame the fix below the vertical center: shift the camera center
+    // behind the fix along the course by a fraction of the screen height.
+    final zoom = math.max(
+      widget.mapController.camera.zoom,
+      followZoomFloor,
+    );
+    var center = LatLng(lat, lon);
+    if (effectiveHeading != null && !stale) {
+      final view = View.of(context);
+      final height = view.physicalSize.height / view.devicePixelRatio;
+      if (height > 0) {
+        final metersPerPixel =
+            156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
+        final offsetMeters = metersPerPixel * height * followLeadFraction;
+        final headingRad = effectiveHeading * math.pi / 180;
+        center = LatLng(
+          lat - offsetMeters * math.cos(headingRad) / 111320,
+          lon -
+              offsetMeters *
+                  math.sin(headingRad) /
+                  (111320 * math.cos(lat * math.pi / 180)),
+        );
+      }
+    }
     if (effectiveHeading == null ||
         stale ||
         widget.model.mapRotation != 'on' ||
         (belowGate && _compassHeading == null)) {
-      widget.mapController.move(
-        LatLng(lat, lon),
-        widget.mapController.camera.zoom,
-      );
+      widget.mapController.move(center, zoom);
     } else {
       // With a reported heading, currentCourse is that same heading.
       final rotation = widget.mapController.camera.rotation;
@@ -271,15 +303,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
           nearestEquivalentRotation(effectiveHeading, rotation) - rotation;
       if (courseDelta.abs() >= courseDeltaThreshold) {
         widget.mapController.moveAndRotate(
-          LatLng(lat, lon),
-          widget.mapController.camera.zoom,
+          center,
+          zoom,
           rotation + courseDelta * rotationSmoothingFactor,
         );
       } else {
-        widget.mapController.move(
-          LatLng(lat, lon),
-          widget.mapController.camera.zoom,
-        );
+        widget.mapController.move(center, zoom);
       }
     }
   }
