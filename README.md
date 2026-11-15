@@ -122,3 +122,7 @@ The live tile-server checks (`test/tile_server_test.dart`) are opt-in so the def
 - The build time (shown in Settings → About) is the latest git commit's time: desktop dev runs read it from the checkout at runtime, and APK builds bake it automatically via gradle (`flutter build apk` needs no extra flags). A `BUILD_TIME` dart-define overrides both.
 
 Details on the testing strategy, conventions and the rules that govern changes are in [SPEC.md](SPEC.md); how the pieces fit together is in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## License
+
+The Unvisited source code is licensed under the **GNU Affero General Public License v3.0** — see [LICENSE](LICENSE). Map data is © OpenStreetMap contributors (ODbL), shown in-app with the tiles.

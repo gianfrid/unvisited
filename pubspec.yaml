@@ -2,6 +2,7 @@ name: unvisited
 description: GPS track import and exploration app — OpenTracks FIT/GPX/KMZ/TCX
   files on one fog-of-war OSM map.
 publish_to: 'none'
+repository: https://github.com/gianfrid/unvisited
 
 version: 1.0.0+1
 
