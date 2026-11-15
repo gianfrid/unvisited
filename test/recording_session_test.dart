@@ -448,7 +448,7 @@ void main() {
     expect(bytes, isNotEmpty);
     final store = TrackStore(dir);
     final result = store.importBytes(bytes, filename: 'staged.gpx');
-    expect(result.imported, isTrue, reason: result.reason);
+    expect(result.imported, isTrue, reason: 'outcome was ${result.outcome}');
     final stored = store.tracks.single;
     expect(stored.name, 'File ride',
         reason: 'recorder names survive the round-trip');

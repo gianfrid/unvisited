@@ -340,8 +340,8 @@ class AppModel extends ChangeNotifier {
 
   // --- Export --------------------------------------------------------------
 
-  /// The mime per stored format ('application/gpx+xml'), matching the
-  /// accept set the share-intent filter and the parser sniffing use.
+  /// The mime per stored format, matching the accept set the
+  /// share-intent filter and the parser sniffing use.
   static const _trackMimes = <String, String>{
     'gpx': 'application/gpx+xml',
     'kmz': 'application/vnd.google-earth.kmz',
@@ -349,6 +349,9 @@ class AppModel extends ChangeNotifier {
     'tcx': 'application/xml',
     'fit': 'application/octet-stream',
   };
+
+  static String _mimeFor(String format) =>
+      _trackMimes[format.toLowerCase()] ?? 'application/octet-stream';
 
   /// Writes the track's original stored file as-is to a user-chosen path
   /// (records export as the GPX they were finalized into); returns the
@@ -362,8 +365,7 @@ class AppModel extends ChangeNotifier {
       try {
         await hostChannel.invokeMethod('shareTrack', <String, Object?>{
           'path': store.trackFileFor(track).path,
-          'mime': _trackMimes[track.format.toLowerCase()] ??
-              'application/octet-stream',
+          'mime': _mimeFor(track.format),
         });
       } on MissingPluginException {
         return null; // test runs, or a degraded build: nothing to do
@@ -377,8 +379,7 @@ class AppModel extends ChangeNotifier {
     final target = await FilePicker.saveFile(
       fileName: file.uri.pathSegments.last,
       bytes: file.readAsBytesSync(),
-      mimeType: _trackMimes[track.format.toLowerCase()] ??
-          'application/octet-stream',
+      mimeType: _mimeFor(track.format),
     );
     return target?.toFilePath();
   }

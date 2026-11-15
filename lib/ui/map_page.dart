@@ -359,14 +359,12 @@ class _MapPageState extends State<MapPage> {
 
   /// Tap tolerance for aggregate selection: ~24 screen px worth of meters
   /// at the tap's zoom.
-  double _hitToleranceMeters(LatLng tap) {
-    final zoom = _mapController.camera.zoom;
-    const metersPerPixelAtEquatorZoom0 = 156543.03392;
-    return 24 *
-        metersPerPixelAtEquatorZoom0 *
-        math.cos(tap.latitude * math.pi / 180) /
-        math.pow(2, zoom);
-  }
+  double _hitToleranceMeters(LatLng tap) =>
+      24 *
+      groundResolution(
+        zoom: _mapController.camera.zoom,
+        latitude: tap.latitude,
+      );
 
   void _onMapTap(LatLng tap) {
     if (widget.model.isRecording) return; // the recording UI owns taps then

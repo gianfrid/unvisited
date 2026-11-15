@@ -22,17 +22,15 @@ class ImportSummary {
   int failed;
 
   void add(ImportResult r) {
-    switch (r.reason) {
-      case 'duplicate':
-        duplicates++;
-      case null:
+    switch (r.outcome) {
+      case ImportSucceeded():
         imported++;
-      default:
-        if (r.reason!.startsWith('skipped:')) {
-          skipped++;
-        } else {
-          failed++;
-        }
+      case ImportDuplicate():
+        duplicates++;
+      case ImportSkipped():
+        skipped++;
+      case ImportFailed():
+        failed++;
     }
   }
 

@@ -87,7 +87,7 @@ void main() {
           filename: 'another_name.fit');
       expect(first.imported, isTrue);
       expect(second.imported, isFalse);
-      expect(second.reason, 'duplicate');
+      expect(second.outcome, isA<ImportDuplicate>());
       expect(store.tracks.length, 1);
     });
 
@@ -101,7 +101,7 @@ void main() {
           filename: 'activity_ride.gpx');
       expect(first.imported, isTrue);
       expect(second.imported, isFalse);
-      expect(second.reason, 'duplicate');
+      expect(second.outcome, isA<ImportDuplicate>());
       expect(store.tracks.length, 1);
       // The stored copy is the first import; the near-duplicate is not
       // written to disk.
@@ -150,14 +150,27 @@ void main() {
       final third = store.importBytes(timeless.codeUnits,
           filename: 'timeless-again.gpx');
       expect(third.imported, isFalse);
-      expect(third.reason, 'duplicate');
+      expect(third.outcome, isA<ImportDuplicate>());
     });
 
     test('monitoring files are skipped with a reason', () {
       final r = store.importBytes(fixture('monitoring.fit'),
           filename: 'monitoring.fit');
       expect(r.imported, isFalse);
-      expect(r.reason, contains('monitoring'));
+      switch (r.outcome) {
+        case ImportSkipped(:final reason):
+          expect(reason, contains('monitoring'));
+        default:
+          fail('expected ImportSkipped, got ${r.outcome}');
+      }
+      expect(store.tracks, isEmpty);
+    });
+
+    test('bytes of no known format report ImportFailed', () {
+      final r = store.importBytes('not a track'.codeUnits,
+          filename: 'junk.bin');
+      expect(r.imported, isFalse);
+      expect(r.outcome, isA<ImportFailed>());
       expect(store.tracks, isEmpty);
     });
 

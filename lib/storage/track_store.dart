@@ -113,11 +113,42 @@ class StoredTrack {
   }
 }
 
+/// What one import attempt did with the bytes. A sealed family so
+/// consumers switch over it exhaustively instead of matching on the
+/// reason string.
+sealed class ImportOutcome {
+  const ImportOutcome();
+}
+
+/// A new track was written to the catalog.
+final class ImportSucceeded extends ImportOutcome {
+  const ImportSucceeded();
+}
+
+/// The bytes (or the same activity re-exported) are already cataloged.
+final class ImportDuplicate extends ImportOutcome {
+  const ImportDuplicate();
+}
+
+/// Deliberately not imported (e.g. a FIT monitoring file).
+final class ImportSkipped extends ImportOutcome {
+  const ImportSkipped(this.reason);
+
+  final String reason;
+}
+
+/// Parsing or persisting failed.
+final class ImportFailed extends ImportOutcome {
+  const ImportFailed(this.error);
+
+  final Object error;
+}
+
 class ImportResult {
   const ImportResult({
     this.track,
     this.data,
-    this.reason,
+    this.outcome = const ImportSucceeded(),
   });
 
   /// Null when the import did not produce a new track.
@@ -126,11 +157,10 @@ class ImportResult {
   /// Parsed data for the (new) track; handy so the UI can zoom to it.
   final TrackData? data;
 
-  /// Human-readable explanation when [track] is null: duplicate / skipped /
-  /// failed.
-  final String? reason;
+  /// What the pipeline did with the bytes.
+  final ImportOutcome outcome;
 
-  bool get imported => track != null;
+  bool get imported => outcome is ImportSucceeded;
 }
 
 /// Local-only track storage: original files under `tracks/`, catalog in
@@ -362,25 +392,26 @@ class TrackStore {
 
   /// Imports raw track bytes through the unified pipeline.
   ///
-  /// * byte-identical duplicate → `ImportResult(duplicate)`; nothing written.
-  /// * FIT monitoring / non-activity → `ImportResult(skipped)`.
-  /// * parse failure or unknown format → `ImportResult(failed)`.
+  /// * byte-identical duplicate → `ImportResult(ImportDuplicate())`;
+  ///   nothing written.
+  /// * FIT monitoring / non-activity → `ImportResult(ImportSkipped(..))`.
+  /// * parse failure or unknown format → `ImportResult(ImportFailed(..))`.
   ImportResult importBytes(List<int> bytes, {String? filename}) {
     if (_tracks.any((t) => t.id == contentHash(bytes))) {
-      return ImportResult(reason: 'duplicate');
+      return const ImportResult(outcome: ImportDuplicate());
     }
     final TrackData data;
     try {
       data = importer.import(bytes, filename: filename);
     } on UnsupportedTrackException catch (e) {
-      return ImportResult(reason: 'skipped: ${e.reason}');
+      return ImportResult(outcome: ImportSkipped(e.reason));
     } on TrackParseException catch (e) {
-      return ImportResult(reason: 'failed: $e');
+      return ImportResult(outcome: ImportFailed(e));
     }
     if (_findNearDuplicate(data) != null) {
       // Same activity in different bytes (e.g. one export as FIT, another
       // as GPX): counts as a duplicate like a byte-identical re-import.
-      return ImportResult(reason: 'duplicate');
+      return const ImportResult(outcome: ImportDuplicate());
     }
     final id = contentHash(bytes);
     final ext = (data.format).toLowerCase();
