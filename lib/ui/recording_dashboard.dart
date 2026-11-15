@@ -24,8 +24,8 @@ double nearestEquivalentRotation(double course, double reference) =>
 /// (which keeps the map, the fog overlay, the locate/record buttons and
 /// the fits): the HUD chip with
 /// its per-fix duration/distance readout and the expandable stats panel —
-/// the chip column child of the page's top stack (the bottom-center
-/// headline speed rides `RecordingSpeedReadout`) — the screen latch, and
+/// a child of the page's bottom stack (the headline speed rides just under
+/// it, see `RecordingSpeedReadout`) — the screen latch, and
 /// the follow-camera release-on-gesture semantics. The widget listens to the
 /// per-fix channel ([AppModel.recordingLive]) with a [ListenableBuilder],
 /// so a 1 Hz fix repaints the dashboard — and only the dashboard; the
@@ -246,10 +246,10 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     );
   }
 
-  /// The dashboard's top part: the HUD chip and the expandable stats
-  /// panel, as one child of the page's top column (below the toolbar and
-  /// the selection bar — see `MapPage`). The headline speed rides the
-  /// bottom of the map separately (`RecordingSpeedReadout`).
+  /// The dashboard's part: the HUD chip and the expandable stats panel,
+  /// as one child of the page's bottom column (under the selection bar,
+  /// above the speed readout and the action stack — see `MapPage`). The
+  /// headline speed rides just under it (`RecordingSpeedReadout`).
   Widget _dashboard(RecordingSession session, AppStrings strings) {
     final meters = session.distanceMeters;
     return Padding(
@@ -305,9 +305,10 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   }
 }
 
-/// The dashboard's primary readout: the live speed, big and bottom-center
-/// — the stem display a bike computer shows the rider. Before the first fix
-/// and while paused (paused sessions are silent) it shows a dash, like the
+/// The dashboard's primary readout: the live speed, big — the stem display
+/// a bike computer shows the rider. It is a child of the page's bottom
+/// column, directly under the recording chip. Before the first fix and
+/// while paused (paused sessions are silent) it shows a dash, like the
 /// stats panel's not-yet-measured values. The per-fix channel rebuilds
 /// only this card.
 class RecordingSpeedReadout extends StatelessWidget {
@@ -317,35 +318,31 @@ class RecordingSpeedReadout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      bottom: 24,
-      left: 0,
-      right: 0,
-      child: Center(
-        child: ListenableBuilder(
-          listenable: model.recordingLive,
-          builder: (context, _) {
-            final session = model.recording;
-            if (session == null) return const SizedBox.shrink();
-            final currentSpeed = session.currentSpeed;
-            return Card(
-              key: const ValueKey('recording-speed'),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
-                child: Text(
-                  currentSpeed == null
-                      ? '—'
-                      : '${(currentSpeed * 3.6).toStringAsFixed(1)} km/h',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
+    return ListenableBuilder(
+      listenable: model.recordingLive,
+      builder: (context, _) {
+        final session = model.recording;
+        if (session == null) return const SizedBox.shrink();
+        final currentSpeed = session.currentSpeed;
+        return Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 4),
+          child: Card(
+            key: const ValueKey('recording-speed'),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 10,
               ),
-            );
-          },
-        ),
-      ),
+              child: Text(
+                currentSpeed == null
+                    ? '—'
+                    : '${(currentSpeed * 3.6).toStringAsFixed(1)} km/h',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

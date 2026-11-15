@@ -138,9 +138,9 @@ class HeaderAction extends StatelessWidget {
 }
 
 /// The top toolbar pill, centered across the map's top edge instead of a
-/// full-width app bar. It is the first child of the page's single top
-/// column (see `MapPage`), which stacks the selection bar and the
-/// recording chip below it without overlap. While a session runs the
+/// full-width app bar. It is the only child of the page's top column (see
+/// `MapPage`; the selection bar and the recording chip live in the bottom
+/// column). While a session runs the
 /// header keeps Tracks and Settings only — Import and the record-mode
 /// dashboard fight for space and attention (locate and record live in
 /// the bottom-left stack).
@@ -187,12 +187,12 @@ class TopToolbar extends StatelessWidget {
   }
 }
 
-/// The aggregate selection's actions pill, directly below the toolbar
-/// while an aggregate is selected: hide / color / fit / dismiss — a
-/// temporary state, attached to the toolbar's pill without crowding it.
-/// It is the second child of the page's single top column (see `MapPage`).
-/// [onFit] frames the selected aggregate on the map (the page's camera
-/// fit); [onDismiss] clears the selection in the page's state.
+/// The aggregate selection's actions pill, at the bottom of the map while
+/// an aggregate is selected: hide / color / fit / dismiss — a temporary
+/// state, the first child of the page's single bottom column (see
+/// `MapPage`). [onFit] frames the selected aggregate on the map (the
+/// page's camera fit); [onDismiss] clears the selection in the page's
+/// state.
 class SelectionBar extends StatelessWidget {
   const SelectionBar({
     super.key,
@@ -270,8 +270,10 @@ class SelectionBar extends StatelessWidget {
   }
 }
 
-/// The bottom-left action stack: the locate button hugs the map's
-/// bottom-left corner and the record slot sits directly above it.
+/// The action stack pill: the locate button with the record slot directly
+/// above it (and Stop before that once paused). It is the last child of
+/// the page's bottom column (see `MapPage`), aligned to the map's
+/// bottom-left corner.
 ///
 /// The record slot only shows once a session could actually start: the
 /// page passes [gpsWorking] (a real fix arrived via its silent poll or a
@@ -410,57 +412,50 @@ class BottomActionStackState extends State<BottomActionStack> {
     final model = widget.model;
     final recording = model.isRecording;
     final paused = model.recording?.state == RecordingState.paused;
-    return Positioned(
-      left: 12,
-      bottom: 0,
-      child: SafeArea(
-        minimum: const EdgeInsets.only(bottom: 16),
-        child: Material(
-          elevation: 2,
-          borderRadius: BorderRadius.circular(24),
-          color: Theme.of(context).colorScheme.surface,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (recording)
-                HeaderAction(
-                  icon: const Icon(Icons.stop),
-                  label: strings.stopLabel,
-                  tooltip: strings.stopLabel,
-                  onTap: _stopRecording,
-                ),
-              if (widget.gpsWorking || recording)
-                HeaderAction(
-                  icon: Icon(
-                    recording
-                        ? (paused ? Icons.play_arrow : Icons.pause)
-                        : Icons.fiber_manual_record,
-                  ),
-                  label: recording
-                      ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                      : strings.recordLabel,
-                  tooltip: recording
-                      ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                      : strings.recordLabel,
-                  onTap: recording
-                      ? (paused ? model.resumeRecording : model.pauseRecording)
-                      : _startRecording,
-                ),
-              HeaderAction(
-                icon: widget.locating
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.my_location),
-                label: widget.locating ? strings.locating : strings.locateLabel,
-                tooltip: strings.locateTooltip,
-                onTap: widget.locating ? null : widget.onLocate,
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(24),
+      color: Theme.of(context).colorScheme.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (recording)
+            HeaderAction(
+              icon: const Icon(Icons.stop),
+              label: strings.stopLabel,
+              tooltip: strings.stopLabel,
+              onTap: _stopRecording,
+            ),
+          if (widget.gpsWorking || recording)
+            HeaderAction(
+              icon: Icon(
+                recording
+                    ? (paused ? Icons.play_arrow : Icons.pause)
+                    : Icons.fiber_manual_record,
               ),
-            ],
+              label: recording
+                  ? (paused ? strings.resumeLabel : strings.pauseLabel)
+                  : strings.recordLabel,
+              tooltip: recording
+                  ? (paused ? strings.resumeLabel : strings.pauseLabel)
+                  : strings.recordLabel,
+              onTap: recording
+                  ? (paused ? model.resumeRecording : model.pauseRecording)
+                  : _startRecording,
+            ),
+          HeaderAction(
+            icon: widget.locating
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+            label: widget.locating ? strings.locating : strings.locateLabel,
+            tooltip: strings.locateTooltip,
+            onTap: widget.locating ? null : widget.onLocate,
           ),
-        ),
+        ],
       ),
     );
   }

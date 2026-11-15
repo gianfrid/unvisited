@@ -204,10 +204,19 @@ void main() {
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
     expect(speedCard, findsOneWidget);
+    // The speed readout sits in the bottom column, above the action stack.
+    final mapRect = tester.getRect(find.byType(FlutterMap));
+    final speedRect = tester.getRect(speedCard);
+    final pauseRect = tester.getRect(find.byTooltip('Pause'));
     expect(
-      tester.getTopRight(speedCard).dy,
-      greaterThan(tester.getBottomRight(find.byType(FlutterMap)).dy - 100),
-      reason: 'the speed readout sits at the bottom of the map',
+      speedRect.top,
+      greaterThan(mapRect.height * 0.5),
+      reason: 'the speed readout sits in the bottom half of the map',
+    );
+    expect(
+      speedRect.bottom,
+      lessThanOrEqualTo(pauseRect.top),
+      reason: 'the speed readout sits above the action stack',
     );
     expect(find.text('10.8 km/h'), findsOneWidget);
 
@@ -599,10 +608,11 @@ void main() {
 
     // A user pan releases the follow: the next fix stays where it is on
     // the map, the marker takes the new position without recentering.
-    // The empty-map hint sits dead center; drag below it.
+    // Drag from the map's free middle — the bottom column holds the
+    // dashboard and the action stack while recording.
     final size = tester.getSize(find.byType(FlutterMap));
     await tester.dragFrom(
-      Offset(size.width / 2, size.height * 0.8),
+      Offset(size.width / 2, size.height * 0.4),
       const Offset(0, 80),
     );
     await tester.pump();
@@ -676,9 +686,10 @@ void main() {
 
       // A user pan releases the follow — and the rotation with it: the next
       // fix re-centers nothing and leaves the rotation where the pan put it.
+      // (Drag from the free middle; the bottom column is occupied.)
       final size = tester.getSize(find.byType(FlutterMap));
       await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.8),
+        Offset(size.width / 2, size.height * 0.4),
         const Offset(0, 80),
       );
       final panned = camera().center;
@@ -819,10 +830,11 @@ void main() {
     await tester.pump();
 
     // A user pan releases the follow: the next fix stays where the pan put
-    // it, and the toolbar keeps the Locate action to come back.
+    // it, and the toolbar keeps the Locate action to come back. (Drag from
+    // the free middle; the bottom column is occupied while recording.)
     final size = tester.getSize(find.byType(FlutterMap));
     await tester.dragFrom(
-      Offset(size.width / 2, size.height * 0.8),
+      Offset(size.width / 2, size.height * 0.4),
       const Offset(0, 80),
     );
     fakeFix(source, 2, lat: 52.5202);
@@ -1170,15 +1182,13 @@ void main() {
     expect(model.selectedAggregate, isNotNull);
     expect(model.selectedAggregate!.trackIds, [model.tracks.single.id]);
     expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
-    // The selection actions sit in a second pill below the toolbar, not
-    // inside it.
-    final toolbarTop = tester.getTopLeft(
-      find.widgetWithText(FloatingToolbar, 'Tracks'),
-    );
+    // The selection actions sit in their own pill at the bottom of the
+    // map, not inside the top toolbar.
+    final mapRect = tester.getRect(find.byType(FlutterMap));
     final hideTop = tester.getTopLeft(
       find.byKey(const ValueKey('selection-hide')).first,
     );
-    expect(hideTop.dy > toolbarTop.dy, isTrue);
+    expect(hideTop.dy, greaterThan(mapRect.height * 0.5));
     // The highlight rides a second circle layer above the fog.
     expect(
       tester.widgetList<CircleLayer>(find.byType(CircleLayer)),
@@ -1263,8 +1273,12 @@ void main() {
   });
 
   testWidgets(
-    'toolbar, selection bar and recording chip stack in one top column',
+    'selection bar and recording chip stack in the bottom column, above the actions',
     (tester) async {
+      // Narrow phone surface: the bars must not overlap each other, the
+      // action stack, or the top toolbar.
+      await tester.binding.setSurfaceSize(const Size(360, 640));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       final root = createRoot();
       final cache = createCache();
       final model = AppModel(TrackStore(root));
@@ -1279,14 +1293,19 @@ void main() {
       );
       await tester.pump();
 
-      // Idle: neither the selection bar nor the recording chip.
+      // Idle: neither bar; the toolbar is the only thing at the top.
       expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
       expect(find.byKey(const ValueKey('recording-chip')), findsNothing);
+      final mapRect = tester.getRect(find.byType(FlutterMap));
+      final toolbar = tester.getRect(
+        find.widgetWithText(FloatingToolbar, 'Tracks'),
+      );
+      expect(toolbar.top, lessThan(mapRect.height * 0.5));
 
       // Select the aggregate (a map tap is owned by the recording UI once
       // a session runs, so set the selection directly), then start a
-      // session: both bars must show, stacked in the column without
-      // overlapping the toolbar or each other.
+      // session: both bars must show in the bottom half, stacked in the
+      // column without overlap, above the action stack.
       model.selectedAnchor = model.aggregates.single.anchorId;
       model.notifyListeners();
       await tester.pump();
@@ -1297,17 +1316,24 @@ void main() {
 
       expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
       expect(find.byKey(const ValueKey('recording-chip')), findsOneWidget);
-      final toolbar = tester.getRect(
-        find.widgetWithText(FloatingToolbar, 'Tracks'),
-      );
       final selection = tester.getRect(
         find.byKey(const ValueKey('selection-bar')),
       );
       final chip = tester.getRect(
         find.byKey(const ValueKey('recording-chip')),
       );
-      expect(selection.top, greaterThanOrEqualTo(toolbar.bottom));
+      final speed = tester.getRect(find.byKey(const ValueKey('recording-speed')));
+      final locate = tester.getRect(
+        find.byTooltip('Center on current position'),
+      );
+      // All bars sit below the toolbar (at the bottom of the map), stacked
+      // in the column without overlap, with the action stack last.
+      for (final r in [selection, chip, speed]) {
+        expect(r.top, greaterThan(toolbar.bottom));
+      }
       expect(chip.top, greaterThanOrEqualTo(selection.bottom));
+      expect(speed.top, greaterThanOrEqualTo(chip.bottom));
+      expect(locate.top, greaterThanOrEqualTo(speed.bottom));
 
       // End the session without the dialog (its import never settles in
       // the fake-async zone).

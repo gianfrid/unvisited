@@ -753,11 +753,10 @@ class _MapPageState extends State<MapPage> {
               child: Center(child: ZoomSlider(controller: _mapController)),
             ),
           ),
-          // One non-overlapping vertical column at the top: the toolbar
-          // pill, then the selection bar while an aggregate is selected,
-          // then the recording chip while a session runs. Each used to
-          // position itself independently from the top edge, so on narrow
-          // screens they overlapped the toolbar and each other.
+          // Compact floating toolbar at the top, centered across the
+          // map's top edge instead of a full-width app bar — the only
+          // overlay up there now; the selection bar and the recording
+          // chip live in the bottom column below.
           Positioned(
             top: 0,
             left: 0,
@@ -772,12 +771,29 @@ class _MapPageState extends State<MapPage> {
                     onImport: _chooseImport,
                     onOpenSettings: _openSettings,
                   ),
-                  // The aggregate selection's actions hold a second compact
-                  // pill directly below the toolbar while an aggregate is
-                  // selected: hide, color, fit, dismiss — a temporary state,
-                  // attached to the toolbar's pill without crowding it.
+                ],
+              ),
+            ),
+          ),
+          // One non-overlapping vertical column at the bottom: the
+          // selection bar while an aggregate is selected, then the
+          // recording chip and headline speed while a session runs, then
+          // the action stack (locate / record / pause / stop) at the very
+          // bottom-left. One column, so none of them can overlap on narrow
+          // screens.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              minimum: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // The aggregate selection's actions pill: hide, color,
+                  // fit, dismiss — a temporary state at the bottom of the
+                  // map, above the recording chip and the action stack.
                   if (widget.model.selectedAnchor != null) ...[
-                    const SizedBox(height: 4),
                     SelectionBar(
                       model: widget.model,
                       onFit: () {
@@ -793,33 +809,42 @@ class _MapPageState extends State<MapPage> {
                       onDismiss: () =>
                           setState(() => widget.model.selectedAnchor = null),
                     ),
+                    const SizedBox(height: 4),
                   ],
-                  // The recording dashboard: HUD chip and stats panel in the
-                  // column (the headline speed rides the bottom of the map,
-                  // see RecordingSpeedReadout), with its own per-fix
-                  // listeners — a 1 Hz fix rebuilds the dashboard only.
+                  // The recording dashboard: HUD chip and stats panel in
+                  // the column, with its own per-fix listeners — a 1 Hz fix
+                  // rebuilds the dashboard only.
                   RecordingDashboard(
                     key: _dashboardKey,
                     model: widget.model,
                     mapController: _mapController,
                   ),
+                  // The dashboard's primary readout: the live speed, just
+                  // under the chip while a session runs.
+                  RecordingSpeedReadout(model: widget.model),
+                  // The action stack at the very bottom-left of the column
+                  // (see `BottomActionStack`; its record slot only shows
+                  // once a real fix has arrived).
+                  if (widget.locationSupported)
+                    SizedBox(
+                      width: double.infinity,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: BottomActionStack(
+                            model: widget.model,
+                            locating: _locating,
+                            gpsWorking: _gpsWorking,
+                            onLocate: _locate,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
-          // Bottom-left action stack: locate, record/pause/resume and
-          // stop (see `BottomActionStack`; its record slot only shows
-          // once a real fix has arrived).
-          if (widget.locationSupported)
-            BottomActionStack(
-              model: widget.model,
-              locating: _locating,
-              gpsWorking: _gpsWorking,
-              onLocate: _locate,
-            ),
-          // The dashboard's primary readout: the live speed, big and
-          // bottom-center while a session runs.
-          RecordingSpeedReadout(model: widget.model),
           // The empty-state hint only for a genuinely empty, idle map:
           // while a session records (even with nothing plotted yet) and
           // while the catalog has tracks — selected or not — it would
