@@ -19,7 +19,7 @@ import 'staging_gpx.dart';
 enum RecordingState { idle, recording, paused, stopped }
 
 /// What the session did with the last fix handed to it.
-enum FixDisposition { accepted, rejectedAccuracy, rejectedStale }
+enum FixDisposition { accepted, rejectedAccuracy, rejectedStale, ignored }
 
 /// Consumes fixes from a [PositionSource] into a [GpxStageWriter] while
 /// tracking the dashboard's statistics.
@@ -193,9 +193,10 @@ class RecordingSession {
 
   /// One fix through the filters; the stream subscription calls this.
   /// Paused sessions are silent: their fixes are neither accepted nor
-  /// rejected — they fall outside recording by definition.
+  /// rejected — they return [FixDisposition.ignored] because they fall
+  /// outside recording by definition.
   FixDisposition processFix(PositionFix fix) {
-    if (state != RecordingState.recording) return FixDisposition.accepted;
+    if (state != RecordingState.recording) return FixDisposition.ignored;
     if (fix.accuracy != null && fix.accuracy! > maxAccuracy) {
       return FixDisposition.rejectedAccuracy;
     }

@@ -1,20 +1,39 @@
-# TODO unit 3: live trace age fade
+# Code review findings — fix all six TODO.md items
 
-The recording track fades with age: points bucketed into 30 s buckets,
-alpha scaling linearly from the full trace color to 10% over 5 minutes,
-so a retreated stretch is almost transparent and direction stays
-readable.
+Six small, independent fixes from the 2026-12-19 full-codebase review.
 
-## Change
-- `recording_session.dart`: new `liveSegmentTimes` getter — per-point
-  timestamps mirroring `liveSegments` one to one.
-- `map_page.dart`: `_liveTracePolylines()` renders the live trace in
-  age buckets with `traceFadeWindow` = 5 min, `traceFadeMinAlpha` = 0.1.
+## Changes
+
+1. **`lib/l10n/app_strings.dart`** — remove the duplicate `@override` line on
+   `fitTooltip` and `statAvgSpeed` in both `EnglishStrings` and `ItalianStrings`
+   (4 spots total).
+
+2. **`lib/ui/stats_panel.dart`** — remove the duplicated first doc-comment line.
+
+3. **`SPEC.md` + `AGENTS.md`** — add `flutter_compass` to the established
+   package set (it is already a shipped dependency used by the recording
+   dashboard's compass heading; documenting it is less destructive than
+   ripping out a working feature).
+
+4. **`lib/ui/import_coordinator.dart` + `android/.../MainActivity.kt`** —
+   remove the extension-based pre-filter in folder scans so every file
+   reaches the content-sniffing pipeline. In `importFromDirectory` drop the
+   `ext` check entirely; in `scanSafTree` copy every regular file (the
+   staging copy is the only cost) and let Dart's sniffer decide.
+
+5. **`lib/recording/recording_session.dart`** — add `FixDisposition.ignored`
+   and return it from `processFix` when the session is not recording
+   (paused/stopped), matching the doc comment's "neither accepted nor
+   rejected".
+
+6. **`AGENTS.md`** — add `geolocator` to the quick-reference package list.
 
 ## Tests
-- recording_session_test: liveSegmentTimes mirrors segments/points.
-- map_page_test: live trace renders recording-red and (with the fake
-  fixes' old timestamps) dimmed below full alpha by the fade.
+- `flutter analyze` clean, `flutter test` passes (307+).
+- Item 4: existing importer tests already cover content sniffing; the
+  folder-scan path is exercised by `import_coordinator_test.dart`.
+- Item 5: `recording_session_test.dart` may assert on `FixDisposition` —
+  update if it references the paused case.
 
 ## Verification
-analyze clean, 307+ tests pass; commit PLAN.md + change + TODO removal.
+analyze clean, all tests pass; commit PLAN.md + changes + TODO.md removal.

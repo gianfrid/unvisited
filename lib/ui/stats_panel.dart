@@ -1,5 +1,4 @@
 /// The recording dashboard's expanded stats panel: the engine's live
-/// The recording dashboard's expanded stats panel: the engine's live
 /// numbers as labeled rows in the card under the HUD chip.
 library;
 

@@ -243,7 +243,6 @@ class EnglishStrings extends AppStrings {
   @override
   String get importTooltip => 'Import tracks';
   @override
-  @override
   String get fitTooltip => 'Fit tracks';
   @override
   String get selectionHideTooltip => 'Hide this area';
@@ -310,7 +309,6 @@ class EnglishStrings extends AppStrings {
   String get discardLabel => 'Discard';
   @override
   String get discardConfirmTitle => 'Discard this recording?';
-  @override
   @override
   String get statAvgSpeed => 'Avg speed';
   @override
@@ -526,7 +524,6 @@ class ItalianStrings extends AppStrings {
   @override
   String get importTooltip => 'Importa tracce';
   @override
-  @override
   String get fitTooltip => 'Inquadra le tracce';
   @override
   String get selectionHideTooltip => 'Nascondi quest\'area';
@@ -593,7 +590,6 @@ class ItalianStrings extends AppStrings {
   String get discardLabel => 'Scarta';
   @override
   String get discardConfirmTitle => 'Scartare questa registrazione?';
-  @override
   @override
   String get statAvgSpeed => 'Media';
   @override

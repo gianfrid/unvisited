@@ -173,10 +173,8 @@ class ImportCoordinator {
     await for (final entry in dir.list(recursive: true, followLinks: false)) {
       if (entry is! File) continue;
       final name = entry.uri.pathSegments.last;
-      final ext = name.toLowerCase().split('.').last;
-      if (!const {'gpx', 'fit', 'kmz', 'kml', 'tcx'}.contains(ext)) {
-        continue;
-      }
+      // No extension pre-filter: format detection is content-based (SPEC),
+      // so every file reaches the pipeline's sniffer.
       try {
         importBytes(entry.readAsBytesSync(), name, summary, newPoints);
       } on Exception {

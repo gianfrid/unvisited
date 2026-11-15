@@ -31,10 +31,6 @@ class MainActivity : FlutterActivity() {
         private const val PICK_DIR_REQUEST = 4941
         private const val POST_NOTIFICATIONS_REQUEST = 4942
 
-        /** Track file extensions accepted by the unified import pipeline.
-         *  Matched case-insensitively, mirroring the Dart-side folder scan. */
-        private val TRACK_EXTENSIONS = setOf("gpx", "fit", "kmz", "kml", "tcx")
-
         /** Guard against pathological (or cyclic) SAF trees while recursing. */
         private const val MAX_TREE_DEPTH = 32
 
@@ -330,7 +326,9 @@ class MainActivity : FlutterActivity() {
                 if (docId == null || name == null) continue
                 if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
                     scanSafTree(treeUri, docId, depth + 1, stagingDir, out)
-                } else if (name.substringAfterLast('.', "").lowercase() in TRACK_EXTENSIONS) {
+                } else {
+                    // No extension pre-filter: every regular file is staged and
+                    // the Dart side's content sniffer decides the format (SPEC).
                     copySafDocument(treeUri, docId, name, stagingDir, out)
                 }
             }
