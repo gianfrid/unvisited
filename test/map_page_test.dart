@@ -2407,7 +2407,7 @@ void main() {
     int tracePolylines() => tester
         .widgetList<PolylineLayer>(find.byType(PolylineLayer))
         .expand((l) => l.polylines)
-        .where((p) => p.color == recordingTraceColor('red'))
+        .where((p) => p.color.r == recordingTraceColor('red').r)
         .length;
     expect(tracePolylines(), 0);
 
@@ -2417,14 +2417,16 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // While recording, one translucent recording-red polyline carries the
-    // two accepted fixes — distinct from the catalog tint.
+    // While recording, one recording-red polyline carries the two accepted
+    // fixes — distinct from the catalog tint. The fake fixes carry an old
+    // timestamp, so the age fade has dimmed it below the full trace alpha.
     expect(tracePolylines(), 1);
     final trace = tester
         .widgetList<PolylineLayer>(find.byType(PolylineLayer))
         .expand((l) => l.polylines)
-        .singleWhere((p) => p.color == recordingTraceColor('red'));
+        .singleWhere((p) => p.color.r == recordingTraceColor('red').r);
     expect(trace.points.length, 2);
+    expect(trace.color.a, lessThan(recordingTraceColor('red').a));
 
     // After stop the live trace is gone (the finalized track joins the
     // catalog instead — that import's real IO never settles in the

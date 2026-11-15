@@ -134,6 +134,13 @@ class RecordingSession {
       ];
   final List<List<LatLng>> _liveSegments = [];
 
+  /// Per-point timestamps matching [liveSegments] one to one — the live
+  /// trace's age fade keys off these.
+  List<List<DateTime>> get liveSegmentTimes => [
+        for (final s in _liveTimes) List<DateTime>.of(s),
+      ];
+  final List<List<DateTime>> _liveTimes = [];
+
   /// Set by [pause]: the next accepted fix opens a fresh segment, so the
   /// trace matches the staged file's `<trkseg>` breaks one to one.
   bool _segmentOpen = true;
@@ -204,9 +211,11 @@ class RecordingSession {
     if (brokeSegment) stage.breakSegment();
     if (_segmentOpen || brokeSegment) {
       _liveSegments.add([]);
+      _liveTimes.add([]);
       _segmentOpen = false;
     }
     _liveSegments.last.add(LatLng(fix.lat, fix.lon));
+    _liveTimes.last.add(fix.time);
     stage.appendPoint(lat: fix.lat, lon: fix.lon, time: fix.time, ele: fix.ele);
 
     if (!first) {

@@ -8,6 +8,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_strings.dart';
+import '../recording/recording_session.dart';
 import '../tile_source.dart';
 import 'app_model.dart';
 import 'fog_of_war.dart';
@@ -537,6 +538,60 @@ class _MapPageState extends State<MapPage> {
   /// Fog-of-war overlay: one translucent circle per unlocked grid cell, in
   /// the single exploration tint. Track polylines are gone by design — the
   /// union of circles is how a visited area shows on the map.
+  /// The live trace as age-faded polylines: points are bucketed into
+  /// 30 s age buckets, and each bucket's alpha scales linearly from the
+  /// full trace color down to [traceFadeMinAlpha] over [traceFadeWindow]
+  /// — an old, retreated stretch fades to almost transparent while the
+  /// fresh end stays solid, so direction of travel stays readable.
+  static const Duration traceFadeWindow = Duration(minutes: 5);
+  static const Duration traceFadeBucket = Duration(seconds: 30);
+  static const double traceFadeMinAlpha = 0.1;
+
+  List<Polyline> _liveTracePolylines(RecordingSession session) {
+    final base = recordingTraceColor(widget.model.recordingTint);
+    final now = DateTime.now();
+    final out = <Polyline>[];
+    final segments = session.liveSegments;
+    final times = session.liveSegmentTimes;
+    for (var s = 0; s < segments.length; s++) {
+      final seg = segments[s];
+      if (seg.length < 2) continue;
+      final segTimes = times[s];
+      // Bucket index per point; a bucket keeps the points consecutive in
+      // the segment so each bucket renders as one polyline.
+      var bucketStart = 0;
+      for (var i = 1; i <= seg.length; i++) {
+        final newBucket =
+            i == seg.length ||
+            (now.difference(segTimes[i]).inSeconds ~/
+                    traceFadeBucket.inSeconds) !=
+                (now.difference(segTimes[i - 1]).inSeconds ~/
+                    traceFadeBucket.inSeconds);
+        if (!newBucket) continue;
+        if (i - bucketStart < 2) {
+          bucketStart = i;
+          continue;
+        }
+        final age = now.difference(segTimes[i - 1]);
+        final fade = 1.0 -
+            (1.0 - traceFadeMinAlpha) *
+                (age.inMilliseconds / traceFadeWindow.inMilliseconds).clamp(
+                  0.0,
+                  1.0,
+                );
+        out.add(
+          Polyline(
+            points: seg.sublist(bucketStart, i),
+            color: base.withValues(alpha: (base.a * 255.0).round() / 255.0 * fade),
+            strokeWidth: 4,
+          ),
+        );
+        bucketStart = i;
+      }
+    }
+    return out;
+  }
+
   List<CircleMarker> _buildFogCircles(List<MapTrack> tracks) {
     final tintKeys = widget.model.aggregateTintKeys;
     final out = <CircleMarker>[];
@@ -698,17 +753,9 @@ class _MapPageState extends State<MapPage> {
                 ListenableBuilder(
                   listenable: widget.model.recordingLive,
                   builder: (context, _) => PolylineLayer(
-                    polylines: [
-                      for (final seg in widget.model.recording!.liveSegments)
-                        if (seg.length >= 2)
-                          Polyline(
-                            points: seg,
-                            color: recordingTraceColor(
-                              widget.model.recordingTint,
-                            ),
-                            strokeWidth: 4,
-                          ),
-                    ],
+                    polylines: _liveTracePolylines(
+                      widget.model.recording!,
+                    ),
                   ),
                 ),
               // "You are here" marker for the last located fix; absent

@@ -231,6 +231,8 @@ void main() {
     session.processFix(fix(1, lat: 52.5201));
     expect(session.liveSegments.length, 1);
     expect(session.liveSegments.single.length, 2);
+    // Per-point timestamps mirror the segments one to one (age fade).
+    expect(session.liveSegmentTimes.single, [fix(0).time, fix(1).time]);
 
     // A pause opens a fresh segment, like the staged <trkseg>.
     session.pause();
