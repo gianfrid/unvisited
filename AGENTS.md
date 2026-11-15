@@ -29,6 +29,7 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md).
   1. Create PLAN.md with concrete implementation steps for the change.
   2. Show the plan and wait for explicit confirmation before touching code. Investigation (reading files, searching, read-only checks) needs no confirmation, and there is no pre-authorization: "keep working on TODO.md" does not skip this step.
   3. On confirmation, implement, run tests, and commit with a message describing what was done. PLAN.md itself is part of that commit — the plan is committed with the change it implements, together with the removal of the completed TODO.md entry when it is one. PLAN.md is not truncated afterwards: it stays as committed until the next task overwrites it with the next plan, whose writing then again waits for confirmation (step 2).
+  4. After committing a TODO.md item, run `tool/build_release_apk.sh` and do not wait for it: the release APK build (`flutter build apk --release --split-per-abi --target-platform=android-arm64`) runs detached in the background and must never block the next prompt. The script enforces the window itself (at least 5 minutes between builds, from the previous build's end; a build in flight or inside the window skips, no queueing).
 - Commit messages are the permanent record; write them to stand alone — the plan they describe is only history until overwritten, never the working reference.
 
 ## Agent guidelines
