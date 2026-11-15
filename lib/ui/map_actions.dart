@@ -237,7 +237,9 @@ class SelectionBar extends StatelessWidget {
                     value: entry.key,
                     child: Row(
                       children: [
-                        Icon(Icons.circle, color: entry.value, size: 18),
+                        Icon(Icons.circle,
+                            color: entry.value.withValues(alpha: 1),
+                            size: 18),
                         const SizedBox(width: 8),
                         Text(
                           AppStrings.ofContext(context).tintName(entry.key),
