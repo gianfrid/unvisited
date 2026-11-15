@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:math' as math;
@@ -5,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:file_picker/file_picker.dart'
     show
@@ -764,6 +766,141 @@ void main() {
       }
       await tester.pump();
       expect(camera().rotation, closeTo(180.0, 1.0));
+    },
+  );
+
+  testWidgets(
+    'a pan releases the follow, which re-engages after the timeout',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
+      await tester.pump();
+      await tester.pump();
+
+      // A user pan releases the follow: the next fix does not re-center.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      final panned = camera().center;
+      fakeFix(source, 1, lat: 52.5202, heading: 90, speed: 5.0);
+      await tester.pump();
+      expect(camera().center, sameCameraAs(panned));
+
+      // After the re-engage delay the follow arms itself: the next fix
+      // centers again.
+      await tester.pump(const Duration(seconds: 21));
+      fakeFix(source, 2, lat: 52.5203, heading: 90, speed: 5.0);
+      await tester.pump();
+      expect(camera().center.latitude, closeTo(52.5203, 1e-6));
+    },
+  );
+
+  testWidgets(
+    'below the speed gate the compass heading drives the rotation',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+      final compass = StreamController<double?>();
+      RecordingDashboardState.compassEvents = () => compass.stream;
+      addTearDown(() {
+        RecordingDashboardState.compassEvents =
+            () => FlutterCompass.events!.map((e) => e.heading);
+        compass.close();
+      });
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      // Moving fast on an east course: camera rotates to ~90.
+      fakeFix(source, 0, heading: 90, speed: 5.0);
+      for (var i = 1; i < 16; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
+      }
+      await tester.pump();
+      await tester.pump();
+      expect(camera().rotation, closeTo(90.0, 1.0));
+
+      // Standstill with a stale GPS heading but a live compass facing
+      // south: the rotation follows the compass, not the stale course.
+      compass.add(180.0);
+      await tester.pump();
+      for (var i = 16; i < 32; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 0.2);
+      }
+      await tester.pump();
+      expect(camera().rotation, greaterThan(170.0));
+    },
+  );
+
+  testWidgets(
+    'the rotation-mode button cycles the setting and re-engages the follow',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
+      await tester.pump();
+      await tester.pump();
+
+      // Pan away to release the follow, then tap the mode button: the
+      // setting cycles off and the follow re-arms immediately.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
+      await tester.pump();
+      expect(model.mapRotation, 'off');
+      fakeFix(source, 1, lat: 52.5202, heading: 90, speed: 5.0);
+      await tester.pump();
+      expect(camera().center.latitude, closeTo(52.5202, 1e-6));
     },
   );
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -46,10 +47,26 @@ class RecordingDashboard extends StatefulWidget {
 }
 
 class RecordingDashboardState extends State<RecordingDashboard> {
-  /// The follow-camera: a new session arms it, a user pan releases it —
-  /// a fix must never pull the view back against the user's hand. The
-  /// locate button's shortcut re-arms it via [rearmFollow]/[armFollow].
+  /// The follow-camera: a new session arms it, a user pan or two-finger
+  /// rotation releases it for [reengageDelay] — a fix must never pull the
+  /// view back against the user's hand. The locate button's shortcut
+  /// re-arms it immediately via [rearmFollow]/[armFollow].
   bool _follow = false;
+
+  /// The pending timed re-engage, if any.
+  Timer? _reengageTimer;
+
+  /// When the last fix was applied; a longer gap than [gpsLossHold] means
+  /// the heading is stale and the rotation is held.
+  DateTime? _lastFixAt;
+
+  /// Latest compass heading (rotation-vector fused), used only below the
+  /// speed gate — where the GPS course says where the user *was*.
+  double? _compassHeading;
+
+  /// The compass subscription, alive only while recording with rotation
+  /// on (battery hygiene: no continuous sensor stream otherwise).
+  StreamSubscription<double?>? _compassSub;
 
   /// Detects the session boundary (start/stop) to re-arm the follow and
   /// reset the panel.
@@ -83,6 +100,20 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// 1 Hz fixes rather than stepping.
   static const double rotationSmoothingFactor = 0.4;
 
+  /// After a user gesture releases the follow, auto re-engage this long
+  /// later (OsmAnd auto-follow model), unless the locate button re-arms
+  /// sooner. Within the 15–30 s prior-art band.
+  static const Duration reengageDelay = Duration(seconds: 20);
+
+  /// GPS-loss hold: a fix arriving more than this long after the previous
+  /// one is stale — hold the last rotation, never rotate on it.
+  static const Duration gpsLossHold = Duration(seconds: 10);
+
+  /// Compass stream override for tests; production reads
+  /// [FlutterCompass.events].
+  static Stream<double?> Function() compassEvents =
+      () => FlutterCompass.events!.map((e) => e.heading);
+
   /// Map-event sources that are not the user's hand: programmatic moves
   /// (the follow-camera itself, the zoom slider), camera fits, customs.
   /// Everything else releases the follow.
@@ -101,12 +132,15 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     _follow = _wasRecording; // A destroyed-and-rebuilt widget re-arms.
     widget.model.addListener(_onModelChanged);
     widget.model.recordingLive.addListener(_onRecordingFix);
+    _updateCompassSubscription();
     // The follow-camera releases on any gesture move — including the
     // fling/double-tap-zoom animations that report through their own
-    // sources after the gesture ends.
+    // sources after the gesture ends — and re-engages after
+    // [reengageDelay] (a user two-finger rotation lands here too: it
+    // suppresses auto-rotation until the re-engage or the mode button).
     _mapEvents = widget.mapController.mapEventStream.listen((event) {
       if (!_follow || _programmaticEvents.contains(event.source)) return;
-      setState(() => _follow = false);
+      _releaseFollow();
     });
     // The startup salvage notice: a killed session's staged recording was
     // imported during [AppModel.load]; one toast says so. Read once the
@@ -119,7 +153,38 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     widget.model.removeListener(_onModelChanged);
     widget.model.recordingLive.removeListener(_onRecordingFix);
     _mapEvents?.cancel();
+    _reengageTimer?.cancel();
+    _compassSub?.cancel();
     super.dispose();
+  }
+
+  /// Releases the follow for [reengageDelay] after a user gesture; the
+  /// timer re-arms it unless another gesture or the session boundary
+  /// intervenes.
+  void _releaseFollow() {
+    _reengageTimer?.cancel();
+    setState(() => _follow = false);
+    _reengageTimer = Timer(reengageDelay, () {
+      if (!mounted || !widget.model.isRecording) return;
+      setState(() => _follow = true);
+    });
+  }
+
+  /// Starts the compass stream while recording with rotation on, so a
+  /// below-speed-gate fix can still track which way the user faces.
+  void _updateCompassSubscription() {
+    final want =
+        widget.model.isRecording && widget.model.mapRotation == 'on';
+    if (want && _compassSub == null) {
+      _compassSub = compassEvents().listen((heading) {
+        if (!mounted) return;
+        _compassHeading = heading;
+      });
+    } else if (!want && _compassSub != null) {
+      _compassSub?.cancel();
+      _compassSub = null;
+      _compassHeading = null;
+    }
   }
 
   /// The startup salvage toast (see [initState]).
@@ -149,7 +214,11 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         _follow = recording;
         _panelOpen = false;
       });
+      _reengageTimer?.cancel();
+      _reengageTimer = null;
+      _lastFixAt = null;
     }
+    _updateCompassSubscription();
     // Applied best-effort from here: the window flag matters only while
     // the dashboard is in front anyway.
     _applyScreenOn();
@@ -175,12 +244,22 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     // says where the user was, not where they face. No heading yet — a
     // first fix — leaves the camera rotation alone. A fix below the
     // speed gate also holds the rotation: at a standstill the reported
-    // heading is stale, not a direction.
+    // heading is stale, not a direction — unless the compass stream says
+    // which way the user faces (below the gate). A fix arriving more
+    // than [gpsLossHold] after the previous one is stale too: hold the
+    // rotation on it.
+    final now = DateTime.now();
+    final stale = _lastFixAt != null && now.difference(_lastFixAt!) > gpsLossHold;
+    _lastFixAt = now;
     final heading = session?.currentHeading;
     final speed = session?.currentSpeed;
-    if (heading == null ||
+    final belowGate = speed != null && speed < rotationSpeedGateMps;
+    final effectiveHeading =
+        (belowGate && _compassHeading != null) ? _compassHeading : heading;
+    if (effectiveHeading == null ||
+        stale ||
         widget.model.mapRotation != 'on' ||
-        (speed != null && speed < rotationSpeedGateMps)) {
+        (belowGate && _compassHeading == null)) {
       widget.mapController.move(
         LatLng(lat, lon),
         widget.mapController.camera.zoom,
@@ -189,7 +268,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
       // With a reported heading, currentCourse is that same heading.
       final rotation = widget.mapController.camera.rotation;
       final courseDelta =
-          nearestEquivalentRotation(heading, rotation) - rotation;
+          nearestEquivalentRotation(effectiveHeading, rotation) - rotation;
       if (courseDelta.abs() >= courseDeltaThreshold) {
         widget.mapController.moveAndRotate(
           LatLng(lat, lon),
@@ -226,7 +305,11 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// attempt's success while a session runs — the attempt fix is at the
   /// map's center already, and the next session fix takes over.
   void armFollow() {
-    if (!_follow) setState(() => _follow = true);
+    _reengageTimer?.cancel();
+    _reengageTimer = null;
+    if (!_follow) {
+      setState(() => _follow = true);
+    }
   }
 
   /// The locate shortcut's way back to the follow after a pan away:
@@ -234,7 +317,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// zoom, so the camera and the course-up rotation come back with the
   /// next fix — no second GPS request and no spinner.
   void rearmFollow() {
-    setState(() => _follow = true);
+    armFollow();
     final session = widget.model.recording;
     final lat = session?.currentLat;
     final lon = session?.currentLon;
@@ -309,6 +392,30 @@ class RecordingDashboardState extends State<RecordingDashboard> {
                       _panelOpen ? Icons.expand_less : Icons.expand_more,
                       size: 18,
                       color: Theme.of(context).hintColor,
+                    ),
+                    const SizedBox(width: 4),
+                    // Rotation-mode indicator: shows whether course-up is
+                    // on, cycles the setting on tap, and re-engages the
+                    // follow when it was released by a gesture.
+                    IconButton(
+                      key: const ValueKey('rotation-mode-button'),
+                      tooltip: strings.rotationModeTooltip,
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        if (!_follow) rearmFollow();
+                        widget.model.setMapRotation(
+                          widget.model.mapRotation == 'on' ? 'off' : 'on',
+                        );
+                      },
+                      icon: Icon(
+                        widget.model.mapRotation == 'on'
+                            ? Icons.explore
+                            : Icons.explore_outlined,
+                        color: widget.model.mapRotation == 'on'
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).hintColor,
+                      ),
                     ),
                   ],
                 ),

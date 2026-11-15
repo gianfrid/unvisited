@@ -210,6 +210,9 @@ abstract class AppStrings {
   String get selectionColorTooltip;
   String get selectionDismissTooltip;
 
+  // Recording dashboard rotation-mode button.
+  String get rotationModeTooltip;
+
   // Per-track menu (⋮ on a track tile): Info / Delete / Export.
   String get trackMenuTooltip;
   String get trackMenuInfo;
@@ -248,6 +251,8 @@ class EnglishStrings extends AppStrings {
   String get selectionColorTooltip => 'Change the color';
   @override
   String get selectionDismissTooltip => 'Dismiss selection';
+  @override
+  String get rotationModeTooltip => 'Map rotation mode';
   @override
   String get trackMenuTooltip => 'Track actions';
   @override
@@ -529,6 +534,8 @@ class ItalianStrings extends AppStrings {
   String get selectionColorTooltip => 'Cambia il colore';
   @override
   String get selectionDismissTooltip => 'Annulla la selezione';
+  @override
+  String get rotationModeTooltip => 'Modalità rotazione mappa';
   @override
   String get trackMenuTooltip => 'Azioni traccia';
   @override

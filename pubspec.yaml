@@ -17,6 +17,7 @@ dependencies:
   xml: ^7.1.0
   archive: ^4.6.0
   geolocator: ^14.0.1
+  flutter_compass: ^0.8.1
 
 dev_dependencies:
   flutter_test:
