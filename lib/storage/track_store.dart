@@ -183,6 +183,7 @@ class AppSettings {
     this.language = 'system',
     this.themeMode = 'system',
     this.tileLayer = 'standard',
+    this.mapRotation = 'off',
     this.roadsFile,
     this.aggregateColors = const {},
   });
@@ -205,6 +206,11 @@ class AppSettings {
   /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
   final String tileLayer;
 
+  /// Whether the recording follow-camera rotates course-up: 'on' or
+  /// 'off' (the default — the map stays north-up, a known limitation;
+  /// dynamic rotation is backlog).
+  final String mapRotation;
+
   /// The side-loaded road region file's *name* (relative to `roads/` under
   /// the root), or null when none is set. The app owns a copy of the file;
   /// see `TrackStore.adoptRoadFile`.
@@ -224,6 +230,7 @@ class AppSettings {
         language: (m['language'] as String?) ?? 'system',
         themeMode: (m['themeMode'] as String?) ?? 'system',
         tileLayer: (m['tileLayer'] as String?) ?? 'standard',
+        mapRotation: (m['mapRotation'] as String?) ?? 'off',
         roadsFile: m['roadsFile'] as String?,
         aggregateColors:
             (m['aggregateColors'] as Map<Object?, Object?>? ?? {})
@@ -237,6 +244,7 @@ class AppSettings {
     String? language,
     String? themeMode,
     String? tileLayer,
+    String? mapRotation,
     String? roadsFile,
     bool clearRoadsFile = false,
     Map<String, String>? aggregateColors,
@@ -248,6 +256,7 @@ class AppSettings {
         language: language ?? this.language,
         themeMode: themeMode ?? this.themeMode,
         tileLayer: tileLayer ?? this.tileLayer,
+        mapRotation: mapRotation ?? this.mapRotation,
         roadsFile:
             clearRoadsFile ? null : roadsFile ?? this.roadsFile,
         aggregateColors: aggregateColors ?? this.aggregateColors,
@@ -260,6 +269,7 @@ class AppSettings {
         'language': language,
         'themeMode': themeMode,
         'tileLayer': tileLayer,
+        'mapRotation': mapRotation,
         'recordingTint': recordingTint,
         if (roadsFile != null) 'roadsFile': roadsFile,
         if (aggregateColors.isNotEmpty)
@@ -314,6 +324,7 @@ class TrackStore {
   String get language => _settings.language;
   String get themeMode => _settings.themeMode;
   String get tileLayer => _settings.tileLayer;
+  String get mapRotation => _settings.mapRotation;
   String? get roadsFile => _settings.roadsFile;
 
   /// Applies a new settings snapshot and persists the index.
@@ -388,6 +399,11 @@ class TrackStore {
   /// Saves the base tile style choice ('standard' or 'cycle').
   Future<void> saveTileLayer(String layer) async =>
       _apply(_settings.copyWith(tileLayer: layer));
+
+  /// Saves whether the recording follow-camera rotates course-up
+  /// ('on' or 'off'; 'off' keeps the map north-up).
+  Future<void> saveMapRotation(String rotation) async =>
+      _apply(_settings.copyWith(mapRotation: rotation));
 
   /// Saves the live recording trace's tint key.
   Future<void> saveRecordingTint(String tint) async =>

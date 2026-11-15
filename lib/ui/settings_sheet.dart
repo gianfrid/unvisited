@@ -157,6 +157,20 @@ class SettingsSheet extends StatelessWidget {
                   ),
                   ListTile(
                     dense: true,
+                    title: Text(strings.mapRotation),
+                    subtitle: Text(strings.mapRotationSubtitle),
+                    trailing: Switch(
+                      value: model.mapRotation == 'on',
+                      onChanged: (on) =>
+                          model.setMapRotation(on ? 'on' : 'off'),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 0,
+                    ),
+                  ),
+                  ListTile(
+                    dense: true,
                     title: Text(strings.language),
                     subtitle: Text(strings.languageSubtitle),
                     trailing: Text(

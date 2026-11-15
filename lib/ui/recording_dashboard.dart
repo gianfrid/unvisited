@@ -155,20 +155,16 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     final lat = session?.currentLat;
     final lon = session?.currentLon;
     if (lat == null || lon == null) return;
-    // Course-up: while the follow holds, the camera rotates to the
-    // current course so where the user is going stays ahead of them —
-    // course-up makes the motion read upward on screen. The rotation
-    // emits controller events (programmatic sources), so this never
-    // releases the follow; any hand gesture still does, and with it the
-    // rotation. nearestEquivalentRotation keeps the short arc where the
-    // course crosses 0/360. The rotation is gated on the device's
-    // *reported* heading, not the bridged course: a magnetometer-less or
-    // bearing-only fix stream keeps the camera north-up (the marker
-    // still rotates with the course), because a bearing between fixes
+    // Course-up is opt-in (Settings → rotate map): with mapRotation off
+    // the camera stays north-up while the follow still centers on the
+    // fix — the marker keeps pointing along the course on screen. With
+    // it on, the rotation is gated on the device's *reported* heading,
+    // not the bridged course: a magnetometer-less or bearing-only fix
+    // stream keeps the camera north-up, because a bearing between fixes
     // says where the user was, not where they face. No heading yet — a
     // first fix — leaves the camera rotation alone.
     final heading = session?.currentHeading;
-    if (heading == null) {
+    if (heading == null || widget.model.mapRotation != 'on') {
       widget.mapController.move(
         LatLng(lat, lon),
         widget.mapController.camera.zoom,

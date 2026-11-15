@@ -610,6 +610,8 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
+      // Course-up is opt-in: this test exercises the 'on' setting.
+      await model.setMapRotation('on');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -665,6 +667,49 @@ void main() {
       );
       // The marker matches the new course against the camera's rotation, so
       // it still points along the course on screen.
+      expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
+    },
+  );
+
+  testWidgets(
+    'by default the map stays north-up while recording; the follow still '
+    'centers and the marker still points along the course',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      double markerAngle() {
+        final m = tester
+            .widget<Transform>(
+              find.byKey(const ValueKey('recording-marker-rotate')),
+            )
+            .transform;
+        return math.atan2(m.entry(1, 0), m.entry(0, 0));
+      }
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, heading: 90);
+      fakeFix(source, 1, lat: 52.5201, heading: 90);
+      await tester.pump();
+      await tester.pump();
+
+      // mapRotation defaults to off: the camera never rotates, but the
+      // follow still centers on the fix and the marker still shows the
+      // course (90° east against a north-up camera).
+      expect(camera().rotation, closeTo(0.0, 0.1));
+      expect(camera().center.latitude, closeTo(52.5201, 1e-6));
       expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
     },
   );

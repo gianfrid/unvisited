@@ -1,70 +1,71 @@
-# PLAN: Recording timer excludes paused time (TODO.md item 2)
+# PLAN: Fixed-north map orientation (default) with opt-in rotation setting (TODO.md item 1)
 
-TODO.md item: "Recording timer excludes paused time — after pause +
-resume, paused seconds still leak into the elapsed (and moving) total
-when the pause is shorter than the 30 s segment gap."
+TODO.md item: "Fixed-north map orientation (default) with opt-in
+rotation setting" — orientation is too buggy, so the map stays north-up
+by default (even during recording); a Settings toggle (off by default)
+enables the course-up follow-camera rotation. Dynamic rotation is
+backlog; the fixed-north limitation is documented in README.md,
+ARCHITECTURE.md and SPEC.md.
 
-One commit: the engine fix + unit tests, PLAN.md, and removal of the
-TODO.md entry. Verification: `flutter analyze` clean, `flutter test`
-all pass.
+One commit: setting plumbing + gated rotation + Settings row + strings
++ docs + tests, plus removal of the TODO.md entry. Verification:
+`flutter analyze` clean, `flutter test` all pass.
 
 ## Current state
 
-- `lib/recording/recording_session.dart`, `processFix`: the gap between
-  the last pre-pause fix and the first post-resume fix is computed
-  against `_lastFix` (the pre-pause fix) and added to `_elapsedMillis` /
-  `_movingMillis` whenever `gap <= segmentGap` (30 s). Pauses shorter
-  than 30 s therefore leak into the timer; pauses longer than 30 s are
-  already excluded because `brokeSegment` (gap > segmentGap) skips the
-  accrual.
-- `pause()` calls `stage.breakSegment()` and sets `_segmentOpen = true`;
-  `resume()` only flips state back to `recording`. Nothing marks the
-  next gap as spanning parked time.
-- `test/recording_session_test.dart` only exercises long pauses (900 s,
-  600 s), so the leak is untested. The class doc and the `_elapsedMillis`
-  comment already state the intended rule ("a paused minute ticks
-  nowhere") — the code just does not implement it for short pauses.
+- The only rotation in the app is the recording follow-camera's course-up
+  in `RecordingDashboard._onRecordingFix`
+  (`lib/ui/recording_dashboard.dart`): when the fix carries a reported
+  heading, the camera rotates via `moveAndRotate`; a gesture releases
+  both follow and rotation. No setting gates it today.
+- Settings live in `AppSettings` (`lib/storage/track_store.dart`) as
+  string fields persisted in the index's `settings` entry, exposed via
+  `TrackStore` getters + save methods and `AppModel` delegating getters/
+  setters; the Settings sheet (`lib/ui/settings_sheet.dart`) renders one
+  row per setting. Strings live in `lib/l10n/app_strings.dart` (abstract
+  `AppStrings` + `EnglishStrings` + `ItalianStrings`); the strings test
+  fails on any untranslated entry.
+- Tests: `test/map_page_test.dart` has the course-up camera tests
+  ('while recording the camera rotates course-up; a pan releases it',
+  and the no-heading/bearing test) that assume rotation is always on.
 
-## The fix
+## The change
 
-In `processFix`, capture whether this fix opens a fresh segment because
-of a pause, before `_segmentOpen` is consumed:
-
-```dart
-final brokeSegment = !first && gap > segmentGap;
-// A pause arms a fresh segment: the gap bridging a resume spans parked
-// time and counts nowhere, whatever its length.
-final resumedAfterPause = !first && _segmentOpen;
-```
-
-Then change the accrual guard from `if (gap <= segmentGap)` to
-`if (!brokeSegment && !resumedAfterPause)` — a gap counts only when it
-stays inside one continuous segment. For fix-loss gaps this is
-equivalent to the old guard (`brokeSegment` implies `gap > segmentGap`);
-for pause-resume gaps of any length it now excludes the parked time.
-
-No changes to distance (the step across a pause is still bridged —
-pinned by the existing 'pause/resume breaks the track into two segments'
-test and not part of the reported bug), to segment splitting, to
-speed/course, or to doc comments (they already describe the intended
-behavior).
-
-## Steps
-
-1. Edit `processFix` in `lib/recording/recording_session.dart` as above.
-2. Add unit tests in `test/recording_session_test.dart`:
-   - a short pause (< 30 s) then resume: elapsed and moving time count
-     only the riding seconds, not the parked ones;
-   - a short pause mid-ride followed by normal riding: the total
-     equals the sum of the riding stretches;
-   - keep all existing pause tests passing unchanged (long pauses).
-3. Run `flutter analyze` (must be clean) and `flutter test` (all pass).
-4. Commit: `recording_session.dart` + `recording_session_test.dart` +
-   PLAN.md + removal of TODO.md item 2.
+1. `AppSettings`: new field `mapRotation`, `'off'` (default) or `'on'`;
+   `fromMap` falls back to `'off'`, `copyWith` and `toMap` carry it.
+   `TrackStore`: getter `mapRotation` + `saveMapRotation`. `AppModel`:
+   getter `mapRotation` + `setMapRotation` (notifies listeners).
+2. `RecordingDashboard._onRecordingFix`: gate the `moveAndRotate`
+   branch on `widget.model.mapRotation == 'on'`. When off, every fix
+   takes the plain `move` path — the camera stays north-up while the
+   follow still centers on the fix. The marker's own rotation (in
+   `map_page.dart`) is untouched: it still points along the course
+   relative to the camera.
+3. Settings sheet: one new row (SwitchListTile) "Rotate map while
+   recording", default off, wired to `model.setMapRotation`.
+4. Strings (en + it): `mapRotation` + `mapRotationSubtitle` in
+   `AppStrings`, `EnglishStrings`, `ItalianStrings`.
+5. Docs:
+   - README.md: note near the recording paragraph that the map stays
+     north-up by default and rotation is opt-in via Settings.
+   - ARCHITECTURE.md: dashboard bullet — fixed-north is the default,
+     course-up is the opt-in; dynamic rotation is backlog.
+   - SPEC.md: scope item 6 — course-up becomes opt-in (off by default);
+     fixed-north documented as the current limitation, dynamic rotation
+     in backlog.
+6. Tests:
+   - `map_page_test.dart`: existing course-up tests run with the setting
+     on (set `model.mapRotation = 'on'` in the test setup); add a test
+     that with the default off the camera rotation stays 0 while the
+     follow still centers.
+   - settings round-trip coverage for `mapRotation` in the store/model
+     tests; strings test passes via the new en/it entries.
+7. Remove TODO.md item 1 in the same commit.
 
 ## Out of scope
 
-- Distance bridging across a pause/resume (existing tests pin the
-  current behavior; not the reported bug).
-- `currentSpeed` on the first post-resume fix (transient, one fix).
-- Any change to `segmentGap` semantics or the GPX staging format.
+- Any rotation outside the recording follow-camera (none exists).
+- Marker rotation behavior, follow/gesture semantics, tilt (already
+  backlog).
+- Changing the default for existing users' stored indexes: a missing
+  `mapRotation` reads as `'off'`, which is the new intended default.

@@ -422,6 +422,10 @@ class AppModel extends ChangeNotifier {
   /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
   String get tileLayer => store.tileLayer;
 
+  /// Whether the recording follow-camera rotates course-up: 'on' or
+  /// 'off' (the default — the map stays north-up).
+  String get mapRotation => store.mapRotation;
+
   /// Saves the exploration overlay tint; the map repaints via the usual
   /// notification.
   Future<void> setTrackTint(String key) async {
@@ -444,6 +448,13 @@ class AppModel extends ChangeNotifier {
   /// notification.
   Future<void> setTileLayer(String layer) async {
     await store.saveTileLayer(layer);
+    notifyListeners();
+  }
+
+  /// Saves whether the recording follow-camera rotates course-up
+  /// ('on' or 'off').
+  Future<void> setMapRotation(String rotation) async {
+    await store.saveMapRotation(rotation);
     notifyListeners();
   }
 

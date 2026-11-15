@@ -1,6 +1,6 @@
 # Unvisited
 
-A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera with course-up — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog.
+A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog. The map stays north-up by default (dynamic rotation is backlog; Settings can opt into course-up while recording).
 
 Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
 
@@ -95,7 +95,7 @@ On Android you get everything the desktop has, plus:
 
 - **Folder import via SAF** — pick any folder (e.g. a watch mounted over USB-OTG); every supported file below it is imported.
 - **Share intents** — share a track from OpenTracks, a file manager, etc. directly into Unvisited.
-- **Recording** — a Record action starts a foreground-service GPS session and a live dashboard (speed, distance, duration/moving time; follow-camera with the map rotated to the course, screen-on latch), staged as a GPX that finalizes into the same catalog as any import, under the name the stop dialog proposes (a date-time timestamp, editable). A killed session is salvaged as a partial track at next start; a tilt/3D map view is excluded (backlog, pending flutter_map pitch support). Desktop cannot record — desktop Linux has no location plugin — so the action is hidden there (desktop recording is backlog).
+- **Recording** — a Record action starts a foreground-service GPS session and a live dashboard (speed, distance, duration/moving time; follow-camera, screen-on latch), staged as a GPX that finalizes into the same catalog as any import, under the name the stop dialog proposes (a date-time timestamp, editable). The map stays **north-up by default** while recording — a known limitation, dynamic rotation is in the backlog — and Settings → "Rotate map while recording" (off by default) enables the course-up follow-camera. A killed session is salvaged as a partial track at next start; a tilt/3D map view is excluded (backlog, pending flutter_map pitch support). Desktop cannot record — desktop Linux has no location plugin — so the action is hidden there (desktop recording is backlog).
 
 Build an APK:
 

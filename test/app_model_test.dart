@@ -770,6 +770,24 @@ void main() {
     });
   });
 
+  group('map rotation', () {
+    test('defaults to off (north-up)', () {
+      expect(model.mapRotation, 'off');
+    });
+
+    test('switching to on persists and restores', () async {
+      await model.setMapRotation('on');
+      expect(model.mapRotation, 'on');
+
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.mapRotation, 'on');
+
+      await reloaded.setMapRotation('off');
+      expect(reloaded.mapRotation, 'off');
+    });
+  });
+
   group('recording', () {
     group('the soft POST_NOTIFICATIONS ask', () {
       tearDown(() {

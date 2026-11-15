@@ -128,6 +128,10 @@ abstract class AppStrings {
   String get standardLayer;
   String get cycleLayer;
 
+  // Map rotation while recording (opt-in course-up follow-camera).
+  String get mapRotation;
+  String get mapRotationSubtitle;
+
   String get language;
   String get languageSubtitle;
 
@@ -390,6 +394,11 @@ class EnglishStrings extends AppStrings {
   String get standardLayer => 'Standard';
   @override
   String get cycleLayer => 'Cycle (CyclOSM)';
+  @override
+  String get mapRotation => 'Rotate map while recording';
+  @override
+  String get mapRotationSubtitle =>
+      'Course-up follow-camera; off keeps the map north-up';
   @override
   String get language => 'Language';
   @override
@@ -672,6 +681,11 @@ class ItalianStrings extends AppStrings {
   String get standardLayer => 'Standard';
   @override
   String get cycleLayer => 'Ciclo (CyclOSM)';
+  @override
+  String get mapRotation => 'Ruota la mappa durante la registrazione';
+  @override
+  String get mapRotationSubtitle =>
+      'Fotocamera di inseguimento orientata al corso; disattivata la mappa resta a nord';
   @override
   String get language => 'Lingua';
   @override
