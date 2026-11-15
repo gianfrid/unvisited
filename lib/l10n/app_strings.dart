@@ -168,9 +168,10 @@ abstract class AppStrings {
   // Startup salvage: a killed session's staged recording was imported.
   String salvagedRecording(String name);
 
-  // The recording screen latch (the chip's screen-lock toggle).
-  String get screenStaysOn;
-  String get screenMayTurnOff;
+  // Keep screen on while recording (the Settings row; the latch applies
+  // live, even mid-session).
+  String get keepScreenOn;
+  String get keepScreenOnSubtitle;
 
   String get deleteAllTracks;
   String storedCount(int count);
@@ -453,9 +454,10 @@ class EnglishStrings extends AppStrings {
       'Recovered unfinished recording: $name';
 
   @override
-  String get screenStaysOn => 'Screen stays on while recording';
+  String get keepScreenOn => 'Keep screen on while recording';
   @override
-  String get screenMayTurnOff => 'Screen may turn off';
+  String get keepScreenOnSubtitle =>
+      'The screen stays on during a recording session';
 
   @override
   String get deleteAllTracks => 'Delete all tracks';
@@ -741,9 +743,10 @@ class ItalianStrings extends AppStrings {
       'Recuperata una registrazione non terminata: $name';
 
   @override
-  String get screenStaysOn => 'Lo schermo resta acceso durante la registrazione';
+  String get keepScreenOn => 'Mantieni lo schermo acceso durante la registrazione';
   @override
-  String get screenMayTurnOff => 'Lo schermo si può spegnere';
+  String get keepScreenOnSubtitle =>
+      'Lo schermo resta acceso durante una sessione di registrazione';
 
   @override
   String get deleteAllTracks => 'Elimina tutte le tracce';

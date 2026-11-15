@@ -154,9 +154,9 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  /// The recording dashboard (HUD chip, stats panel, headline speed,
-  /// screen latch, follow-camera): see `RecordingDashboard`. Its state is
-  /// reached by key — the locate button's shortcut re-arms the follow.
+  /// The recording dashboard (HUD chip, stats panel, screen latch,
+  /// follow-camera): see `RecordingDashboard`. Its state is reached by
+  /// key — the locate button's shortcut re-arms the follow.
   final _dashboardKey = GlobalKey<RecordingDashboardState>();
 
   /// The fit-request epoch MapPage handled last (see the import epoch):

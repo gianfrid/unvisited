@@ -439,42 +439,73 @@ void main() {
     expect(find.textContaining('Recovered walk'), findsOneWidget);
   });
 
-  testWidgets('the recording latch keeps the screen on; the toggle opts out', (
-    tester,
-  ) async {
-    final root = createRoot();
-    final cache = createCache();
-    final model = await createModel(root);
-    final source = FakePositionSource();
+  testWidgets(
+    'the chip has no screen-lock toggle; the keepScreenOn setting drives the latch',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
 
-    await pumpMapPage(
-      tester,
-      model: model,
-      cache: cache,
-      locationSupported: true,
-    );
-    await tester.pump();
+      // The latch calls ride the host channel; record them.
+      final latchCalls = <bool>[];
+      const host = MethodChannel('unvisited/host');
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(host, (
+        call,
+      ) async {
+        if (call.method == 'keepScreenOn') {
+          latchCalls.add(call.arguments as bool);
+        }
+        return null;
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          host,
+          null,
+        ),
+      );
 
-    // No session: no chip, so no latch toggle.
-    expect(find.byIcon(Icons.screen_lock_portrait), findsNothing);
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
 
-    await model.startRecording(source: source, permissionGate: false);
-    fakeFix(source, 0);
-    fakeFix(source, 1, lat: 52.5201);
-    await tester.pump();
-    await tester.pump();
+      // No session: no chip, and no lock icon anywhere.
+      expect(find.byIcon(Icons.screen_lock_portrait), findsNothing);
 
-    // Default on: the lit screen-lock and its tooltip; the channel call
-    // itself is best-effort (no host plugin here — caught and ignored).
-    expect(find.byIcon(Icons.screen_lock_portrait), findsOneWidget);
-    expect(find.byTooltip('Screen stays on while recording'), findsOneWidget);
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      fakeFix(source, 1, lat: 52.5201);
+      await tester.pump();
+      await tester.pump();
 
-    // The toggle opts out for the rest of the session.
-    await tester.tap(find.byTooltip('Screen stays on while recording'));
-    await tester.pump();
-    expect(find.byTooltip('Screen may turn off'), findsOneWidget);
-    expect(find.byTooltip('Screen stays on while recording'), findsNothing);
-  });
+      // The chip is there, the lock toggle is gone; the latch went on with
+      // the session (keepScreenOn defaults to on).
+      expect(find.byKey(const ValueKey('recording-chip')), findsOneWidget);
+      expect(find.byIcon(Icons.screen_lock_portrait), findsNothing);
+      expect(latchCalls, [true]);
+
+      // The setting applies immediately, mid-session: toggling it off
+      // clears the latch at once (the model change re-applies it), and back
+      // on re-arms it.
+      await model.setKeepScreenOn(false);
+      await tester.pump();
+      expect(latchCalls, [true, false]);
+      await model.setKeepScreenOn(true);
+      await tester.pump();
+      expect(latchCalls, [true, false, true]);
+
+      // Stop ends the session: the latch clears (the stop's import never
+      // settles in the fake-async zone, but the synchronous clear and
+      // notification are all the latch needs).
+      model.stopRecording();
+      await tester.pump();
+      expect(latchCalls, [true, false, true, false]);
+    },
+  );
 
   testWidgets('the dashboard expands into the stats panel with live numbers', (
     tester,
@@ -504,8 +535,7 @@ void main() {
     expect(find.text('00:02'), findsOneWidget);
     expect(find.text('22 m'), findsOneWidget);
 
-    // The tap rides the pulse dot's InkWell — the chip's center now hosts
-    // the screen-lock toggle, which must not be the one tapped here.
+    // The tap rides the pulse dot's InkWell.
     await tester.tap(find.byIcon(Icons.fiber_manual_record));
     await tester.pump();
 

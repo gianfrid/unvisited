@@ -426,6 +426,11 @@ class AppModel extends ChangeNotifier {
   /// 'off' (the default — the map stays north-up).
   String get mapRotation => store.mapRotation;
 
+  /// Whether the screen stays on while recording (the default). The
+  /// dashboard's model listener applies the latch on every change, so a
+  /// toggle applies immediately, even mid-session.
+  bool get keepScreenOn => store.keepScreenOn;
+
   /// Saves the exploration overlay tint; the map repaints via the usual
   /// notification.
   Future<void> setTrackTint(String key) async {
@@ -455,6 +460,13 @@ class AppModel extends ChangeNotifier {
   /// ('on' or 'off').
   Future<void> setMapRotation(String rotation) async {
     await store.saveMapRotation(rotation);
+    notifyListeners();
+  }
+
+  /// Saves whether the screen stays on while recording; the dashboard
+  /// picks the change up through the usual notification.
+  Future<void> setKeepScreenOn(bool on) async {
+    await store.saveKeepScreenOn(on);
     notifyListeners();
   }
 

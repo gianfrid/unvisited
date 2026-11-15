@@ -23,10 +23,10 @@ double nearestEquivalentRotation(double course, double reference) =>
 /// follow-camera that rides it. Extracted from `map_page.dart`'s state
 /// (which keeps the map, the fog overlay, the locate/record buttons and
 /// the fits): the HUD chip with
-/// its per-fix duration/distance readout and the screen-latch toggle and
-/// the expandable stats panel — the chip column child of the page's top
-/// stack (the bottom-center headline speed rides `RecordingSpeedReadout`) —
-/// and the follow-camera release-on-gesture semantics. The widget listens to the
+/// its per-fix duration/distance readout and the expandable stats panel —
+/// the chip column child of the page's top stack (the bottom-center
+/// headline speed rides `RecordingSpeedReadout`) — the screen latch, and
+/// the follow-camera release-on-gesture semantics. The widget listens to the
 /// per-fix channel ([AppModel.recordingLive]) with a [ListenableBuilder],
 /// so a 1 Hz fix repaints the dashboard — and only the dashboard; the
 /// map's other layers never rebuild for a fix except where they
@@ -52,20 +52,18 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   bool _follow = false;
 
   /// Detects the session boundary (start/stop) to re-arm the follow and
-  /// reset the panel and the screen-latch opt-out (a new session keeps
-  /// the screen on again).
+  /// reset the panel.
   bool _wasRecording = false;
 
   /// Whether the stats panel is expanded; the HUD chip toggles it.
   bool _panelOpen = false;
 
-  /// The recording's screen latch: the session keeps the screen on so the
-  /// dashboard stays readable on a bike or in a pocket-free hand. The
-  /// latch is a per-session default-on that the chip's screen-lock icon
-  /// toggles; the flag itself lives on the Android window (see the host
-  /// channel's `keepScreenOn`), so it dies with the window — no stale
-  /// latch survives a session's end even on a process kill.
-  bool _screenLockOff = false;
+  /// The recording's screen latch: while a session runs and the
+  /// `keepScreenOn` setting is on (the default), the screen stays on so
+  /// the dashboard stays readable on a bike or in a pocket-free hand.
+  /// The flag itself lives on the Android window (see the host channel's
+  /// `keepScreenOn`), so it dies with the window — no stale latch
+  /// survives a session's end even on a process kill.
   bool _screenOn = false;
 
   /// Hysteresis for the course-up camera rotation: only rotate the
@@ -127,8 +125,9 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   }
 
   /// The session boundary re-arms the follow-camera (the old marker and
-  /// any open panel are gone with it) and resets the screen latch's
-  /// opt-out: a new session keeps the screen on again.
+  /// any open panel are gone with it). Every model change also re-applies
+  /// the screen latch, so the `keepScreenOn` setting takes effect
+  /// immediately — even mid-session.
   void _onModelChanged() {
     if (!mounted) return;
     final recording = widget.model.isRecording;
@@ -137,11 +136,10 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         _wasRecording = recording;
         _follow = recording;
         _panelOpen = false;
-        _screenLockOff = false;
       });
     }
-    // Applied best-effort from here and from the chip's toggle: the
-    // window flag matters only while the dashboard is in front anyway.
+    // Applied best-effort from here: the window flag matters only while
+    // the dashboard is in front anyway.
     _applyScreenOn();
   }
 
@@ -190,11 +188,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     }
   }
 
-  /// Applies the latch if it changed. Best effort: a platform without the
+  /// Applies the latch if it changed: on while a session runs and the
+  /// `keepScreenOn` setting is on. Best effort: a platform without the
   /// host channel (desktop, tests) has no window to latch; its OS timeout
   /// applies.
   Future<void> _applyScreenOn() async {
-    final on = widget.model.isRecording && !_screenLockOff;
+    final on = widget.model.isRecording && widget.model.keepScreenOn;
     if (on == _screenOn) return;
     _screenOn = on;
     try {
@@ -289,29 +288,6 @@ class RecordingDashboardState extends State<RecordingDashboard> {
                       ),
                     ],
                     const SizedBox(width: 8),
-                    // The screen latch's toggle: lit while the screen
-                    // stays on, dimmed while it may sleep (see the
-                    // state notes on the latch). The chip only exists
-                    // while a session runs, so does the toggle.
-                    IconButton(
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      visualDensity: VisualDensity.compact,
-                      icon: Icon(
-                        Icons.screen_lock_portrait,
-                        size: 16,
-                        color: _screenLockOff
-                            ? Theme.of(context).hintColor
-                            : Theme.of(context).colorScheme.primary,
-                      ),
-                      tooltip: _screenLockOff
-                          ? strings.screenMayTurnOff
-                          : strings.screenStaysOn,
-                      onPressed: () {
-                        setState(() => _screenLockOff = !_screenLockOff);
-                        _applyScreenOn();
-                      },
-                    ),
                     Icon(
                       _panelOpen ? Icons.expand_less : Icons.expand_more,
                       size: 18,

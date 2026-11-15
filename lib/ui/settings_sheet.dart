@@ -238,6 +238,25 @@ class SettingsSheet extends StatelessWidget {
                         onTap: () => model.openBatteryOptimizationSettings(),
                       ),
                     ),
+                  // Keep the screen on while recording: a persistent
+                  // setting (default on) the dashboard applies live, even
+                  // mid-session. Android-only — the latch is a window flag
+                  // on the Android host, so widget tests on the desktop
+                  // host never build this row (like the advisory above).
+                  if (Platform.isAndroid)
+                    ListTile(
+                      dense: true,
+                      title: Text(strings.keepScreenOn),
+                      subtitle: Text(strings.keepScreenOnSubtitle),
+                      trailing: Switch(
+                        value: model.keepScreenOn,
+                        onChanged: (on) => model.setKeepScreenOn(on),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
                 ],
               ),
             ),

@@ -788,6 +788,33 @@ void main() {
     });
   });
 
+  group('keep screen on', () {
+    test('defaults to on', () {
+      expect(model.keepScreenOn, isTrue);
+    });
+
+    test('toggling persists and restores', () async {
+      await model.setKeepScreenOn(false);
+      expect(model.keepScreenOn, isFalse);
+
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.keepScreenOn, isFalse);
+
+      await reloaded.setKeepScreenOn(true);
+      expect(reloaded.keepScreenOn, isTrue);
+    });
+
+    test('survives deleteAll like every preference', () async {
+      await model.setKeepScreenOn(false);
+      await model.deleteAll();
+
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.keepScreenOn, isFalse);
+    });
+  });
+
   group('recording', () {
     group('the soft POST_NOTIFICATIONS ask', () {
       tearDown(() {
