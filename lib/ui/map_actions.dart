@@ -138,9 +138,12 @@ class HeaderAction extends StatelessWidget {
 }
 
 /// The top toolbar pill, centered across the map's top edge instead of a
-/// full-width app bar. While a session runs the header keeps Tracks and
-/// Settings only — Import and the record-mode dashboard fight for space
-/// and attention (locate and record live in the bottom-left stack).
+/// full-width app bar. It is the first child of the page's single top
+/// column (see `MapPage`), which stacks the selection bar and the
+/// recording chip below it without overlap. While a session runs the
+/// header keeps Tracks and Settings only — Import and the record-mode
+/// dashboard fight for space and attention (locate and record live in
+/// the bottom-left stack).
 class TopToolbar extends StatelessWidget {
   const TopToolbar({
     super.key,
@@ -156,41 +159,30 @@ class TopToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        minimum: const EdgeInsets.only(top: 8),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: FloatingToolbar(
-            children: [
-              if (!model.isRecording)
-                HeaderAction(
-                  icon: const Icon(Icons.add),
-                  label: strings.importLabel,
-                  tooltip: strings.importTooltip,
-                  onTap: onImport,
-                ),
-              Builder(
-                builder: (context) => HeaderAction(
-                  icon: const BadgeIcon(),
-                  label: strings.tracksLabel,
-                  tooltip: strings.tracksLabel,
-                  onTap: () => Scaffold.of(context).openEndDrawer(),
-                ),
-              ),
-              HeaderAction(
-                icon: const Icon(Icons.settings_outlined),
-                label: strings.settingsLabel,
-                tooltip: strings.settingsLabel,
-                onTap: onOpenSettings,
-              ),
-            ],
+    return FloatingToolbar(
+      children: [
+        if (!model.isRecording)
+          HeaderAction(
+            icon: const Icon(Icons.add),
+            label: strings.importLabel,
+            tooltip: strings.importTooltip,
+            onTap: onImport,
+          ),
+        Builder(
+          builder: (context) => HeaderAction(
+            icon: const BadgeIcon(),
+            label: strings.tracksLabel,
+            tooltip: strings.tracksLabel,
+            onTap: () => Scaffold.of(context).openEndDrawer(),
           ),
         ),
-      ),
+        HeaderAction(
+          icon: const Icon(Icons.settings_outlined),
+          label: strings.settingsLabel,
+          tooltip: strings.settingsLabel,
+          onTap: onOpenSettings,
+        ),
+      ],
     );
   }
 }
@@ -198,6 +190,7 @@ class TopToolbar extends StatelessWidget {
 /// The aggregate selection's actions pill, directly below the toolbar
 /// while an aggregate is selected: hide / color / fit / dismiss — a
 /// temporary state, attached to the toolbar's pill without crowding it.
+/// It is the second child of the page's single top column (see `MapPage`).
 /// [onFit] frames the selected aggregate on the map (the page's camera
 /// fit); [onDismiss] clears the selection in the page's state.
 class SelectionBar extends StatelessWidget {
@@ -215,74 +208,62 @@ class SelectionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        minimum: const EdgeInsets.only(top: 8 + kToolbarHeight + 4),
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: Material(
-            elevation: 2,
-            borderRadius: BorderRadius.circular(24),
-            color: Theme.of(context).colorScheme.surface,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
-                key: const ValueKey('selection-bar'),
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    key: const ValueKey('selection-hide'),
-                    tooltip: strings.selectionHideTooltip,
-                    icon: const Icon(Icons.visibility_off),
-                    onPressed: () async {
-                      await model.hideSelectedAggregate();
-                    },
-                  ),
-                  PopupMenuButton<String>(
-                    key: const ValueKey('selection-color'),
-                    tooltip: strings.selectionColorTooltip,
-                    icon: const Icon(Icons.palette_outlined),
-                    onSelected: (key) => model.setAggregateColor(key),
-                    itemBuilder: (context) => [
-                      for (final entry in explorationTints.entries)
-                        PopupMenuItem(
-                          value: entry.key,
-                          child: Row(
-                            children: [
-                              Icon(Icons.circle, color: entry.value, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                AppStrings.ofContext(context)
-                                    .tintName(entry.key),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                  IconButton(
-                    key: const ValueKey('selection-fit'),
-                    tooltip: strings.fitTooltip,
-                    icon: const Icon(Icons.zoom_out_map),
-                    onPressed: () {
-                      final selected = model.selectedAggregate;
-                      if (selected == null || selected.points.isEmpty) return;
-                      onFit();
-                    },
-                  ),
-                  IconButton(
-                    key: const ValueKey('selection-dismiss'),
-                    tooltip: strings.selectionDismissTooltip,
-                    icon: const Icon(Icons.close),
-                    onPressed: onDismiss,
-                  ),
-                ],
-              ),
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(24),
+      color: Theme.of(context).colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(
+          key: const ValueKey('selection-bar'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              key: const ValueKey('selection-hide'),
+              tooltip: strings.selectionHideTooltip,
+              icon: const Icon(Icons.visibility_off),
+              onPressed: () async {
+                await model.hideSelectedAggregate();
+              },
             ),
-          ),
+            PopupMenuButton<String>(
+              key: const ValueKey('selection-color'),
+              tooltip: strings.selectionColorTooltip,
+              icon: const Icon(Icons.palette_outlined),
+              onSelected: (key) => model.setAggregateColor(key),
+              itemBuilder: (context) => [
+                for (final entry in explorationTints.entries)
+                  PopupMenuItem(
+                    value: entry.key,
+                    child: Row(
+                      children: [
+                        Icon(Icons.circle, color: entry.value, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          AppStrings.ofContext(context).tintName(entry.key),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            IconButton(
+              key: const ValueKey('selection-fit'),
+              tooltip: strings.fitTooltip,
+              icon: const Icon(Icons.zoom_out_map),
+              onPressed: () {
+                final selected = model.selectedAggregate;
+                if (selected == null || selected.points.isEmpty) return;
+                onFit();
+              },
+            ),
+            IconButton(
+              key: const ValueKey('selection-dismiss'),
+              tooltip: strings.selectionDismissTooltip,
+              icon: const Icon(Icons.close),
+              onPressed: onDismiss,
+            ),
+          ],
         ),
       ),
     );

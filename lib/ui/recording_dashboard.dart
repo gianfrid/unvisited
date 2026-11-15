@@ -23,9 +23,10 @@ double nearestEquivalentRotation(double course, double reference) =>
 /// follow-camera that rides it. Extracted from `map_page.dart`'s state
 /// (which keeps the map, the fog overlay, the locate/record buttons and
 /// the fits): the HUD chip with
-/// its per-fix duration/distance readout and the screen-latch toggle, the
-/// expandable stats panel, the bottom-center headline speed, and the
-/// follow-camera release-on-gesture semantics. The widget listens to the
+/// its per-fix duration/distance readout and the screen-latch toggle and
+/// the expandable stats panel — the chip column child of the page's top
+/// stack (the bottom-center headline speed rides `RecordingSpeedReadout`) —
+/// and the follow-camera release-on-gesture semantics. The widget listens to the
 /// per-fix channel ([AppModel.recordingLive]) with a [ListenableBuilder],
 /// so a 1 Hz fix repaints the dashboard — and only the dashboard; the
 /// map's other layers never rebuild for a fix except where they
@@ -246,99 +247,112 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     );
   }
 
+  /// The dashboard's top part: the HUD chip and the expandable stats
+  /// panel, as one child of the page's top column (below the toolbar and
+  /// the selection bar — see `MapPage`). The headline speed rides the
+  /// bottom of the map separately (`RecordingSpeedReadout`).
   Widget _dashboard(RecordingSession session, AppStrings strings) {
     final meters = session.distanceMeters;
-    final currentSpeed = session.currentSpeed;
-    return Stack(
-      children: [
-        Positioned(
-          top: kToolbarHeight + 16,
-          left: 12,
-          right: 12,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Align(
-                child: Card(
-                  child: InkWell(
-                    key: const ValueKey('recording-chip'),
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => setState(() => _panelOpen = !_panelOpen),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.fiber_manual_record,
-                            size: 12,
-                            color: Colors.redAccent,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            formatDuration(session.elapsed),
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                          if (meters > 0) ...[
-                            const SizedBox(width: 12),
-                            Text(
-                              formatDistance(meters),
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                          const SizedBox(width: 8),
-                          // The screen latch's toggle: lit while the screen
-                          // stays on, dimmed while it may sleep (see the
-                          // state notes on the latch). The chip only exists
-                          // while a session runs, so does the toggle.
-                          IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            visualDensity: VisualDensity.compact,
-                            icon: Icon(
-                              Icons.screen_lock_portrait,
-                              size: 16,
-                              color: _screenLockOff
-                                  ? Theme.of(context).hintColor
-                                  : Theme.of(context).colorScheme.primary,
-                            ),
-                            tooltip: _screenLockOff
-                                ? strings.screenMayTurnOff
-                                : strings.screenStaysOn,
-                            onPressed: () {
-                              setState(() => _screenLockOff = !_screenLockOff);
-                              _applyScreenOn();
-                            },
-                          ),
-                          Icon(
-                            _panelOpen ? Icons.expand_less : Icons.expand_more,
-                            size: 18,
-                            color: Theme.of(context).hintColor,
-                          ),
-                        ],
-                      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Card(
+            child: InkWell(
+              key: const ValueKey('recording-chip'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => setState(() => _panelOpen = !_panelOpen),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.fiber_manual_record,
+                      size: 12,
+                      color: Colors.redAccent,
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Text(
+                      formatDuration(session.elapsed),
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    if (meters > 0) ...[
+                      const SizedBox(width: 12),
+                      Text(
+                        formatDistance(meters),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                    const SizedBox(width: 8),
+                    // The screen latch's toggle: lit while the screen
+                    // stays on, dimmed while it may sleep (see the
+                    // state notes on the latch). The chip only exists
+                    // while a session runs, so does the toggle.
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        Icons.screen_lock_portrait,
+                        size: 16,
+                        color: _screenLockOff
+                            ? Theme.of(context).hintColor
+                            : Theme.of(context).colorScheme.primary,
+                      ),
+                      tooltip: _screenLockOff
+                          ? strings.screenMayTurnOff
+                          : strings.screenStaysOn,
+                      onPressed: () {
+                        setState(() => _screenLockOff = !_screenLockOff);
+                        _applyScreenOn();
+                      },
+                    ),
+                    Icon(
+                      _panelOpen ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: Theme.of(context).hintColor,
+                    ),
+                  ],
                 ),
               ),
-              if (_panelOpen) StatsPanel(session: session, strings: strings),
-            ],
+            ),
           ),
-        ),
-        // The dashboard's primary readout: the live speed, big and
-        // bottom-center — the stem display a bike computer shows the
-        // rider. Before the first fix and while paused (paused sessions
-        // are silent) it shows a dash, like the stats panel's
-        // not-yet-measured values.
-        Positioned(
-          bottom: 24,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Card(
+          if (_panelOpen) StatsPanel(session: session, strings: strings),
+        ],
+      ),
+    );
+  }
+}
+
+/// The dashboard's primary readout: the live speed, big and bottom-center
+/// — the stem display a bike computer shows the rider. Before the first fix
+/// and while paused (paused sessions are silent) it shows a dash, like the
+/// stats panel's not-yet-measured values. The per-fix channel rebuilds
+/// only this card.
+class RecordingSpeedReadout extends StatelessWidget {
+  const RecordingSpeedReadout({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: 24,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: ListenableBuilder(
+          listenable: model.recordingLive,
+          builder: (context, _) {
+            final session = model.recording;
+            if (session == null) return const SizedBox.shrink();
+            final currentSpeed = session.currentSpeed;
+            return Card(
               key: const ValueKey('recording-speed'),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -352,10 +366,10 @@ class RecordingDashboardState extends State<RecordingDashboard> {
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
-      ],
+      ),
     );
   }
 }

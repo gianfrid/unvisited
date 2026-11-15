@@ -1,65 +1,94 @@
-# PLAN: Automatic release-APK build on TODO-item completion (TODO.md item 4)
+# PLAN: TODO.md items 1–3 — top-area column, keep-screen-on setting, stop cancels the position subscription
 
-TODO.md item: "Automatic release-APK build on TODO-item completion" —
-a script that runs `flutter build apk --release --split-per-abi
---target-platform=android-arm64` in the background when a TODO.md item
-is completed. The agent does NOT wait for the build and the next prompt
-is NOT blocked: the script returns immediately after launching the
-build. At least 5 minutes between builds, measured from the previous
-build's end; a completion inside the window (or while a build is still
-running) skips — no queueing. Failures are logged, no retry loop.
+Three slices, each committed separately with its TODO.md entry removed in
+the same commit. After each slice's commit, `tool/build_release_apk.sh`
+runs detached (the script's own 5-minute window makes repeat runs skip).
+No new packages; the Android host channel already maps `keepScreenOn`.
 
-One commit: the script + the workflow wiring + PLAN.md + removal of the
-TODO.md entry. Verification: shell-level checks with a stubbed `flutter`
-(the real release build is not run during the slice).
+## Slice 1 — Top-area vertical stack (TODO item 1)
 
-## The change
+Files: `lib/ui/map_page.dart`, `lib/ui/map_actions.dart`,
+`lib/ui/recording_dashboard.dart`, `test/map_page_test.dart`
 
-1. `tool/build_release_apk.sh` (bash, executable):
-   - State dir: `${UNVISITED_BUILD_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/unvisited-build}`
-     — outside the repo, so no build state ever dirties the working tree.
-   - Files there: `last_build_end` (epoch seconds of the previous build's
-     end, success or failure), `build.pid` (present while a build is in
-     flight), and `build.log` (appended build output).
-   - Skip rule: if `build.pid` is present and its process is alive, or
-     `last_build_end` exists and `now - last_build_end < 300`, print a skip
-     message and exit 0 without building.
-   - Otherwise launch `flutter build apk --release --split-per-abi
-     --target-platform=android-arm64` detached in the background
-     (`nohup ... >>build.log 2>&1 &`, pid recorded in `build.pid`), and
-     return immediately with exit 0. A small wrapper inside the detached
-     shell removes `build.pid` and writes `now` to `last_build_end` when
-     the build exits — whether it succeeded or failed (a failed build
-     also ends a window, per the triage). The script's own exit code is
-     always 0 when it merely launched or skipped; the build's outcome
-     lives in `build.log`.
-2. Workflow wiring: add one step to AGENTS.md's Task workflow — after a
-   TODO.md item is committed, run `tool/build_release_apk.sh` and do NOT
-   wait for it; the build runs in the background and never blocks the
-   next prompt.
-3. Remove TODO.md item 4 in the same commit.
+1. `map_page.dart`: replace the three independent top `Positioned`
+   overlays (`TopToolbar`, `SelectionBar`, the dashboard's chip) with ONE
+   `Positioned(top: 0, left: 0, right: 0)` → `SafeArea(minimum: top 8)` →
+   `Column(mainAxisSize: min)` holding the toolbar pill, the selection bar
+   (when an aggregate is selected, with a small top gap), and the
+   recording dashboard. One SafeArea, one column — nothing can overlap.
+2. `map_actions.dart`: `TopToolbar` and `SelectionBar` drop their
+   `Positioned`/`SafeArea` wrappers and return the pill itself.
+3. `recording_dashboard.dart`: the dashboard stays mounted always (its
+   state owns the salvage toast and the model/live listeners); its build
+   returns the chip + expandable stats panel as a plain column child
+   (`SizedBox.shrink` when idle). The bottom speed readout moves into a
+   small `RecordingSpeedReadout` widget in the same file, which `MapPage`
+   places as `Positioned(bottom: 24, ...)` — key `recording-speed` and the
+   `recordingLive` ListenableBuilder unchanged.
+4. Widget tests in `test/map_page_test.dart`: with a fixture imported and
+   selected and a fake-source session running, assert `selection-bar` and
+   `recording-chip` are both visible and strictly ordered without overlap
+   (toolbar bottom ≤ selection top, selection bottom ≤ chip top); idle
+   shows neither.
 
-## Verification (no real release build in the slice)
+## Slice 2 — persistent keep-screen-on setting replaces the chip's lock toggle (TODO item 2)
 
-- Put a stub `flutter` first on `PATH` that sleeps ~2 s, logs its
-  arguments, and exits 0. Run the script: it returns immediately (well
-  under 2 s) and the stub is running in the background.
-- Run the script again while the stub build is still in flight: it must
-  skip (pid alive) and the stub must still have been called once.
-- Wait for the stub build to finish, run the script again: it must skip
-  (inside the 5-minute window from the build's end).
-- Backdate `last_build_end` by 10 minutes, run again: the stub is
-  called a second time.
-- Stub exits 1: the failure lands in `build.log`, `build.pid` is
-  cleaned up, and `last_build_end` still updates.
-- `flutter analyze` clean, `flutter test` pass (the script is not part
-  of the Dart tree; analyze/test are unaffected but run anyway per the
-  workflow).
+Files: `lib/storage/track_store.dart`, `lib/ui/app_model.dart`,
+`lib/ui/recording_dashboard.dart`, `lib/ui/settings_sheet.dart`,
+`lib/l10n/app_strings.dart`, `test/app_model_test.dart`,
+`test/app_strings_test.dart`, `test/map_page_test.dart`
+
+1. `track_store.dart`: `AppSettings.keepScreenOn` (default `true`),
+   tolerant `fromMap`, `copyWith`, `toMap`; `TrackStore.keepScreenOn`
+   getter + `saveKeepScreenOn(bool)`.
+2. `app_model.dart`: `keepScreenOn` getter + `setKeepScreenOn(bool)` with
+   the usual `notifyListeners` — the dashboard's model listener applies
+   the latch immediately, even mid-session.
+3. `recording_dashboard.dart`: remove the `screen_lock_portrait`
+   IconButton and `_screenLockOff`; `_applyScreenOn` becomes
+   `on = model.isRecording && model.keepScreenOn`, still called from
+   `_onModelChanged` on every model change.
+4. `settings_sheet.dart`: Android-only row (`Platform.isAndroid`, next to
+   the battery advisory) with a `Switch` bound to
+   `model.keepScreenOn` / `model.setKeepScreenOn`.
+5. `app_strings.dart`: remove `screenStaysOn`/`screenMayTurnOff`; add
+   `keepScreenOn` + `keepScreenOnSubtitle` in en and it;
+   `test/app_strings_test.dart` updated to match.
+6. Tests: `app_model_test.dart` — default true, persists across reload,
+   survives `deleteAll`, toggles. `map_page_test.dart` —
+   `Icons.screen_lock_portrait` is never rendered (idle and recording);
+   a mock on the `unvisited/host` channel records `keepScreenOn` calls:
+   `true` at session start, `false` immediately after
+   `setKeepScreenOn(false)` mid-session, `false` at stop.
+   (The Settings row is Android-only, so like the battery advisory it is
+   not built in desktop widget tests.)
+
+## Slice 3 — stop cancels the position stream subscription (TODO item 3)
+
+Files: `lib/recording/recording_session.dart`,
+`test/recording_session_test.dart`, `test/recording_controller_test.dart`
+
+1. `recording_session.dart`: `start` stores the `StreamSubscription`;
+   `stop()` awaits its cancellation before finalizing the stage, so
+   geolocator's foreground service and its notification end with the
+   session. `discardRecording` goes through the same `stop()`.
+2. `recording_session_test.dart`: after `stop`, a fix pushed to the fake
+   source is not processed (pointCount unchanged, `onFix` not called
+   again).
+3. `recording_controller_test.dart`: after `stopRecording`, a fix pushed
+   to the fake source produces no `recordingLive` tick.
+4. Manual verification on an Android device (not runnable here): the
+   "Recording" foreground-service notification is gone after Stop and
+   after Discard — noted in the commit message.
+
+## Verification
+
+- `flutter analyze` clean; `flutter test` passes after each slice.
+- Three commits, each removing its TODO.md entry; after each,
+  `tool/build_release_apk.sh` is run detached and never awaited.
 
 ## Out of scope
 
-- Running a real release build during the slice (too slow; verified via
-  the stub). The first real run happens naturally at the next TODO-item
-  completion.
-- Blocking/waiting on the build in any form — explicitly not wanted.
-- Signing config, APK distribution, artifact cleanup, CI integration.
+- The manual Android notification check (item 3.3) — needs a device.
+- Any change to the host channel; `keepScreenOn` already maps to the
+  window flag in `MainActivity.kt`.

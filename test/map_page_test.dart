@@ -1217,6 +1217,60 @@ void main() {
     expect(model.store.tracks.single.visible, isTrue);
   });
 
+  testWidgets(
+    'toolbar, selection bar and recording chip stack in one top column',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(fixture('morning_walk.gpx'));
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      // Idle: neither the selection bar nor the recording chip.
+      expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
+      expect(find.byKey(const ValueKey('recording-chip')), findsNothing);
+
+      // Select the aggregate (a map tap is owned by the recording UI once
+      // a session runs, so set the selection directly), then start a
+      // session: both bars must show, stacked in the column without
+      // overlapping the toolbar or each other.
+      model.selectedAnchor = model.aggregates.single.anchorId;
+      model.notifyListeners();
+      await tester.pump();
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('recording-chip')), findsOneWidget);
+      final toolbar = tester.getRect(
+        find.widgetWithText(FloatingToolbar, 'Tracks'),
+      );
+      final selection = tester.getRect(
+        find.byKey(const ValueKey('selection-bar')),
+      );
+      final chip = tester.getRect(
+        find.byKey(const ValueKey('recording-chip')),
+      );
+      expect(selection.top, greaterThanOrEqualTo(toolbar.bottom));
+      expect(chip.top, greaterThanOrEqualTo(selection.bottom));
+
+      // End the session without the dialog (its import never settles in
+      // the fake-async zone).
+      model.stopRecording();
+      await tester.pump();
+    },
+  );
+
   testWidgets('the empty-state hint hides when tracks exist, selected or not', (
     tester,
   ) async {

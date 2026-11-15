@@ -753,33 +753,60 @@ class _MapPageState extends State<MapPage> {
               child: Center(child: ZoomSlider(controller: _mapController)),
             ),
           ),
-          // Compact floating toolbar, centered across the top instead of
-          // a full-width app bar.
-          TopToolbar(
-            model: widget.model,
-            onImport: _chooseImport,
-            onOpenSettings: _openSettings,
-          ),
-          // The aggregate selection's actions hold a second compact pill
-          // directly below the toolbar while an aggregate is selected:
-          // hide, color, fit, dismiss — a temporary state, attached to the
-          // toolbar's pill without crowding it.
-          if (widget.model.selectedAnchor != null)
-            SelectionBar(
-              model: widget.model,
-              onFit: () {
-                final selected = widget.model.selectedAggregate;
-                if (selected == null) return;
-                _fitWhenSized(
-                  CameraFit.coordinates(
-                    coordinates: selected.points,
-                    padding: _fitPadding,
+          // One non-overlapping vertical column at the top: the toolbar
+          // pill, then the selection bar while an aggregate is selected,
+          // then the recording chip while a session runs. Each used to
+          // position itself independently from the top edge, so on narrow
+          // screens they overlapped the toolbar and each other.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              minimum: const EdgeInsets.only(top: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TopToolbar(
+                    model: widget.model,
+                    onImport: _chooseImport,
+                    onOpenSettings: _openSettings,
                   ),
-                );
-              },
-              onDismiss: () =>
-                  setState(() => widget.model.selectedAnchor = null),
+                  // The aggregate selection's actions hold a second compact
+                  // pill directly below the toolbar while an aggregate is
+                  // selected: hide, color, fit, dismiss — a temporary state,
+                  // attached to the toolbar's pill without crowding it.
+                  if (widget.model.selectedAnchor != null) ...[
+                    const SizedBox(height: 4),
+                    SelectionBar(
+                      model: widget.model,
+                      onFit: () {
+                        final selected = widget.model.selectedAggregate;
+                        if (selected == null) return;
+                        _fitWhenSized(
+                          CameraFit.coordinates(
+                            coordinates: selected.points,
+                            padding: _fitPadding,
+                          ),
+                        );
+                      },
+                      onDismiss: () =>
+                          setState(() => widget.model.selectedAnchor = null),
+                    ),
+                  ],
+                  // The recording dashboard: HUD chip and stats panel in the
+                  // column (the headline speed rides the bottom of the map,
+                  // see RecordingSpeedReadout), with its own per-fix
+                  // listeners — a 1 Hz fix rebuilds the dashboard only.
+                  RecordingDashboard(
+                    key: _dashboardKey,
+                    model: widget.model,
+                    mapController: _mapController,
+                  ),
+                ],
+              ),
             ),
+          ),
           // Bottom-left action stack: locate, record/pause/resume and
           // stop (see `BottomActionStack`; its record slot only shows
           // once a real fix has arrived).
@@ -790,14 +817,9 @@ class _MapPageState extends State<MapPage> {
               gpsWorking: _gpsWorking,
               onLocate: _locate,
             ),
-          // The recording dashboard: HUD chip, stats panel, headline
-          // speed, screen latch and the follow-camera, with its own
-          // per-fix listeners — a 1 Hz fix rebuilds the dashboard only.
-          RecordingDashboard(
-            key: _dashboardKey,
-            model: widget.model,
-            mapController: _mapController,
-          ),
+          // The dashboard's primary readout: the live speed, big and
+          // bottom-center while a session runs.
+          RecordingSpeedReadout(model: widget.model),
           // The empty-state hint only for a genuinely empty, idle map:
           // while a session records (even with nothing plotted yet) and
           // while the catalog has tracks — selected or not — it would
