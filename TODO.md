@@ -7,15 +7,11 @@
    4. Document the fixed-north limitation in README.md, ARCHITECTURE.md and SPEC.md.
    5. Unit/widget tests for the setting, the gated rotation and the docs.
 
-2. Recording timer excludes paused time — after pause + resume, paused seconds still leak into the elapsed (and moving) total when the pause is shorter than the 30 s segment gap.
-   1. Fix `RecordingSession` (`pause`/`processFix`) so a resume from pause never accrues the inter-fix gap, regardless of its length.
-   2. Unit tests with synthetic pause/resume position streams.
-
-3. Top-area vertical stack — the aggregate selection bar and the recording HUD chip both stack independently under the top toolbar and overlap it (and each other) on narrow screens.
+2. Top-area vertical stack — the aggregate selection bar and the recording HUD chip both stack independently under the top toolbar and overlap it (and each other) on narrow screens.
    1. Compose toolbar + selection bar + recording chip as one non-overlapping vertical column in `MapPage`.
    2. Widget tests for the layout (selection bar visible, recording chip visible, both).
 
-4. Remove the recording lock icon; add a persistent keep-screen-on setting — the chip's screen-lock toggle is useless; instead a Settings option (default yes) keeps the screen on during recording and applies immediately, even mid-session.
+3. Remove the recording lock icon; add a persistent keep-screen-on setting — the chip's screen-lock toggle is useless; instead a Settings option (default yes) keeps the screen on during recording and applies immediately, even mid-session.
    1. Add `keepScreenOn` (default `true`) to `AppSettings`/`TrackStore`/`AppModel`.
    2. Remove the chip's `screen_lock_portrait` IconButton from `RecordingDashboard`; the latch follows the setting immediately via a model listener (not just at session start).
    3. Add the Settings UI row (Android-only, like the battery advisory) with en + it strings.

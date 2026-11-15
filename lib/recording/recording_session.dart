@@ -185,6 +185,9 @@ class RecordingSession {
     final gap = _lastFix == null ? Duration.zero : fix.time.difference(_lastFix!);
     final first = _lastFix == null;
     final brokeSegment = !first && gap > segmentGap;
+    // A pause arms a fresh segment: the gap bridging a resume spans
+    // parked time and counts nowhere, whatever its length.
+    final resumedAfterPause = !first && _segmentOpen;
     if (brokeSegment) stage.breakSegment();
     if (_segmentOpen || brokeSegment) {
       _liveSegments.add([]);
@@ -202,10 +205,10 @@ class RecordingSession {
               ? 0.0
               : step / (gap.inMilliseconds / 1000);
       _currentSpeed = fused;
-      // Dead time (the gap over a broken segment) counts nowhere: the
-      // timer does not tick the pause, and the resumed stretch is not
-      // moving time for having been away.
-      if (gap <= segmentGap) {
+      // Dead time (a pause or the gap over a broken segment) counts
+      // nowhere: the timer does not tick the pause, and the resumed
+      // stretch is not moving time for having been away.
+      if (!brokeSegment && !resumedAfterPause) {
         _elapsedMillis += gap.inMilliseconds;
         if (fused >= movingSpeed) _movingMillis += gap.inMilliseconds;
       }

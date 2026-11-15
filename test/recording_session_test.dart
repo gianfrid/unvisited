@@ -158,6 +158,36 @@ void main() {
     expect(session.elapsed, const Duration(seconds: 3));
   });
 
+  test('a short pause also ticks nowhere: the 30 s segment gap hides it '
+      'from the old guard, not from the timer', () {
+    // The bug this fixes: a pause shorter than the segment gap fell
+    // under the old `gap <= segmentGap` guard and its seconds leaked
+    // into elapsed and moving time.
+    final session = newSession('Coffee stop')..start(FakeSource());
+    session.processFix(fix(0));
+    session.processFix(fix(1, lat: 52.5201));
+    expect(session.elapsed, const Duration(seconds: 1));
+    session.pause();
+    session.resume();
+    // The resumed fix bridges a 5 s parked stretch: dead time, only the
+    // second after it accrues.
+    session.processFix(fix(6, lat: 52.5202));
+    session.processFix(fix(7, lat: 52.5203));
+    expect(session.elapsed, const Duration(seconds: 2),
+        reason: 'the parked 5 s tick nowhere, despite staying under the '
+            'segment gap');
+    expect(session.movingTime, const Duration(seconds: 2));
+
+    // A short pause mid-ride still excludes exactly the parked stretch.
+    session.pause();
+    session.resume();
+    session.processFix(fix(12, lat: 52.5204));
+    session.processFix(fix(13, lat: 52.5205));
+    expect(session.elapsed, const Duration(seconds: 3),
+        reason: 'each parked stretch of 5 s ticks nowhere');
+    expect(session.movingTime, const Duration(seconds: 3));
+  });
+
   test('fix loss and pause read the same to the timer', () {
     // A fix-loss gap also crosses a segment break: the dashboard's timer
     // counts only the recorded time, not the drop-out.

@@ -1,80 +1,70 @@
-# PLAN: Post-debt-backlog residuals (TODO.md, 2 units)
+# PLAN: Recording timer excludes paused time (TODO.md item 2)
 
-TODO.md item: "Post-debt-backlog residuals" — (1) shrink `map_page.dart`
-further, (2) tighten `RecordingDashboard`'s per-fix rebuild scope. Two
-independent commits, unit 2 first (smaller, fully local to the new
-file), unit 1 second. Verification after each commit: `flutter analyze`
-clean, `flutter test` all pass (the 4 opt-in network checks stay
-skipped). Each commit removes its TODO.md unit entry. No behavior
-change: widget keys, strings and geometry must stay identical.
+TODO.md item: "Recording timer excludes paused time — after pause +
+resume, paused seconds still leak into the elapsed (and moving) total
+when the pause is shorter than the 30 s segment gap."
+
+One commit: the engine fix + unit tests, PLAN.md, and removal of the
+TODO.md entry. Verification: `flutter analyze` clean, `flutter test`
+all pass.
 
 ## Current state
 
-- `lib/ui/map_page.dart` is 1090 lines after the dashboard extraction.
-  Its `build()` (~lines 745–1090) is a ~345-line Stack: the FlutterMap
-  config (~150 lines), zoom slider pill, top toolbar pill, selection
-  bar pill, bottom-left action stack (~70 lines), `RecordingDashboard`,
-  empty-state hint and busy bar. The recording/import/settings handlers
-  (`_stopRecording` ~80 lines of dialog, `_chooseImport`/`_openSettings`/
-  `_pickFiles`/`_pickFolder`, `_locate`/`_silentPositionUpdate`,
-  `_selectionActions` ~60 lines) make up most of the rest.
-- `lib/ui/recording_dashboard.dart` (362 lines) builds through
-  `ListenableBuilder(listenable: Listenable.merge([model,
-  recordingLive]))`, so every 1 Hz fix repaints chip + stats panel +
-  speed card + latch icon.
+- `lib/recording/recording_session.dart`, `processFix`: the gap between
+  the last pre-pause fix and the first post-resume fix is computed
+  against `_lastFix` (the pre-pause fix) and added to `_elapsedMillis` /
+  `_movingMillis` whenever `gap <= segmentGap` (30 s). Pauses shorter
+  than 30 s therefore leak into the timer; pauses longer than 30 s are
+  already excluded because `brokeSegment` (gap > segmentGap) skips the
+  accrual.
+- `pause()` calls `stage.breakSegment()` and sets `_segmentOpen = true`;
+  `resume()` only flips state back to `recording`. Nothing marks the
+  next gap as spanning parked time.
+- `test/recording_session_test.dart` only exercises long pauses (900 s,
+  600 s), so the leak is untested. The class doc and the `_elapsedMillis`
+  comment already state the intended rule ("a paused minute ticks
+  nowhere") — the code just does not implement it for short pauses.
 
-## Unit 2 (commit 1) — narrow the dashboard's per-fix rebuild
+## The fix
 
-1. In `RecordingDashboardState.build`: drop the merge; return
-   `ListenableBuilder(listenable: widget.model.recordingLive, ...)`
-   around only the session-driven readouts (chip text, stats panel,
-   speed card). Boundary/latch changes already rebuild the widget via
-   `_onModelChanged`'s `setState`, so the model listener is not needed
-   in the builder.
-2. Keep the latch toggle and panel toggle as dashboard `setState`
-   (user actions, not per-fix).
-3. Remove TODO.md unit 2.
+In `processFix`, capture whether this fix opens a fresh segment because
+of a pause, before `_segmentOpen` is consumed:
 
-Watch: `map_page_test.dart` tests 'the recording camera follows the
-fixes; a pan releases it', 'while recording, locate returns the follow
-after a pan', the latch test ('the recording latch keeps the screen
-on; the toggle opts out') and the chip/panel tests — all must pass
-unchanged.
+```dart
+final brokeSegment = !first && gap > segmentGap;
+// A pause arms a fresh segment: the gap bridging a resume spans parked
+// time and counts nowhere, whatever its length.
+final resumedAfterPause = !first && _segmentOpen;
+```
 
-## Unit 1 (commit 2) — shrink map_page.dart below ~900 lines
+Then change the accrual guard from `if (gap <= segmentGap)` to
+`if (!brokeSegment && !resumedAfterPause)` — a gap counts only when it
+stays inside one continuous segment. For fix-loss gaps this is
+equivalent to the old guard (`brokeSegment` implies `gap > segmentGap`);
+for pause-resume gaps of any length it now excludes the parked time.
 
-Extract the three chrome pills and the bottom action stack into
-`lib/ui/map_actions.dart` (the toolbar's home) as widgets returning
-`Positioned` (valid as direct Stack children of map_page's Stack):
+No changes to distance (the step across a pause is still bridged —
+pinned by the existing 'pause/resume breaks the track into two segments'
+test and not part of the reported bug), to segment splitting, to
+speed/course, or to doc comments (they already describe the intended
+behavior).
 
-1. `TopToolbar` — the existing `Positioned(top/left/right, SafeArea,
-   FloatingToolbar)` block with Import/Tracks/Settings, taking `model`,
-   `strings`, and callbacks `onImport`, `onOpenTracks`, `onOpenSettings`.
-2. `SelectionBar` — the selection pill, from `_selectionActions`; takes
-   `model`, `strings`, and an `onFit` callback (the `_fitWhenSized` call).
-3. `BottomActionStack` — the locate/record/pause/stop pill: takes
-   `model`, `locationSupported`, `locating`, `gpsWorking`, and callbacks
-   `onLocate`, `onRecord`, `onStop`, `onPauseResume`. The stop dialog
-   (`_stopRecording`'s showDialog chain) moves into this widget (it
-   needs only the model and strings).
-4. `map_page.dart` keeps: map controller + event wiring, fog cell size,
-   camera fits, the FlutterMap layer stack (tiles/fog/corridors/
-   selection highlight/trace/locate marker/recording marker), the
-   locate/silent-fix logic (`_locate`, `_silentPositionUpdate`, retry
-   timer, `_gpsWorking`, `_locating` — the stack receives them as
-   flags), `_onModelChanged`, imports and toast.
-5. Update TODO.md unit 1 removal; ARCHITECTURE.md's UI sentence already
-   lists `map_actions.dart` — extend its parenthetical to name the new
-   widgets.
+## Steps
 
-Watch: the geometry of the pills (keys `selection-bar`, `stop-discard`,
-`stop-discard-confirm`, `recording-chip` etc. live in the moved widgets)
-and the bottom-stack tests ('locate and record live in the bottom-left
-stack', record/pause/stop flows, discard two-step). All assertions must
-pass unchanged; only widget-ownership moves.
+1. Edit `processFix` in `lib/recording/recording_session.dart` as above.
+2. Add unit tests in `test/recording_session_test.dart`:
+   - a short pause (< 30 s) then resume: elapsed and moving time count
+     only the riding seconds, not the parked ones;
+   - a short pause mid-ride followed by normal riding: the total
+     equals the sum of the riding stretches;
+   - keep all existing pause tests passing unchanged (long pauses).
+3. Run `flutter analyze` (must be clean) and `flutter test` (all pass).
+4. Commit: `recording_session.dart` + `recording_session_test.dart` +
+   PLAN.md + removal of TODO.md item 2.
 
 ## Out of scope
 
-No behavior or string changes, no new packages, no further map_page
-slimming beyond these three pills + action stack (if the file still
-exceeds ~900 after them, report the remainder instead of forcing it).
+- Distance bridging across a pause/resume (existing tests pin the
+  current behavior; not the reported bug).
+- `currentSpeed` on the first post-resume fix (transient, one fix).
+- Any change to `segmentGap` semantics or the GPX staging format.
