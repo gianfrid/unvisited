@@ -1,24 +1,33 @@
-# Bottom column order: new bars anchored at the bottom edge
+# TODO unit 1: speed-gate the course-up rotation
 
-## Problem (user-tested)
-In `MapPage`'s bottom `Positioned(bottom: 0)` column the order is:
-SelectionBar -> RecordingDashboard -> RecordingSpeedReadout ->
-BottomActionStack. So while recording (or with an aggregate selected) the
-new bars stack *above* the record/locate action stack, pushing the speed
-readout toward mid-screen; the new bars are not at the bottom edge.
+Source: docs/map-rotation-research-report.md §5 item 1 — apply rotation
+only when ground speed is above ~1 m/s; below the gate, hold the last
+rotation (kills standstill spin / low-speed jitter).
 
 ## Change
-In `lib/ui/map_page.dart` (~line 790 column children), move the
-`BottomActionStack` block to be the FIRST child of the column and let the
-selection bar / recording chip / speed readout follow it, so the new bars
-end at the bottom edge (bottom: 0). When idle (no selection, no session)
-only the action stack renders and it still sits at the bottom edge, since
-the column is `mainAxisSize: MainAxisSize.min` inside `bottom: 0`.
+`lib/ui/recording_dashboard.dart`, `_onRecordingFix()` (the
+`mapRotation == 'on'` branch):
 
-No widget code changes; only child order in the one column.
+- Add a constant, e.g. `rotationSpeedGateMps = 1.0` next to
+  `courseDeltaThreshold`.
+- When rotating, also require the session's ground speed to clear the
+  gate: `session.currentSpeed` is already fused (reported fix speed,
+  else haversine between fixes — recording_session.dart:215). If speed
+  is null (source reports none, first fix), keep today's behavior and
+  rotate — the gate only bites when we *know* we are slow.
+- Below the gate: plain `move()` (center follows the fix, rotation is
+  held — same as the sub-hysteresis path today).
+
+No model/store changes; the setting stays opt-in as-is.
+
+## Tests
+- Widget test in test/map_page_test.dart (recording camera group, next to
+  the existing rotation assertions ~line 684): a fix with
+  `speed: 0.2` and a heading leaves `camera().rotation` unchanged while
+  still centering; a following fix with `speed: 3.0` rotates as before.
+- Keep all existing rotation tests green (they use speed 3.0 fixes).
 
 ## Verification
-- `flutter analyze` clean, `flutter test` passes
-- Manual/desktop check: record button bar stays bottom-left when idle;
-  while recording the chip + speed sit at the very bottom, action stack
-  above them.
+- `flutter analyze` clean, `flutter test` passes.
+- Commit PLAN.md + change + tests together, remove TODO.md unit 1 in
+  the same commit, then detached release build per workflow step 4.

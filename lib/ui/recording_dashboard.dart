@@ -71,6 +71,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// many degrees; below, leave the rotation untouched.
   static const double courseDeltaThreshold = 1.0;
 
+  /// Speed gate for the course-up camera rotation: below this ground
+  /// speed (m/s) the course/heading is stale or noise, so the camera
+  /// keeps its last rotation instead of spinning at a standstill. A fix
+  /// with unknown speed does not trip the gate.
+  static const double rotationSpeedGateMps = 1.0;
+
   /// Map-event sources that are not the user's hand: programmatic moves
   /// (the follow-camera itself, the zoom slider), camera fits, customs.
   /// Everything else releases the follow.
@@ -161,9 +167,14 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     // not the bridged course: a magnetometer-less or bearing-only fix
     // stream keeps the camera north-up, because a bearing between fixes
     // says where the user was, not where they face. No heading yet — a
-    // first fix — leaves the camera rotation alone.
+    // first fix — leaves the camera rotation alone. A fix below the
+    // speed gate also holds the rotation: at a standstill the reported
+    // heading is stale, not a direction.
     final heading = session?.currentHeading;
-    if (heading == null || widget.model.mapRotation != 'on') {
+    final speed = session?.currentSpeed;
+    if (heading == null ||
+        widget.model.mapRotation != 'on' ||
+        (speed != null && speed < rotationSpeedGateMps)) {
       widget.mapController.move(
         LatLng(lat, lon),
         widget.mapController.camera.zoom,

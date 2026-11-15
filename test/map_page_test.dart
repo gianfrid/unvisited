@@ -714,6 +714,47 @@ void main() {
   );
 
   testWidgets(
+    'a fix below the speed gate holds the camera rotation but still centers',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, heading: 90, speed: 5.0);
+      fakeFix(source, 1, lat: 52.5201, heading: 90, speed: 5.0);
+      await tester.pump();
+      await tester.pump();
+      expect(camera().rotation, closeTo(90.0, 0.1));
+
+      // Slow fix with a different heading: the camera holds its rotation
+      // (no standstill spin) but still centers on the fix.
+      fakeFix(source, 2, lat: 52.5202, heading: 180, speed: 0.2);
+      await tester.pump();
+      expect(camera().rotation, closeTo(90.0, 0.1));
+      expect(camera().center.latitude, closeTo(52.5202, 1e-6));
+
+      // Moving again: the rotation follows the course once more.
+      fakeFix(source, 3, lat: 52.5203, heading: 180, speed: 3.0);
+      await tester.pump();
+      expect(camera().rotation, closeTo(180.0, 0.1));
+    },
+  );
+
+  testWidgets(
     'by default the map stays north-up while recording; the follow still '
     'centers and the marker still points along the course',
     (tester) async {
