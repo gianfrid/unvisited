@@ -34,6 +34,7 @@ The rules that most often matter; full detail in [SPEC.md](SPEC.md).
 
 ## Agent guidelines
 
+- Keep scratch/throwaway files inside the project (`tmp/`, gitignored) or the session scratchpad; never write to `/tmp` or other paths outside the working directory.
 0. Plan before acting: every non-trivial change follows the Task workflow above — PLAN.md first, then explicit confirmation before editing or running any write action.
 1. Read [SPEC.md](SPEC.md) before starting any change; read [ARCHITECTURE.md](ARCHITECTURE.md) before structural or cross-component changes.
 2. Keep changes minimal and vertical: one slice, with its tests, per change.

@@ -49,3 +49,6 @@ app.*.map.json
 
 # Agent-local skills (not part of the project yet)
 .agents/
+
+# agent scratch space
+tmp/
