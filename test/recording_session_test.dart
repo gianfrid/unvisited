@@ -63,6 +63,31 @@ void main() {
         reason: 'stop() must end the session for good');
   });
 
+  test('after stop the stream subscription is cancelled: delivered fixes '
+      'are no longer processed', () async {
+    final source = FakeSource();
+    var fixCallbacks = 0;
+    final session = RecordingSession(
+      stage: GpxStageWriter(MemoryStageSink(), name: 'Stop'),
+      onFix: (_) => fixCallbacks++,
+    )..start(source);
+    source.controller.add(fix(0));
+    source.controller.add(fix(1, lat: 52.5201));
+    await pumpEventQueue();
+    expect(session.pointCount, 2);
+    expect(fixCallbacks, 2);
+
+    await session.stop();
+    // A fix delivered after the stop is neither processed nor announced —
+    // the cancellation also ends the Android foreground service's stream.
+    source.controller.add(fix(2, lat: 52.5202));
+    await pumpEventQueue();
+    expect(session.pointCount, 2);
+    expect(fixCallbacks, 2);
+    expect(session.distanceMeters, closeTo(11.1, 0.2),
+        reason: 'the post-stop fix added no distance');
+  });
+
   test('accuracy rejections drop the fix entirely', () {
     final session = newSession('Accuracy')..start(FakeSource());
     expect(session.processFix(fix(0)), FixDisposition.accepted);
@@ -230,7 +255,7 @@ void main() {
     expect(session.liveSegments.first.length, 2);
   });
 
-  test('pause/resume breaks the track into two segments', () {
+  test('pause/resume breaks the track into two segments', () async {
     final sink = MemoryStageSink();
     final session = RecordingSession(
       stage: GpxStageWriter(sink, name: 'Test ride'),
@@ -250,7 +275,7 @@ void main() {
     session.processFix(fix(31, lat: 52.5202));
     session.processFix(fix(32, lat: 52.5203));
     expect(session.distanceMeters, closeTo(distanceAtPause + 22.2, 0.5));
-    session.stop();
+    await session.stop();
     final gpx = sink.buffer.toString();
     expect('<trkseg>'.allMatches(gpx).length, 2);
     expect('</trkseg>'.allMatches(gpx).length, 2,
@@ -289,7 +314,7 @@ void main() {
         reason: 'currentHeading stays null; only currentCourse bridges');
   });
 
-  test('a fix-loss gap closes the segment automatically', () {
+  test('a fix-loss gap closes the segment automatically', () async {
     final sink = MemoryStageSink();
     final session = RecordingSession(
       stage: GpxStageWriter(sink, name: 'Gap ride'),
@@ -298,7 +323,7 @@ void main() {
     session.processFix(fix(0));
     session.processFix(fix(1));
     session.processFix(fix(100, lat: 52.5201)); // 99 s gap
-    session.stop();
+    await session.stop();
     final gpx = sink.buffer.toString();
     expect('<trkseg>'.allMatches(gpx).length, 2,
         reason: 'the gap broke the two fixes into a second segment');
@@ -390,12 +415,12 @@ void main() {
         isNull);
   });
 
-  test('empty session (no fix ever accepted) finalizes nothing', () {
+  test('empty session (no fix ever accepted) finalizes nothing', () async {
     final sink = MemoryStageSink();
     final session =
         RecordingSession(stage: GpxStageWriter(sink, name: 'Bare'));
     session.start(FakeSource());
-    session.stop();
+    await session.stop();
     expect(sink.buffer.toString(), isEmpty,
         reason: 'a session with no fix writes no file at all');
     expect(session.elapsed, Duration.zero);
@@ -471,7 +496,7 @@ void main() {
     )..start(FakeSource());
     session.processFix(fix(0, ele: 42));
     session.processFix(fix(1, lat: 52.5201));
-    session.stop();
+    await session.stop();
     await sink.done;
 
     final bytes = file.readAsBytesSync();

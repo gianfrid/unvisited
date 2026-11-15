@@ -7,6 +7,8 @@
 /// through one class, and no widget ever builds sentences from it.
 library;
 
+import 'dart:async';
+
 import 'package:latlong2/latlong.dart';
 
 import '../geo.dart';
@@ -136,12 +138,18 @@ class RecordingSession {
   /// trace matches the staged file's `<trkseg>` breaks one to one.
   bool _segmentOpen = true;
 
+  /// The position stream's subscription. [stop] cancels it: no fix is
+  /// processed after the stop, and on Android the cancellation tears
+  /// geolocator's foreground service — and its ongoing notification —
+  /// down with the session.
+  StreamSubscription<PositionFix>? _subscription;
+
   /// Starts consuming [source]; fixes flow in as the stream produces
   /// them. Pauses, resumes and the eventual stop are the caller's calls.
   void start(PositionSource source) {
     if (state != RecordingState.idle) throw StateError('session already started');
     state = RecordingState.recording;
-    source.stream.listen(_onFix);
+    _subscription = source.stream.listen(_onFix);
   }
 
   /// Pauses: closes the current `<trkseg>`; the paused stretch records
@@ -163,12 +171,17 @@ class RecordingSession {
     state = RecordingState.recording;
   }
 
-  /// Stops for good: finalizes the staged file and completes once the
-  /// bytes are closed out — the accepted fixes' loss window ends here,
-  /// and slice 2 awaits this before handing the file to the imports.
-  Future<void> stop() {
+  /// Stops for good: cancels the position stream's subscription (so the
+  /// source — geolocator's foreground service on Android — ends with the
+  /// session and no fix is processed after this point), then finalizes
+  /// the staged file and completes once the bytes are closed out — the
+  /// accepted fixes' loss window ends here, and slice 2 awaits this
+  /// before handing the file to the imports.
+  Future<void> stop() async {
     state = RecordingState.stopped;
-    return stage.finalize();
+    await _subscription?.cancel();
+    _subscription = null;
+    await stage.finalize();
   }
 
   /// One fix through the filters; the stream subscription calls this.

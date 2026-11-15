@@ -160,6 +160,22 @@ void main() {
       await controller.stopRecording();
       expect(store.tracks, isEmpty);
     });
+
+    test('after stop, delivered fixes produce no live tick', () async {
+      var liveTicks = 0;
+      controller.recordingLive.addListener(() => liveTicks++);
+
+      final source = await feed([fix(0), fix(1, lat: 52.5201)]);
+      expect(liveTicks, 2);
+
+      await controller.stopRecording(name: 'Done');
+      // The session's stream subscription was cancelled by the stop, so a
+      // fix pushed afterwards reaches neither the engine nor the repaint
+      // channel (and on Android the foreground service is torn down).
+      source.controller.add(fix(2, lat: 52.5202));
+      await pumpEventQueue();
+      expect(liveTicks, 2);
+    });
   });
 
   group('discard', () {
@@ -174,6 +190,21 @@ void main() {
         stagedDir().existsSync() ? stagedDir().listSync() : const [],
         isEmpty,
       );
+    });
+
+    test('after discard, delivered fixes produce no live tick', () async {
+      var liveTicks = 0;
+      controller.recordingLive.addListener(() => liveTicks++);
+
+      final source = await feed([fix(0)]);
+      expect(liveTicks, 1);
+
+      // Discard goes through the same stop(): the subscription is
+      // cancelled, so the source's stream ends with the session.
+      await controller.discardRecording();
+      source.controller.add(fix(1, lat: 52.5201));
+      await pumpEventQueue();
+      expect(liveTicks, 1);
     });
   });
 
