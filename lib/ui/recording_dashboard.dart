@@ -236,13 +236,16 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   Widget build(BuildContext context) {
     final session = widget.model.recording;
     if (session == null) return const SizedBox.shrink();
+    // Per-fix only: a 1 Hz fix repaints the session-driven readouts and
+    // nothing else. Boundary and latch changes rebuild through
+    // _onModelChanged's setState; the toggles through their own.
     return ListenableBuilder(
-      listenable: Listenable.merge([widget.model, widget.model.recordingLive]),
+      listenable: widget.model.recordingLive,
       builder: (context, _) {
         final live = widget.model.recording;
         if (live == null) return const SizedBox.shrink();
-        final sessionStrings = AppStrings.ofContext(context);
-        return _dashboard(live, sessionStrings);
+        final strings = AppStrings.ofContext(context);
+        return _dashboard(live, strings);
       },
     );
   }
