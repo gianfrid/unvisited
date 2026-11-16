@@ -297,14 +297,15 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  /// The recording marker: at the last accepted fix, rotating to the
-  /// course relative to the camera's rotation, so the nose points along
-  /// the course on screen — straight up while the follow-camera holds the
-  /// camera on the course (these are not two settings: the rotation *is*
-  /// the follow; any gesture releases both; see SPEC). A fix without a
-  /// heading and no bearing yet renders unrotated. Rebuilt per fix through
-  /// the recording-live channel; still a direct child of the map's layer
-  /// stack, which its marker positioning depends on.
+  /// The recording marker: at the last accepted fix. With course-up on
+  /// (`mapRotation == 'on'`) the nose is pinned screen-up — the camera
+  /// carries the course, and pinning keeps the marker from swinging while
+  /// the rotation eases in. With course-up off the marker rotates to the
+  /// course relative to the camera's rotation, so it follows the direction
+  /// of travel on the north-up map. A fix without a heading and no bearing
+  /// yet renders unrotated. Rebuilt per fix through the recording-live
+  /// channel; still a direct child of the map's layer stack, which its
+  /// marker positioning depends on.
   List<Widget> _recordingMarkers() {
     final session = widget.model.recording;
     final lat = session?.currentLat;
@@ -321,11 +322,14 @@ class _MapPageState extends State<MapPage> {
               height: 44,
               child: Transform.rotate(
                 key: const ValueKey('recording-marker-rotate'),
-                angle:
-                    ((session!.currentCourse ?? 0) -
-                        _mapController.camera.rotation) *
-                    math.pi /
-                    180,
+                // Course-up on: pinned screen-up. Off: the nose follows the
+                // course against the camera's rotation.
+                angle: widget.model.mapRotation == 'on'
+                    ? 0
+                    : ((session!.currentCourse ?? 0) -
+                            _mapController.camera.rotation) *
+                        math.pi /
+                        180,
                 child: Container(
                   key: const ValueKey('recording-marker-disc'),
                   decoration: BoxDecoration(

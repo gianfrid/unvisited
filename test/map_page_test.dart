@@ -725,9 +725,9 @@ void main() {
         sameCameraAs(panned),
         reason: 'the pan released the follow',
       );
-      // The marker matches the new course against the camera's rotation, so
-      // it still points along the course on screen.
-      expect(markerAngle(), closeTo(math.pi / 2, 0.05));
+      // Course-up is on, so the marker stays pinned screen-up even though
+      // the course changed (the camera itself stayed at 90 after the pan).
+      expect(markerAngle(), closeTo(0.0, 0.05));
     },
   );
 
@@ -1042,6 +1042,46 @@ void main() {
       expect(camera().rotation, closeTo(0.0, 0.1));
       expect(camera().center.latitude, greaterThan(52.5201));
       expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
+    },
+  );
+
+  testWidgets(
+    'course-up on pins the marker up even while the camera is still easing',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      double markerAngle() {
+        final m = tester
+            .widget<Transform>(
+              find.byKey(const ValueKey('recording-marker-rotate')),
+            )
+            .transform;
+        return math.atan2(m.entry(1, 0), m.entry(0, 0));
+      }
+
+      await model.startRecording(source: source, permissionGate: false);
+      // One fix on a 90° course: the camera has eased only partway (36°),
+      // so course-relative rotation would NOT net to up — but course-up
+      // pins the marker regardless.
+      fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
+      await tester.pump();
+      await tester.pump();
+      expect(camera().rotation, closeTo(36.0, 0.1));
+      expect(markerAngle(), closeTo(0.0, 1e-6));
     },
   );
 
