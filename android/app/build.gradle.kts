@@ -62,6 +62,15 @@ android {
                 keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreB64))
                 keystoreFile.deleteOnExit()
                 storeFile = keystoreFile
+                // Modern keytool defaults to PKCS12; detect the type from
+                // the magic bytes (JKS starts with FE ED FE ED) so both
+                // keystore flavors sign without a new secret.
+                val magic = keystoreFile.readBytes().copyOf(4)
+                storeType = if (magic.contentEquals(byteArrayOf(0xFE.toByte(), 0xED.toByte(), 0xFE.toByte(), 0xED.toByte()))) {
+                    "JKS"
+                } else {
+                    "PKCS12"
+                }
                 storePassword = System.getenv("UNVISITED_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("UNVISITED_KEY_ALIAS")
                 keyPassword = System.getenv("UNVISITED_KEY_PASSWORD")
