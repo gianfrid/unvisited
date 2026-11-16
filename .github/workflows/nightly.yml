@@ -44,6 +44,21 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Decode and verify the release keystore secret
+        env:
+          UNVISITED_KEYSTORE_B64: ${{ secrets.UNVISITED_KEYSTORE_B64 }}
+          UNVISITED_KEYSTORE_PASSWORD: ${{ secrets.UNVISITED_KEYSTORE_PASSWORD }}
+          UNVISITED_KEY_ALIAS: ${{ secrets.UNVISITED_KEY_ALIAS }}
+          UNVISITED_KEY_PASSWORD: ${{ secrets.UNVISITED_KEY_PASSWORD }}
+        run: |
+          echo "$UNVISITED_KEYSTORE_B64" | base64 -d > /tmp/ks.bin
+          echo "magic bytes:"; head -c 4 /tmp/ks.bin | xxd
+          file /tmp/ks.bin
+          for v in UNVISITED_KEYSTORE_PASSWORD UNVISITED_KEY_ALIAS UNVISITED_KEY_PASSWORD; do
+            if [ -n "${!v}" ]; then echo "$v: set"; else echo "$v: EMPTY"; fi
+          done
+          keytool -list -v -keystore /tmp/ks.bin -storepass "$UNVISITED_KEYSTORE_PASSWORD" 2>&1 | head -8
+
       - name: Build release APK (alpha nightly)
         env:
           UNVISITED_KEYSTORE_B64: ${{ secrets.UNVISITED_KEYSTORE_B64 }}
