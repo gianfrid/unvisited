@@ -122,6 +122,10 @@ Map<String, String> allStrings(AppStrings s) => {
       'debugLoggingSubtitle': s.debugLoggingSubtitle,
       'saveDebugLog': s.saveDebugLog,
       'debugLogSaved': s.debugLogSaved,
+      'exportCatalog': s.exportCatalog,
+      'importCatalog': s.importCatalog,
+      'catalogImported(2)': s.catalogImported(2),
+      'catalogImportFailed': s.catalogImportFailed,
     };
 
 void main() {

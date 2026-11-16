@@ -289,6 +289,18 @@ class SettingsSheet extends StatelessWidget {
               ),
             ),
             ListTile(
+              dense: true,
+              leading: const Icon(Icons.archive_outlined),
+              title: Text(strings.exportCatalog),
+              onTap: () => _exportCatalog(context, model),
+            ),
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.unarchive_outlined),
+              title: Text(strings.importCatalog),
+              onTap: () => _importCatalog(context, model),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_forever_outlined),
               title: Text(strings.deleteAllTracks),
               subtitle: Text(
@@ -304,6 +316,63 @@ class SettingsSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Exports the whole catalog (index.json + tracks/) as one zip through the
+/// platform save dialog. Compression is `archive`'s zip — already bundled
+/// for KMZ, so the APK size is unchanged.
+Future<void> _exportCatalog(BuildContext context, AppModel model) async {
+  final strings = AppStrings.ofContext(context);
+  try {
+    final stamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .substring(0, 19);
+    final saved = await FilePicker.saveFile(
+      dialogTitle: strings.exportCatalog,
+      fileName: 'unvisited-export-$stamp.zip',
+      bytes: model.exportCatalogBytes(),
+      mimeType: 'application/zip',
+    );
+    if (saved != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.exportDone)),
+      );
+    }
+  } on Exception {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.exportFailed)),
+      );
+    }
+  }
+}
+
+/// Imports a previously exported catalog zip: every track file inside goes
+/// through the unified pipeline, so content-hash dedup applies and a
+/// re-import of the same export adds nothing.
+Future<void> _importCatalog(BuildContext context, AppModel model) async {
+  final strings = AppStrings.ofContext(context);
+  final picked = await FilePicker.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ['zip'],
+  );
+  final path = picked.isEmpty ? null : picked.first.path;
+  if (path == null) return; // cancelled
+  try {
+    final added = model.importCatalogBytes(File(path).readAsBytesSync());
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.catalogImported(added))),
+      );
+    }
+  } on Exception {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.catalogImportFailed)),
+      );
+    }
   }
 }
 

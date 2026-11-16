@@ -236,6 +236,12 @@ abstract class AppStrings {
   // Export feedback (a toast on success and failure).
   String get exportDone;
   String get exportFailed;
+
+  // Whole-catalog export/import (Settings rows).
+  String get exportCatalog;
+  String get importCatalog;
+  String catalogImported(int count);
+  String get catalogImportFailed;
 }
 
 class EnglishStrings extends AppStrings {
@@ -284,6 +290,15 @@ class EnglishStrings extends AppStrings {
   String get exportDone => 'Track exported';
   @override
   String get exportFailed => 'Export failed';
+  @override
+  String get exportCatalog => 'Export all tracks';
+  @override
+  String get importCatalog => 'Import from export';
+  @override
+  String catalogImported(int count) =>
+      '$count track(s) imported — duplicates skipped';
+  @override
+  String get catalogImportFailed => 'Import failed — not an Unvisited export';
   @override
   String get locateLabel => 'Locate';
   @override
@@ -572,6 +587,16 @@ class ItalianStrings extends AppStrings {
   String get exportDone => 'Traccia esportata';
   @override
   String get exportFailed => 'Esportazione non riuscita';
+  @override
+  String get exportCatalog => 'Esporta tutte le tracce';
+  @override
+  String get importCatalog => 'Importa da esportazione';
+  @override
+  String catalogImported(int count) =>
+      '$count tracce importate — duplicati ignorati';
+  @override
+  String get catalogImportFailed =>
+      'Importazione non riuscita — non è un’esportazione di Unvisited';
   @override
   String get locateLabel => 'Posizione';
   @override

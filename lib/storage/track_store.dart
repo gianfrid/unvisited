@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../import/fit_parser.dart';
@@ -524,6 +526,47 @@ class TrackStore {
     _tracks.add(stored);
     _saveIndex();
     return ImportResult(track: stored, data: data);
+  }
+
+  // --- Catalog export/import ----------------------------------------------
+
+  /// The whole catalog as one zip: `index.json` plus every file under
+  /// `tracks/`. Compression comes from the already-bundled `archive`
+  /// package, so nothing is added to the APK.
+  Uint8List exportCatalogBytes() {
+    final archive = Archive();
+    if (indexFile.existsSync()) {
+      archive.addFile(
+        ArchiveFile('index.json', indexFile.lengthSync(), indexFile.readAsBytesSync()),
+      );
+    }
+    for (final f in tracksDir.listSync().whereType<File>()) {
+      archive.addFile(
+        ArchiveFile('tracks/${f.uri.pathSegments.last}', f.lengthSync(), f.readAsBytesSync()),
+      );
+    }
+    return Uint8List.fromList(ZipEncoder().encode(archive));
+  }
+
+  /// Re-imports every track file inside an export zip through the unified
+  /// pipeline (content-hash dedup applies, so re-importing the same export
+  /// adds nothing). Returns the count of newly imported tracks. Throws
+  /// [FormatException] when the zip is not an Unvisited export.
+  int importCatalogBytes(List<int> bytes) {
+    final archive = ZipDecoder().decodeBytes(bytes);
+    if (!archive.files.any((f) => f.name == 'index.json')) {
+      throw const FormatException('not an Unvisited export (no index.json)');
+    }
+    var imported = 0;
+    for (final f in archive.files) {
+      if (!f.isFile || !f.name.startsWith('tracks/')) continue;
+      final result = importBytes(
+        f.content as List<int>,
+        filename: f.name.split('/').last,
+      );
+      if (result.imported) imported++;
+    }
+    return imported;
   }
 
   /// The stored track that [data] describes in different bytes, or null.

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show ChangeNotifier;
@@ -386,6 +387,18 @@ class AppModel extends ChangeNotifier {
       mimeType: _mimeFor(track.format),
     );
     return target?.toFilePath();
+  }
+
+  /// The whole catalog (index + track files) as one zip, ready to save.
+  Uint8List exportCatalogBytes() => store.exportCatalogBytes();
+
+  /// Re-imports an export zip through the unified pipeline; returns how
+  /// many tracks were newly added (content-hash dedup applies). Throws
+  /// [FormatException] when the zip is not an Unvisited export.
+  int importCatalogBytes(List<int> bytes) {
+    final added = store.importCatalogBytes(bytes);
+    notifyListeners();
+    return added;
   }
 
   /// The map's start center: the position saved by the previous run, or
