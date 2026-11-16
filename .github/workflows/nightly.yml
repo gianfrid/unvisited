@@ -68,7 +68,7 @@ jobs:
         run: |
           flutter build apk --release --split-per-abi --target-platform=android-arm64 \
             --build-name "1.0.0-alpha" --build-number "${{ github.run_number }}"
-          cp build/app/outputs/flutter-apk/app-arm64-release.apk unvisited-nightly-arm64.apk
+          cp build/app/outputs/flutter-apk/app-arm64-*-release.apk unvisited-nightly-arm64.apk
 
       - name: Publish to the moving nightly release
         uses: softprops/action-gh-release@v2
