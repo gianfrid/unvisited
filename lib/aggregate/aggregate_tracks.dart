@@ -61,9 +61,15 @@ abstract class AggregateIndex {
 
 /// Union-find over tracks, joined when any point pair across two tracks is
 /// within [thresholdMeters]. Points are bucketed into a lat/lon grid with
-/// cell edge = threshold (longitude cells scaled by cos(latitude)), so
-/// the neighbor query touches only the 3x3 surrounding cells — O(n) in the
-/// point count per area, not O(n^2) pairwise.
+/// cell edge = threshold (longitude cells scaled by cos(latitude)), so any
+/// two points within the threshold sit in the same or adjacent cells. The
+/// scan visits each unordered pair of neighboring cells once and skips a
+/// cell pair entirely once every track in one cell is already united with
+/// every track in the other — a single close point pair joins two tracks,
+/// so further point pairs cannot change the partition. Inside a scanned
+/// pair, a degree-space reject (|dLat|, |dLon| bounds) filters before the
+/// haversine, keeping near-miss pairs cheap. O(n) in the point count per
+/// area, not O(n^2) pairwise.
 class UnionFindAggregateIndex implements AggregateIndex {
   const UnionFindAggregateIndex({this.defaultThresholdMeters = 100});
 
@@ -84,36 +90,63 @@ class UnionFindAggregateIndex implements AggregateIndex {
       return i;
     }
 
-    // cell key -> list of (track index, point)
-    final grid = <String, List<(int, LatLng)>>{};
+    // cell key -> cell record (coords, points, track set)
     const metersPerDegLat = 111320.0;
+    final latCellDeg = threshold / metersPerDegLat;
+    final cells = <String, ({int cx, int cy, List<(int, LatLng)> points, Set<int> tracks})>{};
     for (var t = 0; t < tracks.length; t++) {
       for (final p in tracks[t].points) {
-        final latCell = p.latitude / (threshold / metersPerDegLat);
-        final lonCell = p.longitude /
-            (threshold / (metersPerDegLat * _cosLat(p.latitude)));
-        grid
-            .putIfAbsent('${latCell.floor()},${lonCell.floor()}', () => [])
-            .add((t, p));
+        final cx = (p.latitude / latCellDeg).floor();
+        final cy = (p.longitude /
+                (threshold / (metersPerDegLat * _cosLat(p.latitude))))
+            .floor();
+        final cell = cells.putIfAbsent(
+          '$cx,$cy',
+          () => (cx: cx, cy: cy, points: [], tracks: <int>{}),
+        );
+        cell.points.add((t, p));
+        cell.tracks.add(t);
       }
     }
-    for (var t = 0; t < tracks.length; t++) {
-      for (final p in tracks[t].points) {
-        final latCell = p.latitude / (threshold / metersPerDegLat);
-        final lonCell = p.longitude /
-            (threshold / (metersPerDegLat * _cosLat(p.latitude)));
-        for (var dx = -1; dx <= 1; dx++) {
-          for (var dy = -1; dy <= 1; dy++) {
-            final cell = grid['${latCell.floor() + dx},${lonCell.floor() + dy}'];
-            if (cell == null) continue;
-            for (final (other, q) in cell) {
-              if (other == t) continue;
-              final ra = find(t), rb = find(other);
-              // Already in the same cluster: the union would be a no-op,
-              // so skip the haversine — the dominant cost on chained
-              // catalogs, where most pairs are already united.
+    for (final cell in cells.values) {
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          final sameCell = dx == 0 && dy == 0;
+          // Visit each unordered pair of neighboring cells once.
+          if (!sameCell && (dx < 0 || (dx == 0 && dy < 0))) continue;
+          final other =
+              sameCell ? cell : cells['${cell.cx + dx},${cell.cy + dy}'];
+          if (other == null) continue;
+          // Cell-pair early exit: when all cross-cell track pairs are
+          // already united, no point pair below can change the partition.
+          var allUnited = true;
+          for (final t in cell.tracks) {
+            for (final u in other.tracks) {
+              if (t != u && find(t) != find(u)) {
+                allUnited = false;
+                break;
+              }
+            }
+            if (!allUnited) break;
+          }
+          if (allUnited) continue;
+          final a = cell.points;
+          final b = other.points;
+          for (var i = 0; i < a.length; i++) {
+            final (t, p) = a[i];
+            final lonBound = latCellDeg / _cosLat(p.latitude);
+            for (var j = sameCell ? i + 1 : 0; j < b.length; j++) {
+              final (u, q) = b[j];
+              if (t == u) continue;
+              final ra = find(t), rb = find(u);
+              // Already in the same cluster: the union would be a no-op.
               if (ra == rb) continue;
-              if (haversineMeters(p.latitude, p.longitude, q.latitude, q.longitude) <=
+              // Degree-space reject before the haversine: points farther
+              // than the threshold in either axis cannot be within it.
+              if ((q.latitude - p.latitude).abs() > latCellDeg) continue;
+              if ((q.longitude - p.longitude).abs() > lonBound) continue;
+              if (haversineMeters(p.latitude, p.longitude, q.latitude,
+                      q.longitude) <=
                   threshold) {
                 parent[ra] = rb;
               }
