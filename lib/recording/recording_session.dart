@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:latlong2/latlong.dart';
 
+import '../debug_log.dart';
 import '../geo.dart';
 import 'position_source.dart';
 import 'staging_gpx.dart';
@@ -324,7 +325,15 @@ class RecordingSession {
   }
 
   void _onFix(PositionFix fix) {
-    processFix(fix);
+    final verdict = processFix(fix);
+    if (verdict == FixDisposition.accepted) {
+      DebugLog.instance.info(
+        'fix accepted: ${fix.lat.toStringAsFixed(6)},${fix.lon.toStringAsFixed(6)}'
+        ' speed=${fix.speed?.toStringAsFixed(1)} heading=${fix.heading?.toStringAsFixed(0)}',
+      );
+    } else if (verdict != FixDisposition.ignored) {
+      DebugLog.instance.warn('fix ${verdict.name}: ${fix.lat},${fix.lon}');
+    }
     if (onFix != null) onFix!(fix);
   }
 }

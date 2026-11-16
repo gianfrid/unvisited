@@ -118,6 +118,10 @@ Map<String, String> allStrings(AppStrings s) => {
       'salvagedRecording': s.salvagedRecording('Morning walk'),
       'keepScreenOn': s.keepScreenOn,
       'keepScreenOnSubtitle': s.keepScreenOnSubtitle,
+      'debugLogging': s.debugLogging,
+      'debugLoggingSubtitle': s.debugLoggingSubtitle,
+      'saveDebugLog': s.saveDebugLog,
+      'debugLogSaved': s.debugLogSaved,
     };
 
 void main() {

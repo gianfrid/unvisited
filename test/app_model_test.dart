@@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart' show LatLng;
+import 'package:unvisited/debug_log.dart';
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/host_channel.dart';
 import 'package:unvisited/storage/track_store.dart';
@@ -798,6 +799,33 @@ void main() {
 
       await reloaded.setMapRotation('off');
       expect(reloaded.mapRotation, 'off');
+    });
+  });
+
+  group('debug logging', () {
+    test('defaults to off and the log stays empty', () {
+      expect(model.debugLogging, isFalse);
+      expect(DebugLog.instance.enabled, isFalse);
+      DebugLog.instance.info('dropped while disabled');
+      expect(DebugLog.instance.isEmpty, isTrue);
+    });
+
+    test('toggling persists, restores, and gates the log', () async {
+      await model.setDebugLogging(true);
+      expect(model.debugLogging, isTrue);
+      expect(DebugLog.instance.enabled, isTrue);
+      DebugLog.instance.info('hello');
+      expect(DebugLog.instance.isEmpty, isFalse);
+
+      final reloaded = AppModel(TrackStore(root));
+      await reloaded.load();
+      expect(reloaded.debugLogging, isTrue);
+      expect(DebugLog.instance.enabled, isTrue);
+
+      await reloaded.setDebugLogging(false);
+      expect(reloaded.debugLogging, isFalse);
+      expect(DebugLog.instance.enabled, isFalse);
+      expect(DebugLog.instance.isEmpty, isTrue);
     });
   });
 

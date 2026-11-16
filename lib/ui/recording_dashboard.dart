@@ -7,6 +7,7 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../debug_log.dart';
 import '../host_channel.dart';
 import '../l10n/app_strings.dart';
 import '../recording/recording_session.dart';
@@ -170,6 +171,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// Releases the follow on a user gesture; only a locate-button tap
   /// ([armFollow]/[rearmFollow]) or a new session arms it again.
   void _releaseFollow() {
+    DebugLog.instance.info('follow released by gesture');
     setState(() => _follow = false);
   }
 
@@ -308,10 +310,15 @@ class RecordingDashboardState extends State<RecordingDashboard> {
       final courseDelta =
           nearestEquivalentRotation(target, rotation) - rotation;
       if (courseDelta.abs() >= courseDeltaThreshold) {
+        final applied = rotation + courseDelta * rotationSmoothingFactor;
+        DebugLog.instance.info(
+          'rotate: target=${target.toStringAsFixed(1)} '
+          'from=${rotation.toStringAsFixed(1)} to=${applied.toStringAsFixed(1)}',
+        );
         widget.mapController.moveAndRotate(
           center,
           zoom,
-          rotation + courseDelta * rotationSmoothingFactor,
+          applied,
         );
       } else {
         widget.mapController.move(center, zoom);
@@ -341,6 +348,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// map's center already, and the next session fix takes over.
   void armFollow() {
     if (!_follow) {
+      DebugLog.instance.info('follow armed (locate)');
       setState(() => _follow = true);
     }
   }

@@ -3,11 +3,15 @@
 /// picker and the battery advisory, plus the destructive delete-all.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../build_version.dart';
+import '../debug_log.dart';
 import '../l10n/app_strings.dart';
 import 'app_model.dart';
 import 'track_colors.dart';
@@ -257,6 +261,30 @@ class SettingsSheet extends StatelessWidget {
                         vertical: 0,
                       ),
                     ),
+                  // Debug logging: a dev aid, available on every platform
+                  // (the log itself is pure Dart). The save action writes
+                  // the buffer gzip-compressed through the platform save
+                  // dialog.
+                  ListTile(
+                    dense: true,
+                    title: Text(strings.debugLogging),
+                    subtitle: Text(strings.debugLoggingSubtitle),
+                    trailing: Switch(
+                      value: model.debugLogging,
+                      onChanged: (on) => model.setDebugLogging(on),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 0,
+                    ),
+                  ),
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: Text(strings.saveDebugLog),
+                    enabled: model.debugLogging && !DebugLog.instance.isEmpty,
+                    onTap: () => _saveDebugLog(context),
+                  ),
                 ],
               ),
             ),
@@ -275,6 +303,32 @@ class SettingsSheet extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Exports the debug log gzip-compressed through the platform save dialog
+/// (SAF create-document on Android, native dialog on desktop). The
+/// `archive` package is already bundled for KMZ reading, so the compression
+/// adds no APK size; a text log typically shrinks 5-10x.
+Future<void> _saveDebugLog(BuildContext context) async {
+  final strings = AppStrings.ofContext(context);
+  final stamp = DateTime.now()
+      .toIso8601String()
+      .replaceAll(':', '-')
+      .substring(0, 19);
+  final bytes = const GZipEncoder().encodeBytes(
+    utf8.encode(DebugLog.instance.dump()),
+  );
+  final saved = await FilePicker.saveFile(
+    dialogTitle: strings.saveDebugLog,
+    fileName: 'unvisited-debug-$stamp.log.gz',
+    bytes: bytes,
+    mimeType: 'application/gzip',
+  );
+  if (saved != null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(strings.debugLogSaved)),
     );
   }
 }

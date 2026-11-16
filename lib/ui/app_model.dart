@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../aggregate/aggregate_tracks.dart'
     show AggregateInput, AggregateTrack, AggregateIndex, UnionFindAggregateIndex;
+import '../debug_log.dart';
 import '../geo.dart' show haversineMeters;
 import '../host_channel.dart' show hostChannel;
 import '../l10n/app_strings.dart';
@@ -132,6 +133,7 @@ class AppModel extends ChangeNotifier {
 
   Future<void> load() async {
     await store.load();
+    DebugLog.instance.enabled = store.debugLogging;
     _restoreRoadFile();
     // After the road file (if any) is active, so a salvaged recording
     // matches its corridors in the same pass.
@@ -451,6 +453,18 @@ class AppModel extends ChangeNotifier {
   /// toggle applies immediately, even mid-session.
   bool get keepScreenOn => store.keepScreenOn;
 
+  /// Whether the in-app debug log accumulates (default off).
+  bool get debugLogging => store.debugLogging;
+
+  /// Saves the debug-logging switch and applies it to the log immediately.
+  Future<void> setDebugLogging(bool on) async {
+    await store.saveDebugLogging(on);
+    DebugLog.instance.enabled = on;
+    if (!on) DebugLog.instance.clear();
+    DebugLog.instance.info('debug logging ${on ? 'enabled' : 'disabled'}');
+    notifyListeners();
+  }
+
   /// Saves the exploration overlay tint; the map repaints via the usual
   /// notification.
   Future<void> setTrackTint(String key) async {
@@ -555,19 +569,23 @@ class AppModel extends ChangeNotifier {
   Future<LocateResult> locate({required bool prompt}) async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
+        DebugLog.instance.warn('locate: location service disabled');
         return const LocateResult.failure(LocationFailure.serviceDisabled);
       }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         if (!prompt) {
+          DebugLog.instance.info('locate: permission denied (silent)');
           return const LocateResult.failure(LocationFailure.permissionDenied);
         }
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.deniedForever) {
+        DebugLog.instance.warn('locate: permission blocked forever');
         return const LocateResult.failure(LocationFailure.permissionBlocked);
       }
       if (permission == LocationPermission.denied) {
+        DebugLog.instance.warn('locate: permission denied after prompt');
         return const LocateResult.failure(LocationFailure.permissionDenied);
       }
       // Bounded: without a time limit a cold fix can wait indefinitely,
@@ -582,10 +600,18 @@ class AppModel extends ChangeNotifier {
       );
       // The fused provider can hand back a stale cached fix; only a fresh
       // one counts as a position.
-      if (DateTime.now().difference(position.timestamp) > freshFixMaxAge) {
+      final fixAge = DateTime.now().difference(position.timestamp);
+      if (fixAge > freshFixMaxAge) {
+        DebugLog.instance.warn(
+          'locate: stale fix rejected (age ${fixAge.inSeconds}s)',
+        );
         return const LocateResult.failure(LocationFailure.unavailable);
       }
       final pos = LatLng(position.latitude, position.longitude);
+      DebugLog.instance.info(
+        'locate: fix ${pos.latitude.toStringAsFixed(6)},${pos.longitude.toStringAsFixed(6)}'
+        ' age=${fixAge.inMilliseconds}ms acc=${position.accuracy.toStringAsFixed(1)}',
+      );
       await store.savePosition(pos.latitude, pos.longitude);
       notifyListeners();
       return LocateResult.success(pos);
@@ -593,6 +619,7 @@ class AppModel extends ChangeNotifier {
       // No host implementation (desktop/test runs), a broken plugin
       // setup, or a decode error: degrade to "no location". Error and
       // Exception alike — the platform channel surfaces both.
+      DebugLog.instance.warn('locate: unavailable (exception)');
       return const LocateResult.failure(LocationFailure.unavailable);
     }
   }

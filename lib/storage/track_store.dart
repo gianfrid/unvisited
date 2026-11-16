@@ -185,6 +185,7 @@ class AppSettings {
     this.tileLayer = 'standard',
     this.mapRotation = 'off',
     this.keepScreenOn = true,
+    this.debugLogging = false,
     this.roadsFile,
     this.aggregateColors = const {},
   });
@@ -217,6 +218,10 @@ class AppSettings {
   /// host channel's window flag.
   final bool keepScreenOn;
 
+  /// Whether the in-app debug log accumulates (Settings -> "Debug
+  /// logging", default off). While off, logging calls are no-ops.
+  final bool debugLogging;
+
   /// The side-loaded road region file's *name* (relative to `roads/` under
   /// the root), or null when none is set. The app owns a copy of the file;
   /// see `TrackStore.adoptRoadFile`.
@@ -238,6 +243,7 @@ class AppSettings {
         tileLayer: (m['tileLayer'] as String?) ?? 'standard',
         mapRotation: (m['mapRotation'] as String?) ?? 'off',
         keepScreenOn: (m['keepScreenOn'] as bool?) ?? true,
+        debugLogging: (m['debugLogging'] as bool?) ?? false,
         roadsFile: m['roadsFile'] as String?,
         aggregateColors:
             (m['aggregateColors'] as Map<Object?, Object?>? ?? {})
@@ -253,6 +259,7 @@ class AppSettings {
     String? tileLayer,
     String? mapRotation,
     bool? keepScreenOn,
+    bool? debugLogging,
     String? roadsFile,
     bool clearRoadsFile = false,
     Map<String, String>? aggregateColors,
@@ -266,6 +273,7 @@ class AppSettings {
         tileLayer: tileLayer ?? this.tileLayer,
         mapRotation: mapRotation ?? this.mapRotation,
         keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+        debugLogging: debugLogging ?? this.debugLogging,
         roadsFile:
             clearRoadsFile ? null : roadsFile ?? this.roadsFile,
         aggregateColors: aggregateColors ?? this.aggregateColors,
@@ -280,6 +288,7 @@ class AppSettings {
         'tileLayer': tileLayer,
         'mapRotation': mapRotation,
         'keepScreenOn': keepScreenOn,
+        'debugLogging': debugLogging,
         'recordingTint': recordingTint,
         if (roadsFile != null) 'roadsFile': roadsFile,
         if (aggregateColors.isNotEmpty)
@@ -337,6 +346,7 @@ class TrackStore {
   String get tileLayer => _settings.tileLayer;
   String get mapRotation => _settings.mapRotation;
   bool get keepScreenOn => _settings.keepScreenOn;
+  bool get debugLogging => _settings.debugLogging;
   String? get roadsFile => _settings.roadsFile;
 
   /// Applies a new settings snapshot and persists the index.
@@ -420,6 +430,10 @@ class TrackStore {
   /// Saves whether the screen stays on while recording (default on).
   Future<void> saveKeepScreenOn(bool on) async =>
       _apply(_settings.copyWith(keepScreenOn: on));
+
+  /// Saves whether the in-app debug log accumulates (default off).
+  Future<void> saveDebugLogging(bool on) async =>
+      _apply(_settings.copyWith(debugLogging: on));
 
   /// Saves the live recording trace's tint key.
   Future<void> saveRecordingTint(String tint) async =>

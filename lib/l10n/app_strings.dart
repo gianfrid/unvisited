@@ -173,6 +173,12 @@ abstract class AppStrings {
   String get keepScreenOn;
   String get keepScreenOnSubtitle;
 
+  // Debug logging (dev aid): the Settings switch and the save-log action.
+  String get debugLogging;
+  String get debugLoggingSubtitle;
+  String get saveDebugLog;
+  String get debugLogSaved;
+
   String get deleteAllTracks;
   String storedCount(int count);
   String get noStoredTracks;
@@ -456,6 +462,15 @@ class EnglishStrings extends AppStrings {
   @override
   String get keepScreenOnSubtitle =>
       'The screen stays on during a recording session';
+  @override
+  String get debugLogging => 'Debug logging';
+  @override
+  String get debugLoggingSubtitle =>
+      'Collect an in-app log of location, recording and camera events';
+  @override
+  String get saveDebugLog => 'Save debug log';
+  @override
+  String get debugLogSaved => 'Debug log saved (gzip-compressed)';
 
   @override
   String get deleteAllTracks => 'Delete all tracks';
@@ -743,6 +758,15 @@ class ItalianStrings extends AppStrings {
   @override
   String get keepScreenOnSubtitle =>
       'Lo schermo resta acceso durante una sessione di registrazione';
+  @override
+  String get debugLogging => 'Registrazione debug';
+  @override
+  String get debugLoggingSubtitle =>
+      'Raccogli un registro in app di posizione, registrazione e camera';
+  @override
+  String get saveDebugLog => 'Salva registro debug';
+  @override
+  String get debugLogSaved => 'Registro debug salvato (compresso gzip)';
 
   @override
   String get deleteAllTracks => 'Elimina tutte le tracce';

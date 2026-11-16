@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:latlong2/latlong.dart';
 
+import '../debug_log.dart';
 import '../host_channel.dart';
 import '../l10n/app_strings.dart';
 import '../road/road_matcher.dart';
@@ -56,6 +57,13 @@ class ImportSummary {
 /// Not a Listenable itself: [onChanged] forwards notifications to the
 /// owning [AppModel].
 class ImportCoordinator {
+  void _logSummary(String via, ImportSummary s) {
+    DebugLog.instance.info(
+      'import $via: imported=${s.imported} duplicates=${s.duplicates}'
+      ' skipped=${s.skipped} failed=${s.failed}',
+    );
+  }
+
   ImportCoordinator({
     required this.store,
     required this.roadMatcher,
@@ -184,6 +192,7 @@ class ImportCoordinator {
     clearCache();
     _recordNewImports(newPoints);
     onChanged();
+    _logSummary('directory', summary);
     return summary;
   }
 
@@ -247,6 +256,7 @@ class ImportCoordinator {
       _busy = false;
       onChanged();
     }
+    _logSummary('saf-tree', summary);
     return summary;
   }
 
@@ -270,6 +280,7 @@ class ImportCoordinator {
     clearCache();
     _recordNewImports(newPoints);
     onChanged();
+    _logSummary('file-picker', summary);
     return summary;
   }
 }
