@@ -1,3 +1,6 @@
+import java.io.File
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -48,11 +51,32 @@ android {
         buildConfigField("String", "BUILD_TIME", "\"${gitCommitTime()}\"")
     }
 
+    // Release signing comes from the environment so CI can sign with repo
+    // secrets while local builds keep the debug keys. Nothing secret is
+    // ever committed; the keystore itself is a base64 env var.
+    val keystoreB64 = System.getenv("UNVISITED_KEYSTORE_B64")
+    signingConfigs {
+        if (keystoreB64 != null) {
+            create("release") {
+                val keystoreFile = File.createTempFile("unvisited-release", ".jks")
+                keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreB64))
+                keystoreFile.deleteOnExit()
+                storeFile = keystoreFile
+                storePassword = System.getenv("UNVISITED_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("UNVISITED_KEY_ALIAS")
+                keyPassword = System.getenv("UNVISITED_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystoreB64 != null) {
+                signingConfigs.getByName("release")
+            } else {
+                // Debug keys locally, so `flutter run --release` works.
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

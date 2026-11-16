@@ -1,0 +1,63 @@
+# Nightly alpha APK: builds a signed release APK on a schedule (or manual
+# dispatch) and attaches it to the moving `nightly` GitHub release, where
+# Obtanium picks it up (repo gianfrid/unvisited, asset unvisited-nightly-arm64.apk).
+#
+# Signing: the release keystore is a repo secret, passed via env vars —
+# see android/app/build.gradle.kts. Set these secrets in the repo settings:
+#   UNVISITED_KEYSTORE_B64      base64 of the .jks keystore
+#   UNVISITED_KEYSTORE_PASSWORD keystore password
+#   UNVISITED_KEY_ALIAS         key alias
+#   UNVISITED_KEY_PASSWORD      key password
+#
+# The alpha label rides in the version name; the version code is the
+# workflow run number, which increases monotonically so every nightly is
+# seen as an update.
+name: Nightly alpha APK
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: write # create/update the nightly release
+
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Build release APK (alpha nightly)
+        env:
+          UNVISITED_KEYSTORE_B64: ${{ secrets.UNVISITED_KEYSTORE_B64 }}
+          UNVISITED_KEYSTORE_PASSWORD: ${{ secrets.UNVISITED_KEYSTORE_PASSWORD }}
+          UNVISITED_KEY_ALIAS: ${{ secrets.UNVISITED_KEY_ALIAS }}
+          UNVISITED_KEY_PASSWORD: ${{ secrets.UNVISITED_KEY_PASSWORD }}
+        run: |
+          flutter build apk --release --split-per-abi --target-platform=android-arm64 \
+            --build-name "1.0.0-alpha" --build-number "${{ github.run_number }}"
+          cp build/app/outputs/flutter-apk/app-arm64-release.apk unvisited-nightly-arm64.apk
+
+      - name: Publish to the moving nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly (alpha)
+          make_latest: true
+          files: unvisited-nightly-arm64.apk
