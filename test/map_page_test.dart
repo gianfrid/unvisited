@@ -2588,6 +2588,50 @@ void main() {
     expect(find.text('Record'), findsOneWidget);
   });
 
+  testWidgets('a stale cached fix does not reveal the Record button', (
+    tester,
+  ) async {
+    // The fused provider's cache artifact: a position with an old
+    // timestamp is not a current fix, so the silent poll must not open
+    // the Record gate — and neither must the 30 s retry while it stays
+    // stale.
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+      staleFix: true,
+    );
+    await pumpMap(tester);
+    expect(find.text('Record'), findsNothing);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(find.text('Record'), findsNothing);
+    expect(find.byIcon(Icons.location_on), findsNothing);
+  });
+
+  testWidgets(
+    'a stale fix from the Locate button fails honestly and keeps Record hidden',
+    (tester) async {
+      mockGeolocator(tester, permission: 1); // denied at startup
+      await pumpMap(tester);
+      expect(find.text('Record'), findsNothing);
+
+      mockGeolocator(
+        tester,
+        permission: 3,
+        position: {'lat': 48.8584, 'lon': 2.2945},
+        staleFix: true,
+      );
+      await tester.tap(find.byTooltip('Center on current position'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.textContaining('Location unavailable'), findsOneWidget);
+      expect(find.text('Record'), findsNothing);
+      expect(find.byIcon(Icons.location_on), findsNothing);
+    },
+  );
+
   testWidgets('a successful locate opens the Record button without waiting', (
     tester,
   ) async {

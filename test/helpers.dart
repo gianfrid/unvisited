@@ -112,6 +112,7 @@ void mockGeolocator(
   bool serviceEnabled = true,
   Map<String, double>? position,
   Duration fixDelay = Duration.zero,
+  bool staleFix = false,
 }) {
   const geolocatorChannel = MethodChannel('flutter.baseflow.com/geolocator');
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -133,7 +134,11 @@ void mockGeolocator(
           return <String, dynamic>{
             'latitude': position['lat'],
             'longitude': position['lon'],
-            'timestamp': 0,
+            // Fresh by default; staleFix simulates the fused provider's
+            // cached-fix fallback (an old timestamp).
+            'timestamp': staleFix
+                ? 0
+                : DateTime.now().millisecondsSinceEpoch,
             'accuracy': 5.0,
             'altitude': 0.0,
             'altitudeAccuracy': 0.0,

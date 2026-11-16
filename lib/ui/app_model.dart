@@ -540,6 +540,12 @@ class AppModel extends ChangeNotifier {
   /// Upper bound on a locate attempt; see [locate].
   static const _locateTimeout = Duration(seconds: 10);
 
+  /// A fix older than this is not a current position — while GPS works,
+  /// fixes stream at ~1 Hz, so anything older is a stale cache entry from
+  /// the fused provider, not where the user is now. Such a fix must not
+  /// reveal the Record button or move the camera.
+  static const Duration freshFixMaxAge = Duration(seconds: 30);
+
   /// The device's current position together with the reason it is
   /// missing, so the UI can say what to fix instead of a generic
   /// "unavailable".
@@ -574,6 +580,11 @@ class AppModel extends ChangeNotifier {
           timeLimit: _locateTimeout,
         ),
       );
+      // The fused provider can hand back a stale cached fix; only a fresh
+      // one counts as a position.
+      if (DateTime.now().difference(position.timestamp) > freshFixMaxAge) {
+        return const LocateResult.failure(LocationFailure.unavailable);
+      }
       final pos = LatLng(position.latitude, position.longitude);
       await store.savePosition(pos.latitude, pos.longitude);
       notifyListeners();
