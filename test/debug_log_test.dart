@@ -51,4 +51,38 @@ void main() {
       expect(DebugLog.instance.isEmpty, isTrue);
     });
   });
+
+  group('anonymizeDebugLog', () {
+    test('quantizes the coordinate pairs in real log lines', () {
+      const log = '2026-11-17T08:00:01.000 INFO fix accepted: 51.507400,-0.127800'
+          ' speed=3.5 heading=90\n'
+          '2026-11-17T08:00:02.000 WARN fix rejected: 51.5074,-0.1278\n'
+          '2026-11-17T08:00:03.000 INFO locate: fix 48.858370,2.294480 age=120ms acc=8.0';
+      final out = anonymizeDebugLog(log);
+      expect(out, contains('fix accepted: 51.507,-0.128 speed=3.5 heading=90'));
+      expect(out, contains('fix rejected: 51.507,-0.128'));
+      expect(out, contains('locate: fix 48.858,2.294 age=120ms acc=8.0'));
+    });
+
+    test('leaves timestamps, levels and other numbers untouched', () {
+      const log = '2026-11-17T08:00:01.123 INFO rotate: target=12.3 from=5.0 to=7.5\n'
+          '2026-11-17T08:00:02.000 INFO import gpx: imported=3 duplicates=0 skipped=1 failed=0';
+      expect(anonymizeDebugLog(log), log);
+    });
+
+    test('leaves out-of-range pairs as-is', () {
+      const log = '2026-11-17T08:00:01.000 WARN fix rejected: 999.1,2.0';
+      expect(anonymizeDebugLog(log), log);
+    });
+
+    test('is idempotent', () {
+      const log = '2026-11-17T08:00:01.000 INFO fix accepted: 51.507400,-0.127800 speed=3.5 heading=90';
+      final once = anonymizeDebugLog(log);
+      expect(anonymizeDebugLog(once), once);
+    });
+
+    test('handles an empty log', () {
+      expect(anonymizeDebugLog(''), '');
+    });
+  });
 }
