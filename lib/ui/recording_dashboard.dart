@@ -58,6 +58,10 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// the heading is stale and the rotation is held.
   DateTime? _lastFixAt;
 
+  /// The last [headingSmoothingWindow] headings used for rotation, averaged
+  /// circularly into the rotation target (see [_onRecordingFix]).
+  final List<double> _recentHeadings = [];
+
   /// Latest compass heading (rotation-vector fused), used only below the
   /// speed gate — where the GPS course says where the user *was*.
   double? _compassHeading;
@@ -97,6 +101,11 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// the target instead of snapping, so the rotation eases in over a few
   /// 1 Hz fixes rather than stepping.
   static const double rotationSmoothingFactor = 0.4;
+
+  /// Number of recent usable headings averaged (circular mean) into the
+  /// rotation target, so 1 Hz heading noise glides instead of stepping the
+  /// camera fix by fix. Five fixes is about five seconds at 1 Hz.
+  static const int headingSmoothingWindow = 5;
 
   /// GPS-loss hold: a fix arriving more than this long after the previous
   /// one is stale — hold the last rotation, never rotate on it.
@@ -209,6 +218,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         _panelOpen = false;
       });
       _lastFixAt = null;
+      _recentHeadings.clear();
     }
     _updateCompassSubscription();
     // Applied best-effort from here: the window flag matters only while
@@ -278,10 +288,25 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         (belowGate && _compassHeading == null)) {
       widget.mapController.move(center, zoom);
     } else {
-      // With a reported heading, currentCourse is that same heading.
+      // With a reported heading, currentCourse is that same heading. The
+      // rotation target is the circular mean of the last few usable
+      // headings (atan2 of summed sin/cos — wrap-safe across 0/360), so
+      // heading noise averages out instead of stepping the camera.
+      _recentHeadings.add(effectiveHeading);
+      if (_recentHeadings.length > headingSmoothingWindow) {
+        _recentHeadings.removeAt(0);
+      }
+      var sinSum = 0.0;
+      var cosSum = 0.0;
+      for (final h in _recentHeadings) {
+        final rad = h * math.pi / 180;
+        sinSum += math.sin(rad);
+        cosSum += math.cos(rad);
+      }
+      final target = math.atan2(sinSum, cosSum) * 180 / math.pi;
       final rotation = widget.mapController.camera.rotation;
       final courseDelta =
-          nearestEquivalentRotation(effectiveHeading, rotation) - rotation;
+          nearestEquivalentRotation(target, rotation) - rotation;
       if (courseDelta.abs() >= courseDeltaThreshold) {
         widget.mapController.moveAndRotate(
           center,

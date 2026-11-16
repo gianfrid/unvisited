@@ -927,6 +927,54 @@ void main() {
   );
 
   testWidgets(
+    'noisy headings rotate the camera smoothly toward their mean',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      // A steady 90° course: the camera converges on it as before.
+      fakeFix(source, 0, heading: 90, speed: 5.0);
+      for (var i = 1; i < 16; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
+      }
+      await tester.pump();
+      await tester.pump();
+      expect(camera().rotation, closeTo(90.0, 1.0));
+
+      // Headings now alternate 80/100 around the course. The smoothed
+      // target stays at their mean (90), so the camera must not chase the
+      // raw noise: per-fix rotation steps stay far below the 10° swing
+      // (the unsmoothed code would step ~4° per fix).
+      var prevRotation = camera().rotation;
+      for (var i = 16; i < 28; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4,
+            heading: i % 2 == 0 ? 80.0 : 100.0, speed: 5.0);
+        await tester.pump();
+        final r = camera().rotation;
+        expect((r - prevRotation).abs(), lessThan(3.0),
+            reason: 'the rotation stepped with the raw heading noise');
+        prevRotation = r;
+      }
+      expect(camera().rotation, closeTo(90.0, 2.0));
+    },
+  );
+
+  testWidgets(
     'the recording chip has no rotation toggle — orientation is Settings-only',
     (tester) async {
       final root = createRoot();
