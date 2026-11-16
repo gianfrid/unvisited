@@ -603,9 +603,12 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // Follow-camera: each accepted fix centers the view on itself.
+    // Follow-camera: each accepted fix centers the view on itself, framed
+    // slightly below screen center (north-up: the center sits north of the
+    // fix).
     final followed = cameraCenter();
-    expect(followed.latitude, closeTo(52.5201, 1e-6));
+    expect(followed.latitude, greaterThan(52.5201));
+    expect(followed.latitude, lessThan(52.5201 + 1e-3));
     // The course-up marker rides the fix.
     expect(find.byIcon(Icons.navigation), findsOneWidget);
 
@@ -768,9 +771,11 @@ void main() {
       fakeFix(source, 16, lat: 52.5216 + 0.00005, heading: 180, speed: 0.2);
       await tester.pump();
       expect(camera().rotation, closeTo(90.0, 1.0));
-      // The camera centers behind the fix along the course (south), so
-      // the center sits north of the fix.
-      expect(camera().center.latitude, greaterThan(52.5216 + 0.00005));
+      // The camera frames the fix below screen center: with the camera
+      // held at 90°, screen-down is geographic west, so the center sits
+      // west of the fix.
+      expect(camera().center.longitude, lessThan(13.4050));
+      expect(camera().center.latitude, closeTo(52.5216 + 0.00005, 1e-4));
 
       // Moving again: the rotation eases over to the new course. Continue
       // forward from the last accepted fix (i=16 at 52.5216 + 0.00005).
@@ -784,7 +789,7 @@ void main() {
   );
 
   testWidgets(
-    'a pan releases the follow, which re-engages after the timeout',
+    'a pan releases the follow until the locate button is pressed again',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
@@ -819,22 +824,32 @@ void main() {
       await tester.pump();
       expect(camera().center, sameCameraAs(panned));
 
-      // After the re-engage delay the follow arms itself: the next fix
-      // centers again.
+      // No timed re-engage: well past any delay, the next fix still does
+      // not re-center.
       await tester.pump(const Duration(seconds: 21));
       fakeFix(source, 2, lat: 52.5203, heading: 90, speed: 5.0);
       await tester.pump();
+      expect(camera().center, sameCameraAs(panned));
+
+      // The locate button is the way back: the tap re-centers on the
+      // session's fix, and the follow re-arms — the next fix rides the
+      // camera again.
+      await tester.tap(find.byTooltip('Center on current position'));
+      await tester.pump();
       expect(camera().center.latitude, closeTo(52.5203, 1e-6));
+      fakeFix(source, 3, lat: 52.5204, heading: 90, speed: 5.0);
+      await tester.pump();
+      await tester.pump();
+      expect(camera().center.latitude, closeTo(52.5204, 1e-3));
     },
   );
 
   testWidgets(
-    'the follow frames the fix below screen center and never zooms past the floor',
+    'the follow frames the fix slightly below screen center and never zooms past the floor',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -849,13 +864,14 @@ void main() {
           MapController.of(tester.element(find.byType(TileLayer))).camera;
 
       await model.startRecording(source: source, permissionGate: false);
-      // Heading east: the camera centers west of the fix, so the fix sits
-      // at horizontal center but below the vertical center.
-      fakeFix(source, 0, lat: 52.5200, lon: 13.4050, heading: 90, speed: 5.0);
+      // No heading at all: the bottom-center offset still applies — with
+      // the camera north-up, the center sits north of the fix, so the fix
+      // renders below the vertical center.
+      fakeFix(source, 0, lat: 52.5200, lon: 13.4050);
       await tester.pump();
       await tester.pump();
-      expect(camera().center.latitude, closeTo(52.5200, 1e-6));
-      expect(camera().center.longitude, lessThan(13.4050));
+      expect(camera().center.latitude, greaterThan(52.5200));
+      expect(camera().center.longitude, closeTo(13.4050, 1e-5));
       // Zoom floor: even if the user zoomed out to 14, the follow keeps 17.
       expect(camera().zoom, greaterThanOrEqualTo(17.0));
     },
@@ -911,12 +927,11 @@ void main() {
   );
 
   testWidgets(
-    'the rotation-mode button cycles the setting and re-engages the follow',
+    'the recording chip has no rotation toggle — orientation is Settings-only',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -927,27 +942,14 @@ void main() {
       );
       await tester.pump();
 
-      MapCamera camera() =>
-          MapController.of(tester.element(find.byType(TileLayer))).camera;
-
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
       await tester.pump();
       await tester.pump();
 
-      // Pan away to release the follow, then tap the mode button: the
-      // setting cycles off and the follow re-arms immediately.
-      final size = tester.getSize(find.byType(FlutterMap));
-      await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.4),
-        const Offset(0, 80),
-      );
-      await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
-      await tester.pump();
+      // Course-up stays a Settings control: the chip offers no toggle.
+      expect(find.byKey(const ValueKey('rotation-mode-button')), findsNothing);
       expect(model.mapRotation, 'off');
-      fakeFix(source, 1, lat: 52.5202, heading: 90, speed: 5.0);
-      await tester.pump();
-      expect(camera().center.latitude, closeTo(52.5202, 1e-6));
     },
   );
 
@@ -986,10 +988,11 @@ void main() {
       await tester.pump();
 
       // mapRotation defaults to off: the camera never rotates, but the
-      // follow still centers on the fix and the marker still shows the
-      // course (90° east against a north-up camera).
+      // follow still centers on the fix (framed below screen center, so
+      // north of it) and the marker still shows the course (90° east
+      // against a north-up camera).
       expect(camera().rotation, closeTo(0.0, 0.1));
-      expect(camera().center.latitude, closeTo(52.5201, 1e-6));
+      expect(camera().center.latitude, greaterThan(52.5201));
       expect(markerAngle(), closeTo(math.pi / 2, 1e-6));
     },
   );
@@ -1095,7 +1098,9 @@ void main() {
     fakeFix(source, 3, lat: 52.5203);
     await tester.pump();
     await tester.pump();
-    expect(camera().center.latitude, closeTo(52.5203, 1e-6));
+    // The re-armed follow frames the fix below screen center, so the
+    // center sits slightly north of it.
+    expect(camera().center.latitude, greaterThan(52.5203));
     expect(camera().zoom, closeTo(zoom, 1e-6));
   });
 
@@ -1133,11 +1138,11 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(camera().center.latitude, closeTo(52.5200, 1e-6));
     // The follow armed on the attempt's success: the session's fix takes
-    // the camera from here.
+    // the camera from here (framed below screen center, so north of it).
     fakeFix(source, 0, lat: 52.5201);
     await tester.pump();
     await tester.pump();
-    expect(camera().center.latitude, closeTo(52.5201, 1e-6));
+    expect(camera().center.latitude, greaterThan(52.5201));
   });
 
   testWidgets(

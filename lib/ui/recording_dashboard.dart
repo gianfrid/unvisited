@@ -49,13 +49,10 @@ class RecordingDashboard extends StatefulWidget {
 
 class RecordingDashboardState extends State<RecordingDashboard> {
   /// The follow-camera: a new session arms it, a user pan or two-finger
-  /// rotation releases it for [reengageDelay] — a fix must never pull the
-  /// view back against the user's hand. The locate button's shortcut
-  /// re-arms it immediately via [rearmFollow]/[armFollow].
+  /// rotation releases it — a fix must never pull the view back against
+  /// the user's hand. The locate button's shortcut re-arms it immediately
+  /// via [rearmFollow]/[armFollow].
   bool _follow = false;
-
-  /// The pending timed re-engage, if any.
-  Timer? _reengageTimer;
 
   /// When the last fix was applied; a longer gap than [gpsLossHold] means
   /// the heading is stale and the rotation is held.
@@ -101,11 +98,6 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// 1 Hz fixes rather than stepping.
   static const double rotationSmoothingFactor = 0.4;
 
-  /// After a user gesture releases the follow, auto re-engage this long
-  /// later (OsmAnd auto-follow model), unless the locate button re-arms
-  /// sooner. Within the 15–30 s prior-art band.
-  static const Duration reengageDelay = Duration(seconds: 20);
-
   /// GPS-loss hold: a fix arriving more than this long after the previous
   /// one is stale — hold the last rotation, never rotate on it.
   static const Duration gpsLossHold = Duration(seconds: 10);
@@ -114,10 +106,10 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// recording view never gets too zoomed out.
   static const double followZoomFloor = 17.0;
 
-  /// The follow-camera centers this fraction of the screen height
-  /// *behind* the fix along the course, so the position marker sits
-  /// centered horizontally but below the vertical center — more of what
-  /// is ahead stays in view.
+  /// The follow-camera offsets this fraction of the screen height opposite
+  /// screen-up from the fix, so the position marker sits horizontally
+  /// centered but slightly below the vertical center — more of what is
+  /// ahead stays in view.
   static const double followLeadFraction = 0.18;
 
   /// Compass stream override for tests; production reads
@@ -146,9 +138,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     _updateCompassSubscription();
     // The follow-camera releases on any gesture move — including the
     // fling/double-tap-zoom animations that report through their own
-    // sources after the gesture ends — and re-engages after
-    // [reengageDelay] (a user two-finger rotation lands here too: it
-    // suppresses auto-rotation until the re-engage or the mode button).
+    // sources after the gesture ends. Only a locate-button tap re-arms it.
     _mapEvents = widget.mapController.mapEventStream.listen((event) {
       if (!_follow || _programmaticEvents.contains(event.source)) return;
       _releaseFollow();
@@ -164,21 +154,14 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     widget.model.removeListener(_onModelChanged);
     widget.model.recordingLive.removeListener(_onRecordingFix);
     _mapEvents?.cancel();
-    _reengageTimer?.cancel();
     _compassSub?.cancel();
     super.dispose();
   }
 
-  /// Releases the follow for [reengageDelay] after a user gesture; the
-  /// timer re-arms it unless another gesture or the session boundary
-  /// intervenes.
+  /// Releases the follow on a user gesture; only a locate-button tap
+  /// ([armFollow]/[rearmFollow]) or a new session arms it again.
   void _releaseFollow() {
-    _reengageTimer?.cancel();
     setState(() => _follow = false);
-    _reengageTimer = Timer(reengageDelay, () {
-      if (!mounted || !widget.model.isRecording) return;
-      setState(() => _follow = true);
-    });
   }
 
   /// Starts the compass stream while recording with rotation on, so a
@@ -225,8 +208,6 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         _follow = recording;
         _panelOpen = false;
       });
-      _reengageTimer?.cancel();
-      _reengageTimer = null;
       _lastFixAt = null;
     }
     _updateCompassSubscription();
@@ -267,29 +248,29 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     final belowGate = speed != null && speed < rotationSpeedGateMps;
     final effectiveHeading =
         (belowGate && _compassHeading != null) ? _compassHeading : heading;
-    // Frame the fix below the vertical center: shift the camera center
-    // behind the fix along the course by a fraction of the screen height.
+    // Frame the fix slightly below the vertical center in screen space:
+    // shift the camera center opposite screen-up (geographic bearing
+    // 360 - rotation) by a fraction of the screen height, so the position
+    // sits bottom-center in both north-up and course-up modes.
     final zoom = math.max(
       widget.mapController.camera.zoom,
       followZoomFloor,
     );
     var center = LatLng(lat, lon);
-    if (effectiveHeading != null && !stale) {
-      final view = View.of(context);
-      final height = view.physicalSize.height / view.devicePixelRatio;
-      if (height > 0) {
-        final metersPerPixel =
-            156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
-        final offsetMeters = metersPerPixel * height * followLeadFraction;
-        final headingRad = effectiveHeading * math.pi / 180;
-        center = LatLng(
-          lat - offsetMeters * math.cos(headingRad) / 111320,
-          lon -
-              offsetMeters *
-                  math.sin(headingRad) /
-                  (111320 * math.cos(lat * math.pi / 180)),
-        );
-      }
+    final view = View.of(context);
+    final height = view.physicalSize.height / view.devicePixelRatio;
+    if (height > 0) {
+      final metersPerPixel =
+          156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
+      final offsetMeters = metersPerPixel * height * followLeadFraction;
+      final upRad = (360 - widget.mapController.camera.rotation) * math.pi / 180;
+      center = LatLng(
+        lat + offsetMeters * math.cos(upRad) / 111320,
+        lon +
+            offsetMeters *
+                math.sin(upRad) /
+                (111320 * math.cos(lat * math.pi / 180)),
+      );
     }
     if (effectiveHeading == null ||
         stale ||
@@ -334,8 +315,6 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// attempt's success while a session runs — the attempt fix is at the
   /// map's center already, and the next session fix takes over.
   void armFollow() {
-    _reengageTimer?.cancel();
-    _reengageTimer = null;
     if (!_follow) {
       setState(() => _follow = true);
     }
@@ -421,30 +400,6 @@ class RecordingDashboardState extends State<RecordingDashboard> {
                       _panelOpen ? Icons.expand_less : Icons.expand_more,
                       size: 18,
                       color: Theme.of(context).hintColor,
-                    ),
-                    const SizedBox(width: 4),
-                    // Rotation-mode indicator: shows whether course-up is
-                    // on, cycles the setting on tap, and re-engages the
-                    // follow when it was released by a gesture.
-                    IconButton(
-                      key: const ValueKey('rotation-mode-button'),
-                      tooltip: strings.rotationModeTooltip,
-                      iconSize: 18,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        if (!_follow) rearmFollow();
-                        widget.model.setMapRotation(
-                          widget.model.mapRotation == 'on' ? 'off' : 'on',
-                        );
-                      },
-                      icon: Icon(
-                        widget.model.mapRotation == 'on'
-                            ? Icons.explore
-                            : Icons.explore_outlined,
-                        color: widget.model.mapRotation == 'on'
-                            ? Theme.of(context).colorScheme.primary
-                            : Theme.of(context).hintColor,
-                      ),
                     ),
                   ],
                 ),
