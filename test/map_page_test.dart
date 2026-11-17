@@ -657,7 +657,7 @@ void main() {
       final cache = createCache();
       final model = await createModel(root);
       // Course-up is opt-in: this test exercises the 'on' setting.
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -738,7 +738,7 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -795,7 +795,7 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -851,7 +851,7 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -933,7 +933,7 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
       final compass = StreamController<double?>();
       RecordingDashboardState.compassEvents = () => compass.stream;
@@ -982,7 +982,7 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
       final compass = StreamController<double?>();
       RecordingDashboardState.compassEvents = () => compass.stream;
@@ -1054,7 +1054,7 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
 
       await pumpMapPage(
@@ -1097,7 +1097,7 @@ void main() {
   );
 
   testWidgets(
-    'the recording chip has no rotation toggle — orientation is Settings-only',
+    'the chip rotation button cycles north → course → compass → north',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
@@ -1117,9 +1117,64 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Course-up stays a Settings control: the chip offers no toggle.
-      expect(find.byKey(const ValueKey('rotation-mode-button')), findsNothing);
-      expect(model.mapRotation, 'off');
+      // The chip offers the rotation-mode button; the default is north-up.
+      final button = find.byKey(const ValueKey('rotation-mode-button'));
+      expect(button, findsOneWidget);
+      expect(model.mapRotation, 'north');
+
+      await tester.tap(button);
+      await tester.pump();
+      expect(model.mapRotation, 'course');
+
+      await tester.tap(button);
+      await tester.pump();
+      expect(model.mapRotation, 'compass');
+
+      await tester.tap(button);
+      await tester.pump();
+      expect(model.mapRotation, 'north');
+    },
+  );
+
+  testWidgets(
+    'compass mode drives the rotation from the compass even at speed',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('compass');
+      final source = FakePositionSource();
+      final compass = StreamController<double?>();
+      RecordingDashboardState.compassEvents = () => compass.stream;
+      addTearDown(() {
+        RecordingDashboardState.compassEvents =
+            () => FlutterCompass.events!.map((e) => e.heading);
+        compass.close();
+      });
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      // Moving fast on an east GPS course, but the compass faces south:
+      // in compass mode the rotation follows the compass, not the course.
+      compass.add(180.0);
+      await tester.pump();
+      fakeFix(source, 0, heading: 90, speed: 5.0);
+      for (var i = 1; i < 16; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
+      }
+      await tester.pump();
+      await tester.pump();
+      expect(camera().rotation % 360, closeTo(180.0, 10.0));
     },
   );
 
@@ -1157,7 +1212,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // mapRotation defaults to off: the camera never rotates, but the
+      // mapRotation defaults to north: the camera never rotates, but the
       // follow still centers on the fix (framed below screen center, so
       // north of it) and the marker still shows the course (90° east
       // against a north-up camera).
@@ -1173,7 +1228,7 @@ void main() {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
-      await model.setMapRotation('on');
+      await model.setMapRotation('course');
       final source = FakePositionSource();
 
       await pumpMapPage(

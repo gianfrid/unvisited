@@ -785,20 +785,39 @@ void main() {
   });
 
   group('map rotation', () {
-    test('defaults to off (north-up)', () {
-      expect(model.mapRotation, 'off');
+    test('defaults to north-up', () {
+      expect(model.mapRotation, 'north');
     });
 
-    test('switching to on persists and restores', () async {
-      await model.setMapRotation('on');
-      expect(model.mapRotation, 'on');
+    test('switching modes persists and restores', () async {
+      await model.setMapRotation('course');
+      expect(model.mapRotation, 'course');
 
       final reloaded = AppModel(TrackStore(root));
       await reloaded.load();
-      expect(reloaded.mapRotation, 'on');
+      expect(reloaded.mapRotation, 'course');
 
-      await reloaded.setMapRotation('off');
-      expect(reloaded.mapRotation, 'off');
+      await reloaded.setMapRotation('compass');
+      expect(reloaded.mapRotation, 'compass');
+
+      await reloaded.setMapRotation('north');
+      expect(reloaded.mapRotation, 'north');
+    });
+
+    test('legacy on/off settings migrate to course/north', () async {
+      final indexFile =
+          '${root.path}${Platform.pathSeparator}index.json';
+      await File(indexFile).writeAsString(
+          '{"settings": {"mapRotation": "on"}, "tracks": []}');
+      final legacyOn = AppModel(TrackStore(root));
+      await legacyOn.load();
+      expect(legacyOn.mapRotation, 'course');
+
+      await File(indexFile).writeAsString(
+          '{"settings": {"mapRotation": "off"}, "tracks": []}');
+      final legacyOff = AppModel(TrackStore(root));
+      await legacyOff.load();
+      expect(legacyOff.mapRotation, 'north');
     });
   });
 

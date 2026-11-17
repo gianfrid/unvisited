@@ -185,7 +185,7 @@ class AppSettings {
     this.language = 'system',
     this.themeMode = 'system',
     this.tileLayer = 'standard',
-    this.mapRotation = 'off',
+    this.mapRotation = 'north',
     this.keepScreenOn = true,
     this.debugLogging = false,
     this.roadsFile,
@@ -210,9 +210,10 @@ class AppSettings {
   /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
   final String tileLayer;
 
-  /// Whether the recording follow-camera rotates course-up: 'on' or
-  /// 'off' (the default — the map stays north-up, a known limitation;
-  /// dynamic rotation is backlog).
+  /// The recording follow-camera's rotation mode: 'north' (the default —
+  /// the map stays north-up), 'course' (course-up), or 'compass'
+  /// (compass-up). Legacy stored values 'off'/'on' migrate to
+  /// 'north'/'course' in [AppSettings.fromMap].
   final String mapRotation;
 
   /// Whether the screen stays on while recording (the default). Applied
@@ -234,6 +235,14 @@ class AppSettings {
   /// membership changes.
   final Map<String, String> aggregateColors;
 
+  /// Legacy rotation values ('off'/'on', from before the named modes) map
+  /// to 'north'/'course'; anything else falls back to the 'north' default.
+  static String _migrateMapRotation(String? v) => switch (v) {
+        'on' => 'course',
+        'off' => 'north',
+        _ => v ?? 'north',
+      };
+
   /// Tolerant read: a missing or malformed field falls back to the
   /// default, so even a hand-edited index cannot break startup.
   factory AppSettings.fromMap(Map<dynamic, dynamic> m) => AppSettings(
@@ -243,7 +252,7 @@ class AppSettings {
         language: (m['language'] as String?) ?? 'system',
         themeMode: (m['themeMode'] as String?) ?? 'system',
         tileLayer: (m['tileLayer'] as String?) ?? 'standard',
-        mapRotation: (m['mapRotation'] as String?) ?? 'off',
+        mapRotation: _migrateMapRotation(m['mapRotation'] as String?),
         keepScreenOn: (m['keepScreenOn'] as bool?) ?? true,
         debugLogging: (m['debugLogging'] as bool?) ?? false,
         roadsFile: m['roadsFile'] as String?,

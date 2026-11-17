@@ -457,9 +457,14 @@ class AppModel extends ChangeNotifier {
   /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
   String get tileLayer => store.tileLayer;
 
-  /// Whether the recording follow-camera rotates course-up: 'on' or
-  /// 'off' (the default — the map stays north-up).
+  /// The recording follow-camera's rotation mode: 'north' (the default —
+  /// the map stays north-up), 'course' (course-up) or 'compass'
+  /// (compass-up).
   String get mapRotation => store.mapRotation;
+
+  /// The rotation modes in the order the recording chip's button cycles
+  /// through them.
+  static const rotationModes = <String>['north', 'course', 'compass'];
 
   /// Whether the screen stays on while recording (the default). The
   /// dashboard's model listener applies the latch on every change, so a
@@ -503,8 +508,8 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Saves whether the recording follow-camera rotates course-up
-  /// ('on' or 'off').
+  /// Saves the recording follow-camera's rotation mode — one of
+  /// [rotationModes].
   Future<void> setMapRotation(String rotation) async {
     await store.saveMapRotation(rotation);
     notifyListeners();

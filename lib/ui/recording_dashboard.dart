@@ -22,6 +22,21 @@ import 'stats_panel.dart';
 double nearestEquivalentRotation(double course, double reference) =>
     course + 360 * ((reference - course) / 360).roundToDouble();
 
+/// The display name of a rotation mode, for the chip button's tooltip and
+/// the Settings segments.
+String rotationModeName(AppStrings strings, String mode) => switch (mode) {
+      'course' => strings.rotationModeCourse,
+      'compass' => strings.rotationModeCompass,
+      _ => strings.rotationModeNorth,
+    };
+
+/// The chip button's icon for a rotation mode.
+IconData rotationModeIcon(String mode) => switch (mode) {
+      'course' => Icons.trending_flat,
+      'compass' => Icons.compass_calibration,
+      _ => Icons.north,
+    };
+
 /// The recording dashboard: everything a running session shows, and the
 /// follow-camera that rides it. Extracted from `map_page.dart`'s state
 /// (which keeps the map, the fog overlay, the locate/record buttons and
@@ -201,7 +216,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// below-speed-gate fix can still track which way the user faces.
   void _updateCompassSubscription() {
     final want =
-        widget.model.isRecording && widget.model.mapRotation == 'on';
+        widget.model.isRecording && widget.model.mapRotation != 'north';
     if (want && _compassSub == null) {
       _compassSub = compassEvents().listen((heading) {
         if (!mounted) return;
@@ -262,19 +277,19 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     final lat = session?.currentLat;
     final lon = session?.currentLon;
     if (lat == null || lon == null) return;
-    // Course-up is opt-in (Settings → rotate map): with mapRotation off
-    // the camera stays north-up while the follow still centers on the
-    // fix — the marker keeps pointing along the course on screen. With
-    // it on, the rotation is gated on the device's *reported* heading,
-    // not the bridged course: a magnetometer-less or bearing-only fix
-    // stream keeps the camera north-up, because a bearing between fixes
-    // says where the user was, not where they face. No heading yet — a
-    // first fix — leaves the camera rotation alone. A fix below the
-    // speed gate also holds the rotation: at a standstill the reported
-    // heading is stale, not a direction — unless the compass stream says
-    // which way the user faces (below the gate). A fix arriving more
-    // than [gpsLossHold] after the previous one is stale too: hold the
-    // rotation on it.
+    // The rotation mode is one of AppModel.rotationModes. 'north': the
+    // camera stays north-up while the follow still centers on the fix —
+    // the marker keeps pointing along the course on screen. 'course':
+    // the rotation is gated on the device's *reported* heading, not the
+    // bridged course: a magnetometer-less or bearing-only fix stream
+    // keeps the camera north-up, because a bearing between fixes says
+    // where the user was, not where they face. 'compass': the rotation
+    // follows the compass whenever one is available, regardless of speed.
+    // No heading yet — a first fix — leaves the camera rotation alone.
+    // In compass-driven rotation without a compass reading the camera
+    // holds its last rotation: at a standstill the reported heading is
+    // stale, not a direction. A fix arriving more than [gpsLossHold]
+    // after the previous one is stale too: hold the rotation on it.
     final now = DateTime.now();
     final stale = _lastFixAt != null && now.difference(_lastFixAt!) > gpsLossHold;
     _lastFixAt = now;
@@ -297,10 +312,14 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         );
       }
     }
-    final belowGate = _compassMode;
+    final mode = widget.model.mapRotation;
+    // 'compass' mode drives the rotation from the compass whenever one is
+    // available, regardless of speed; 'course' mode does so only in
+    // compass mode (below the hysteresis gate).
+    final compassDriven = mode == 'compass' || _compassMode;
     final effectiveHeading =
-        (belowGate && _compassHeading != null) ? _compassHeading : heading;
-    if (belowGate && _compassHeading != null) {
+        (compassDriven && _compassHeading != null) ? _compassHeading : heading;
+    if (compassDriven && _compassHeading != null) {
       DebugLog.instance.info(
         'compass override: heading=${_compassHeading!.toStringAsFixed(1)} '
         'gpsHeading=${heading?.toStringAsFixed(1)} speed=${speed?.toStringAsFixed(1)}',
@@ -332,8 +351,8 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     }
     if (effectiveHeading == null ||
         stale ||
-        widget.model.mapRotation != 'on' ||
-        (belowGate && _compassHeading == null)) {
+        mode == 'north' ||
+        (compassDriven && _compassHeading == null)) {
       widget.mapController.move(center, zoom);
     } else {
       // With a reported heading, currentCourse is that same heading. The
@@ -481,6 +500,24 @@ class RecordingDashboardState extends State<RecordingDashboard> {
                       ),
                     ],
                     const SizedBox(width: 8),
+                    IconButton(
+                      key: const ValueKey('rotation-mode-button'),
+                      tooltip: rotationModeName(
+                        strings,
+                        widget.model.mapRotation,
+                      ),
+                      icon: Icon(rotationModeIcon(widget.model.mapRotation)),
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        final modes = AppModel.rotationModes;
+                        final next =
+                            modes[(modes.indexOf(widget.model.mapRotation) +
+                                    1) %
+                                modes.length];
+                        widget.model.setMapRotation(next);
+                      },
+                    ),
                     Icon(
                       _panelOpen ? Icons.expand_less : Icons.expand_more,
                       size: 18,

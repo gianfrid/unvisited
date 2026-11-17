@@ -163,14 +163,31 @@ class SettingsSheet extends StatelessWidget {
                     dense: true,
                     title: Text(strings.mapRotation),
                     subtitle: Text(strings.mapRotationSubtitle),
-                    trailing: Switch(
-                      value: model.mapRotation == 'on',
-                      onChanged: (on) =>
-                          model.setMapRotation(on ? 'on' : 'off'),
-                    ),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 0,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(
+                          value: 'north',
+                          label: Text(strings.rotationModeNorth),
+                        ),
+                        ButtonSegment(
+                          value: 'course',
+                          label: Text(strings.rotationModeCourse),
+                        ),
+                        ButtonSegment(
+                          value: 'compass',
+                          label: Text(strings.rotationModeCompass),
+                        ),
+                      ],
+                      selected: {model.mapRotation},
+                      onSelectionChanged: (selection) =>
+                          model.setMapRotation(selection.first),
                     ),
                   ),
                   ListTile(

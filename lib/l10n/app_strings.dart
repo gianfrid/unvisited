@@ -132,6 +132,11 @@ abstract class AppStrings {
   String get mapRotation;
   String get mapRotationSubtitle;
 
+  // Rotation mode names (recording chip button tooltip, Settings segments).
+  String get rotationModeNorth;
+  String get rotationModeCourse;
+  String get rotationModeCompass;
+
   String get language;
   String get languageSubtitle;
 
@@ -419,6 +424,12 @@ class EnglishStrings extends AppStrings {
   @override
   String get mapRotationSubtitle =>
       'Course-up follow-camera; off keeps the map north-up';
+  @override
+  String get rotationModeNorth => 'North up';
+  @override
+  String get rotationModeCourse => 'Course up';
+  @override
+  String get rotationModeCompass => 'Compass up';
   @override
   String get language => 'Language';
   @override
@@ -724,6 +735,12 @@ class ItalianStrings extends AppStrings {
   @override
   String get mapRotationSubtitle =>
       'Fotocamera di inseguimento orientata al corso; disattivata la mappa resta a nord';
+  @override
+  String get rotationModeNorth => 'Nord in alto';
+  @override
+  String get rotationModeCourse => 'Corso in alto';
+  @override
+  String get rotationModeCompass => 'Bussola in alto';
   @override
   String get language => 'Lingua';
   @override
