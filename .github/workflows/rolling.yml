@@ -1,7 +1,12 @@
 # Rolling release APK: builds a signed release APK on every push to `slop`
 # (or manual dispatch) and attaches it to the moving `rolling` GitHub
 # release, where Obtanium picks it up (repo gianfrid/unvisited, asset
-# unvisited-rolling-arm64.apk).
+# unvisited-rolling-arm64.apk). Each publish also stamps the release's
+# name and body with the build's date, build number and the commit
+# messages since the previous published build — GitHub keeps a moving
+# release's original publish date, so the date rides in the title
+# instead; the body's final "Commit:" line is the range anchor the next
+# build reads its commit list from.
 #
 # Signing: the release keystore is a repo secret, passed via env vars —
 # see android/app/build.gradle.kts. Set these secrets in the repo settings:
@@ -45,6 +50,30 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Resolve the build's commit date
+        run: echo "COMMIT_DATE=$(git log -1 --format=%cs)" >> "$GITHUB_ENV"
+
+      - name: Collect the commits since the last published build
+        run: |
+          # The rolling tag does not move (the release is updated in place,
+          # the tag stays at its first publish), so the previous build's
+          # commit is taken from the release body's "Commit:" line instead
+          # of the tag. Unknown anchor (first dated build, rewritten
+          # history) collapses the range to HEAD: the body still names the
+          # current commit.
+          previous=$(gh api "repos/${{ github.repository }}/releases/tags/rolling" \
+            --jq '.body' 2>/dev/null | sed -n 's/^Commit: \([0-9a-f]\{40\}\)$/\1/p' | head -1)
+          if git cat-file -e "$previous" 2>/dev/null; then
+            range="$previous..HEAD"
+          else
+            range="HEAD"
+          fi
+          {
+            echo "COMMITS<<EOF"
+            git log --format='- %s (%h)' "$range"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Decode and verify the release keystore secret
         env:
           UNVISITED_KEYSTORE_B64: ${{ secrets.UNVISITED_KEYSTORE_B64 }}
@@ -75,6 +104,13 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: rolling
-          name: Rolling
+          name: Rolling — ${{ env.COMMIT_DATE }}
+          body: |
+            Build ${{ github.run_number }} — ${{ env.COMMIT_DATE }}
+
+            What's new since the previous build:
+            ${{ env.COMMITS }}
+
+            Commit: ${{ github.sha }}
           make_latest: true
           files: unvisited-rolling-arm64.apk
