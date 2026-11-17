@@ -127,13 +127,22 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   static Stream<double?> Function() compassEvents =
       () => FlutterCompass.events!.map((e) => e.heading);
 
-  /// Map-event sources that are not the user's hand: programmatic moves
-  /// (the follow-camera itself, the zoom slider), camera fits, customs.
-  /// Everything else releases the follow.
-  static const _programmaticEvents = <MapEventSource>{
-    MapEventSource.mapController,
-    MapEventSource.fitCamera,
-    MapEventSource.custom,
+  /// Map-event sources that count as the user's hand moving the map: a drag,
+  /// a multi-finger gesture, or the fling/double-tap-zoom animations that
+  /// continue a gesture after its end. Plain taps and long-presses don't
+  /// move the camera, so they must not release the follow — a stray tap in
+  /// a mount or pocket would silently disengage the centering mid-ride.
+  /// Everything not listed here (programmatic moves, taps, flag changes)
+  /// leaves the follow armed.
+  static const _moveGestures = <MapEventSource>{
+    MapEventSource.dragStart,
+    MapEventSource.onDrag,
+    MapEventSource.dragEnd,
+    MapEventSource.multiFingerGestureStart,
+    MapEventSource.onMultiFinger,
+    MapEventSource.multiFingerEnd,
+    MapEventSource.flingAnimationController,
+    MapEventSource.doubleTapZoomAnimationController,
   };
 
   StreamSubscription<MapEvent>? _mapEvents;
@@ -146,12 +155,13 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     widget.model.addListener(_onModelChanged);
     widget.model.recordingLive.addListener(_onRecordingFix);
     _updateCompassSubscription();
-    // The follow-camera releases on any gesture move — including the
-    // fling/double-tap-zoom animations that report through their own
-    // sources after the gesture ends. Only a locate-button tap re-arms it.
+    // The follow-camera releases on a gesture that moves the map — drags,
+    // multi-finger gestures, and the fling/double-tap-zoom animations that
+    // report through their own sources after the gesture ends. Plain taps
+    // don't release it. Only a locate-button tap re-arms it.
     _mapEvents = widget.mapController.mapEventStream.listen((event) {
-      if (!_follow || _programmaticEvents.contains(event.source)) return;
-      _releaseFollow();
+      if (!_follow || !_moveGestures.contains(event.source)) return;
+      _releaseFollow(event.source);
     });
     // The startup salvage notice: a killed session's staged recording was
     // imported during [AppModel.load]; one toast says so. Read once the
@@ -168,10 +178,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     super.dispose();
   }
 
-  /// Releases the follow on a user gesture; only a locate-button tap
-  /// ([armFollow]/[rearmFollow]) or a new session arms it again.
-  void _releaseFollow() {
-    DebugLog.instance.info('follow released by gesture');
+  /// Releases the follow on a user gesture that moved the map; only a
+  /// locate-button tap ([armFollow]/[rearmFollow]) or a new session arms it
+  /// again. The releasing event's source goes to the debug log so a later
+  /// export shows whether a drag or a stray tap disengaged the follow.
+  void _releaseFollow(MapEventSource source) {
+    DebugLog.instance.info('follow released by gesture (source=${source.name})');
     setState(() => _follow = false);
   }
 
@@ -260,6 +272,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     final belowGate = speed != null && speed < rotationSpeedGateMps;
     final effectiveHeading =
         (belowGate && _compassHeading != null) ? _compassHeading : heading;
+    if (belowGate && _compassHeading != null) {
+      DebugLog.instance.info(
+        'compass override: heading=${_compassHeading!.toStringAsFixed(1)} '
+        'gpsHeading=${heading?.toStringAsFixed(1)} speed=${speed.toStringAsFixed(1)}',
+      );
+    }
     // Frame the fix slightly below the vertical center in screen space:
     // shift the camera center opposite screen-up (geographic bearing
     // 360 - rotation) by a fraction of the screen height, so the position
@@ -305,14 +323,20 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         sinSum += math.sin(rad);
         cosSum += math.cos(rad);
       }
-      final target = math.atan2(sinSum, cosSum) * 180 / math.pi;
+      final meanHeading = math.atan2(sinSum, cosSum) * 180 / math.pi;
+      // flutter_map applies a positive camera rotation clockwise on screen
+      // (the map content is wrapped in Transform.rotate(rotationRad)), so a
+      // geographic bearing shows up at screen bearing bearing + rotation.
+      // Course-up therefore needs rotation = -heading, not +heading.
+      final target = -meanHeading;
       final rotation = widget.mapController.camera.rotation;
       final courseDelta =
           nearestEquivalentRotation(target, rotation) - rotation;
       if (courseDelta.abs() >= courseDeltaThreshold) {
         final applied = rotation + courseDelta * rotationSmoothingFactor;
         DebugLog.instance.info(
-          'rotate: target=${target.toStringAsFixed(1)} '
+          'rotate: mean=${meanHeading.toStringAsFixed(1)} '
+          'target=${target.toStringAsFixed(1)} '
           'from=${rotation.toStringAsFixed(1)} to=${applied.toStringAsFixed(1)}',
         );
         widget.mapController.moveAndRotate(

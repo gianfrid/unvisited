@@ -690,9 +690,10 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Course-up: the east-heading fixes rotate the camera 90, and the
-      // marker's own rotation nets to 0 — the nose points up on screen.
-      expect(camera().rotation, closeTo(90.0, 1.0));
+      // Course-up: the east-heading fixes rotate the camera to -90 (east
+      // points screen-up; flutter_map rotation is clockwise-positive), and
+      // the marker's own rotation nets to 0 — the nose points up on screen.
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
       // The marker keeps a solid backdrop disc so it stays visible over
       // the live trace.
       expect(
@@ -716,8 +717,8 @@ void main() {
       await tester.pump();
 
       expect(
-        camera().rotation,
-        closeTo(90.0, 1.0),
+        camera().rotation % 360,
+        closeTo(270.0, 1.0),
         reason: 'the pan released the rotation with the follow',
       );
       expect(
@@ -753,16 +754,16 @@ void main() {
 
       await model.startRecording(source: source, permissionGate: false);
       // One fix moves the rotation only part of the way (smoothing k=0.4):
-      // 0 -> ~36, not straight to 90.
+      // 0 -> ~-36, not straight to -90.
       fakeFix(source, 0, heading: 90, speed: 5.0);
       await tester.pump();
-      expect(camera().rotation, closeTo(36.0, 0.1));
+      expect(camera().rotation % 360, closeTo(324.0, 0.1));
       for (var i = 1; i < 16; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
       }
       await tester.pump();
       await tester.pump();
-      expect(camera().rotation, closeTo(90.0, 1.0));
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
 
       // Slow fix with a different heading: the camera holds its rotation
       // (no standstill spin) but still centers on the fix. The fix moves
@@ -770,11 +771,11 @@ void main() {
       // by the speed-outlier filter.
       fakeFix(source, 16, lat: 52.5216 + 0.00005, heading: 180, speed: 0.2);
       await tester.pump();
-      expect(camera().rotation, closeTo(90.0, 1.0));
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
       // The camera frames the fix below screen center: with the camera
-      // held at 90°, screen-down is geographic west, so the center sits
-      // west of the fix.
-      expect(camera().center.longitude, lessThan(13.4050));
+      // held at -90°, screen-up is geographic east, so the center sits
+      // east of the fix.
+      expect(camera().center.longitude, greaterThan(13.4050));
       expect(camera().center.latitude, closeTo(52.5216 + 0.00005, 1e-4));
 
       // Moving again: the rotation eases over to the new course. Continue
@@ -784,7 +785,7 @@ void main() {
             heading: 180, speed: 3.0);
       }
       await tester.pump();
-      expect(camera().rotation, closeTo(180.0, 1.0));
+      expect(camera().rotation % 360, closeTo(180.0, 1.0));
     },
   );
 
@@ -841,6 +842,55 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(camera().center.latitude, closeTo(52.5204, 1e-3));
+    },
+  );
+
+  testWidgets(
+    'a plain tap on the map does not release the follow',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
+      await tester.pump();
+      await tester.pump();
+      final followed = camera().center;
+
+      // A stray tap (mount, pocket, glove) must not disengage the follow:
+      // only a gesture that moves the map may release it. If the tap had
+      // released it, the next fix would leave the camera exactly where it
+      // was.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.tapAt(Offset(size.width / 2, size.height * 0.4));
+      // Let flutter_map's double-tap detection timer run out.
+      await tester.pump(const Duration(seconds: 1));
+      fakeFix(source, 1, lat: 52.5202, heading: 90, speed: 5.0);
+      await tester.pump();
+      expect(
+        camera().center,
+        isNot(sameCameraAs(followed)),
+        reason: 'the tap did not release the follow; the next fix re-centered',
+      );
+      expect(
+        camera().center.latitude,
+        closeTo(52.5202, 1e-3),
+        reason: 'the follow re-centered on the new fix',
+      );
     },
   );
 
@@ -905,14 +955,14 @@ void main() {
           MapController.of(tester.element(find.byType(TileLayer))).camera;
 
       await model.startRecording(source: source, permissionGate: false);
-      // Moving fast on an east course: camera rotates to ~90.
+      // Moving fast on an east course: camera rotates to ~-90 (east up).
       fakeFix(source, 0, heading: 90, speed: 5.0);
       for (var i = 1; i < 16; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
       }
       await tester.pump();
       await tester.pump();
-      expect(camera().rotation, closeTo(90.0, 1.0));
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
 
       // Standstill with a stale GPS heading but a live compass facing
       // south: the rotation follows the compass, not the stale course.
@@ -922,7 +972,7 @@ void main() {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 0.2);
       }
       await tester.pump();
-      expect(camera().rotation, greaterThan(170.0));
+      expect(camera().rotation % 360, closeTo(180.0, 10.0));
     },
   );
 
@@ -954,7 +1004,7 @@ void main() {
       }
       await tester.pump();
       await tester.pump();
-      expect(camera().rotation, closeTo(90.0, 1.0));
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
 
       // Headings now alternate 80/100 around the course. The smoothed
       // target stays at their mean (90), so the camera must not chase the
@@ -970,7 +1020,7 @@ void main() {
             reason: 'the rotation stepped with the raw heading noise');
         prevRotation = r;
       }
-      expect(camera().rotation, closeTo(90.0, 2.0));
+      expect(camera().rotation % 360, closeTo(270.0, 2.0));
     },
   );
 
@@ -1074,13 +1124,13 @@ void main() {
       }
 
       await model.startRecording(source: source, permissionGate: false);
-      // One fix on a 90° course: the camera has eased only partway (36°),
+      // One fix on a 90° course: the camera has eased only partway (-36°),
       // so course-relative rotation would NOT net to up — but course-up
       // pins the marker regardless.
       fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
       await tester.pump();
       await tester.pump();
-      expect(camera().rotation, closeTo(36.0, 0.1));
+      expect(camera().rotation % 360, closeTo(324.0, 0.1));
       expect(markerAngle(), closeTo(0.0, 1e-6));
     },
   );

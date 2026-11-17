@@ -301,11 +301,12 @@ class _MapPageState extends State<MapPage> {
   /// (`mapRotation == 'on'`) the nose is pinned screen-up — the camera
   /// carries the course, and pinning keeps the marker from swinging while
   /// the rotation eases in. With course-up off the marker rotates to the
-  /// course relative to the camera's rotation, so it follows the direction
-  /// of travel on the north-up map. A fix without a heading and no bearing
-  /// yet renders unrotated. Rebuilt per fix through the recording-live
-  /// channel; still a direct child of the map's layer stack, which its
-  /// marker positioning depends on.
+  /// course on screen — a geographic bearing shows at screen bearing
+  /// course + camera rotation, since a positive rotation turns the map
+  /// clockwise — so it follows the direction of travel. A fix without a
+  /// heading and no bearing yet renders unrotated. Rebuilt per fix through
+  /// the recording-live channel; still a direct child of the map's layer
+  /// stack, which its marker positioning depends on.
   List<Widget> _recordingMarkers() {
     final session = widget.model.recording;
     final lat = session?.currentLat;
@@ -323,10 +324,11 @@ class _MapPageState extends State<MapPage> {
               child: Transform.rotate(
                 key: const ValueKey('recording-marker-rotate'),
                 // Course-up on: pinned screen-up. Off: the nose follows the
-                // course against the camera's rotation.
+                // course on screen (bearing + rotation, positive rotation
+                // turns the map clockwise).
                 angle: widget.model.mapRotation == 'on'
                     ? 0
-                    : ((session!.currentCourse ?? 0) -
+                    : ((session!.currentCourse ?? 0) +
                             _mapController.camera.rotation) *
                         math.pi /
                         180,
