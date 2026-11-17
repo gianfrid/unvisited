@@ -28,7 +28,7 @@ The TODO → plan → confirm → commit workflow — backlog decomposition, pla
 
 Project-specific addition:
 
-- After committing a TODO.md item, run `tool/build_release_apk.sh` and do not wait for it: the release APK build (`flutter build apk --release --split-per-abi --target-platform=android-arm64`) runs detached in the background and must never block the next prompt. The script enforces the window itself (at least 5 minutes between builds, from the previous build's end; a build in flight or inside the window skips, no queueing).
+- `tool/build_release_apk.sh` exists for on-demand release APK builds (`flutter build apk --release --split-per-abi --target-platform=android-arm64`); run it only when explicitly asked, never automatically after commits. It runs detached in the background and must never block the prompt. The script enforces the window itself (at least 5 minutes between builds, from the previous build's end; a build in flight or inside the window skips, no queueing).
 
 ## Agent guidelines
 
