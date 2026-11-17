@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:unvisited/geo.dart' show haversineMeters;
 import 'package:unvisited/import/track_importer.dart';
 import 'package:unvisited/recording/position_source.dart';
 import 'package:unvisited/recording/recording_session.dart';
@@ -74,7 +75,9 @@ void main() {
     source.controller.add(fix(0));
     source.controller.add(fix(1, lat: 52.5201));
     await pumpEventQueue();
-    expect(session.pointCount, 2);
+    // fix(1) is 11.1 m from the staged fix(0): accepted and ticked, but
+    // under the thinning threshold, so not staged.
+    expect(session.pointCount, 1);
     expect(fixCallbacks, 2);
 
     await session.stop();
@@ -82,7 +85,7 @@ void main() {
     // the cancellation also ends the Android foreground service's stream.
     source.controller.add(fix(2, lat: 52.5202));
     await pumpEventQueue();
-    expect(session.pointCount, 2);
+    expect(session.pointCount, 1);
     expect(fixCallbacks, 2);
     expect(session.distanceMeters, closeTo(11.1, 0.2),
         reason: 'the post-stop fix added no distance');
@@ -94,12 +97,15 @@ void main() {
     expect(session.processFix(fix(1, acc: 49.9)), FixDisposition.accepted);
     expect(
         session.processFix(fix(3, acc: 50.1)), FixDisposition.rejectedAccuracy);
-    expect(session.pointCount, 2);
+    // Only fix(0) is staged: fix(1) is 11.1 m from it, under the
+    // thinning threshold.
+    expect(session.pointCount, 1);
     // A rejected fix must not advance the clock: had the session remembered
     // the bad fix's timestamp, this accurate one at t=2 (older than t=3,
     // newer than the last *accepted* fix at t=1) would be dropped as stale.
-    expect(session.processFix(fix(2, lat: 52.52005)), FixDisposition.accepted);
-    expect(session.pointCount, 3);
+    expect(session.processFix(fix(2, lat: 52.5202)), FixDisposition.accepted);
+    // 22.2 m from the staged fix(0): past the threshold, so staged.
+    expect(session.pointCount, 2);
   });
 
   test('stale and out-of-order fixes are dropped', () {
@@ -154,7 +160,9 @@ void main() {
     // 11.1 m in 1 s = 11.1 m/s: above the zero window's median+MAD, but
     // below the 12 m/s floor, so a real start is accepted.
     expect(session.processFix(fix(10, lat: 52.5201)), FixDisposition.accepted);
-    expect(session.pointCount, 11);
+    // Staged: fix(0), then the max-age cadence while stationary (fix(5),
+    // fix(10) — 5 s apart), regardless of displacement.
+    expect(session.pointCount, 3);
   });
 
   test('jitter between close fixes accumulates as real distance', () {
@@ -164,7 +172,9 @@ void main() {
     session.processFix(fix(0));
     session.processFix(fix(1, lat: 52.5201));
     session.processFix(fix(2, lat: 52.5202, acc: 4));
-    expect(session.pointCount, 3);
+    // Thinning stages fix(0) and fix(2) (22.2 m apart); fix(1) is a
+    // sub-threshold intermediate. Distance still sums every raw fix.
+    expect(session.pointCount, 2);
     expect(session.distanceMeters, closeTo(22.2, 0.2));
     expect(session.elapsed, const Duration(seconds: 2));
     expect(session.currentSpeed, closeTo(11.1, 0.2),
@@ -273,10 +283,12 @@ void main() {
     final session = newSession('Trace')..start(FakeSource());
     session.processFix(fix(0));
     session.processFix(fix(1, lat: 52.5201));
+    // The live trace carries staged points only: fix(1) is 11.1 m from
+    // the staged fix(0), under the thinning threshold.
     expect(session.liveSegments.length, 1);
-    expect(session.liveSegments.single.length, 2);
+    expect(session.liveSegments.single.length, 1);
     // Per-point timestamps mirror the segments one to one (age fade).
-    expect(session.liveSegmentTimes.single, [fix(0).time, fix(1).time]);
+    expect(session.liveSegmentTimes.single, [fix(0).time]);
 
     // A pause opens a fresh segment, like the staged <trkseg>.
     session.pause();
@@ -291,7 +303,10 @@ void main() {
     expect(session.liveSegments.length, 3);
     expect(session.liveSegments.last.single.latitude, closeTo(52.5204, 1e-9));
 
-    // Paused fixes add nothing.
+    // Paused fixes add nothing. Staged total: fix(0) and fix(1) (the
+    // pause flush stages the pending raw fix); fix(60) (segment start)
+    // and fix(61) (flushed by the fix-loss break); fix(400) (segment
+    // start).
     session.pause();
     session.processFix(fix(500, lat: 52.5299));
     expect(session.liveSegments.fold(0, (n, s) => n + s.length), 5);
@@ -384,7 +399,8 @@ void main() {
       stage: GpxStageWriter(sink, name: 'Morning ride'),
     )..start(FakeSource());
     session.processFix(fix(0, ele: 42.5));
-    session.processFix(fix(1, lat: 52.5201, ele: 43.0));
+    // 22.2 m from fix(0): past the thinning threshold, so staged.
+    session.processFix(fix(1, lat: 52.5202, ele: 43.0));
     await session.stop();
 
     final gpx = sink.buffer.toString();
@@ -427,7 +443,10 @@ void main() {
     final data =
         TrackImporter().import(salvaged!.codeUnits, filename: 'salvage.gpx');
     expect(data.format, 'GPX');
-    expect(data.points, hasLength(3));
+    // Thinning staged fix(0) and fix(2) (22.2 m apart); fix(1) was a
+    // sub-threshold intermediate. The salvaged file re-imports like any
+    // GPX, thinned output included.
+    expect(data.points, hasLength(2));
     expect(data.distanceMeters, closeTo(session.distanceMeters, 0.1));
   });
 
@@ -436,14 +455,16 @@ void main() {
     final session = RecordingSession(
       stage: GpxStageWriter(sink, name: 'Killed ride'),
     )..start(FakeSource());
+    // 22.2 m steps: every fix clears the thinning threshold, so the
+    // staged file has all three points and the cut lands mid-fix(2).
     session.processFix(fix(0));
-    session.processFix(fix(1, lat: 52.5201, ele: 43.0));
-    session.processFix(fix(2, lat: 52.5202, ele: 43.9));
+    session.processFix(fix(1, lat: 52.5202, ele: 43.0));
+    session.processFix(fix(2, lat: 52.5204, ele: 43.9));
     final text = sink.buffer.toString();
     // A real flush can cut the file midway through the next point's
     // markup: a point whose attributes were cut halfway through.
     final midPointCut = '${text.substring(0, text.lastIndexOf("</trkpt>"))}'
-        '<trkpt lat="52.5203" lon="13.40';
+        '<trkpt lat="52.5206" lon="13.40';
     final salvaged = salvageGpx(midPointCut);
     expect(salvaged, isNotNull);
     final data =
@@ -470,6 +491,94 @@ void main() {
     expect(sink.buffer.toString(), isEmpty,
         reason: 'a session with no fix writes no file at all');
     expect(session.elapsed, Duration.zero);
+  });
+
+  group('distance thinning', () {
+    // ~4.4 m/s north: 0.00004 deg lat per 1 s fix.
+    double rideLat(int second) => 52.5200 + second * 0.00004;
+
+    test('a steady ride stages a fraction of the raw fixes at unchanged '
+        'distance', () async {
+      final sink = MemoryStageSink();
+      final session = RecordingSession(
+        stage: GpxStageWriter(sink, name: 'Ride'),
+      )..start(FakeSource());
+      const n = 60;
+      for (var s = 0; s < n; s++) {
+        expect(session.processFix(fix(s, lat: rideLat(s))),
+            FixDisposition.accepted);
+      }
+      await session.stop();
+
+      // 4.4 m steps: the 12 m threshold stages every ~3rd fix.
+      expect(session.pointCount, lessThan(n ~/ 2),
+          reason: 'thinning cuts the raw 1 Hz stream to a fraction');
+      expect(session.pointCount, greaterThan(n ~/ 5));
+      // Distance is computed from every raw fix either way — identical
+      // to the unthinned sum (0.00004 deg ≈ 4.448 m per step).
+      expect(session.distanceMeters, closeTo((n - 1) * 4.448, 1.0));
+      // The file carries exactly the staged points.
+      final data = TrackImporter()
+          .import(sink.buffer.toString().codeUnits, filename: 'ride.gpx');
+      expect(data.points, hasLength(session.pointCount));
+    });
+
+    test('stationary stretches record on the max-age cadence', () async {
+      final session = newSession('Parked')..start(FakeSource());
+      for (var s = 0; s <= 11; s++) {
+        session.processFix(fix(s)); // same spot, 1 s apart
+      }
+      // fix(0), then the 5 s max-age cadence: fix(5), fix(10).
+      expect(session.pointCount, 3);
+      expect(session.distanceMeters, 0.0);
+    });
+
+    test('a fix-loss break stages the pending last raw fix: segments end '
+        'exactly where the raw data ends', () async {
+      final sink = MemoryStageSink();
+      final session = RecordingSession(
+        stage: GpxStageWriter(sink, name: 'Tunnel'),
+      )..start(FakeSource());
+      session.processFix(fix(0));
+      session.processFix(fix(1, lat: 52.5201)); // 11.1 m: unstaged
+      session.processFix(fix(100, lat: 52.5202)); // fix loss: new segment
+      await session.stop();
+
+      final gpx = sink.buffer.toString();
+      expect('<trkseg>'.allMatches(gpx).length, 2);
+      // The first segment ends at fix(1) — the last raw fix before the
+      // break — not at the last staged one; the jump across the gap is
+      // not folded into a point.
+      final seg1 = RegExp(r'<trkseg>.*?</trkseg>', dotAll: true).firstMatch(gpx)!;
+      expect(seg1.group(0), contains('2026-11-13T12:00:00.000Z'));
+      expect(seg1.group(0), contains('2026-11-13T12:00:01.000Z'));
+      expect(session.liveSegments.first, hasLength(2));
+      expect(session.liveSegments.last.single.latitude, closeTo(52.5202, 1e-9));
+    });
+
+    test('fast ride: staged points never gap past the fog corridor '
+        '(2 x 15 m unlock radius)', () {
+      final session = newSession('Fast')..start(FakeSource());
+      // ~15.5 m/s south-north (0.00014 deg lat per 1 s): a fixed-time
+      // thinning at 4 s would jump 62 m and split the corridor; the
+      // distance rule stages every fix (15.5 m >= 12 m) and the spatial
+      // step stays bounded by threshold + one sensor step.
+      const stepDeg = 0.00014;
+      for (var s = 0; s < 30; s++) {
+        expect(session.processFix(fix(s, lat: 52.5200 + s * stepDeg)),
+            FixDisposition.accepted);
+      }
+      expect(session.pointCount, 30,
+          reason: 'every fix clears the distance threshold at this speed');
+      final pts = session.liveSegments.single;
+      for (var i = 0; i < pts.length - 1; i++) {
+        final d = haversineMeters(pts[i].latitude, pts[i].longitude,
+            pts[i + 1].latitude, pts[i + 1].longitude);
+        expect(d, lessThan(30.0),
+            reason: 'corridor continuity: staged steps must overlap the '
+                '15 m unlock circles');
+      }
+    });
   });
 
   group('renameGpxTrack (stop with name)', () {
@@ -541,7 +650,8 @@ void main() {
       stage: GpxStageWriter(sink, name: 'File ride'),
     )..start(FakeSource());
     session.processFix(fix(0, ele: 42));
-    session.processFix(fix(1, lat: 52.5201));
+    // 22.2 m from fix(0): past the thinning threshold, so staged.
+    session.processFix(fix(1, lat: 52.5202));
     await session.stop();
     await sink.done;
 

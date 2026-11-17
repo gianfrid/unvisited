@@ -995,7 +995,8 @@ void main() {
         );
 
         fakeFix(source, 0, ele: 42.0);
-        fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201, ele: 43.0);
+        // 22.2 m from fix(0): past the thinning threshold, so staged.
+        fakeFix(source, 1, prevLat: 52.5200, lat: 52.5202, ele: 43.0);
         await Future<void>.delayed(Duration.zero);
         await model.stopRecording();
         expect(model.isRecording, isFalse);

@@ -67,6 +67,8 @@ class RecordingSession {
     this.speedMadK = 3.0,
     this.maxSpeedMps = 45,
     this.minSpeedThresholdMps = 12,
+    this.recordDistanceMeters = 12,
+    this.recordMaxAge = const Duration(seconds: 5),
   });
 
   final GpxStageWriter stage;
@@ -102,6 +104,26 @@ class RecordingSession {
   /// MAD = 0) does not reject the first real movement.
   final double minSpeedThresholdMps;
 
+  /// Minimum displacement from the last *staged* point for a fix to be
+  /// staged, in meters. Distance-based thinning: the sensor's 1 Hz stream
+  /// oversamples any track (a ride logs ~4× the points a wrist GPS at
+  /// smart-recording cadence does, with the extra points at GPS-noise
+  /// scale), so a fix is recorded only when it moves far enough from what
+  /// is already down. The threshold is implicitly speed-adaptive in time
+  /// (the time gap between staged points is roughly this distance over
+  /// the speed) and bounds the spatial step — which is what the fog
+  /// corridor needs: unlock circles are 15 m in radius, so consecutive
+  /// staged points must stay under ~30 m apart for the corridor to stay
+  /// continuous. 12 m + one 1 s sensor step keeps that bound at any speed
+  /// a track is likely to be recorded at, where a fixed-time rule (4 s
+  /// at 11 m/s = 44 m) would split it.
+  final double recordDistanceMeters;
+
+  /// Wall-clock cap on the gap between staged points: slow or stationary
+  /// stretches still record a point on this cadence, so pauses and crawl
+  /// speeds leave points in the file and the live trace keeps breathing.
+  final Duration recordMaxAge;
+
   /// Recent accepted implied step speeds (oldest first), capped at
   /// [speedWindow]. Segment breaks and resumes do not feed it.
   final List<double> _recentSpeeds = [];
@@ -127,6 +149,9 @@ class RecordingSession {
   Duration get movingTime => Duration(milliseconds: _movingMillis.round());
   double _movingMillis = 0;
 
+  /// Staged points, i.e. what the finalized GPX will contain — not the
+  /// raw accepted-fix count, which the thinning below deliberately keeps
+  /// smaller.
   int get pointCount => _points;
   int _points = 0;
 
@@ -164,8 +189,16 @@ class RecordingSession {
   double? _lastLat;
   double? _lastLon;
 
-  /// The accepted fixes so far, grouped exactly like the staged
-  /// `<trkseg>`s — the live map trace draws these while a session runs.
+  /// The last staged point's position and time: the thinning measures
+  /// displacement and age from what is already recorded, not from the
+  /// previous raw fix. Null until the first point is staged.
+  double? _stagedLat;
+  double? _stagedLon;
+  DateTime? _stagedTime;
+
+  /// The staged points so far, grouped exactly like the staged
+  /// `<trkseg>`s — the live map trace draws these while a session runs,
+  /// so map, stats and file can never disagree about what a point is.
   /// Read-only copy out; the engine owns the lists.
   List<List<LatLng>> get liveSegments => [
         for (final s in _liveSegments) List<LatLng>.of(s),
@@ -204,8 +237,29 @@ class RecordingSession {
       throw StateError('pause outside a running session');
     }
     state = RecordingState.paused;
+    _flushSegmentEnd();
     stage.breakSegment();
     _segmentOpen = true;
+  }
+
+  /// Stages the last accepted fix when the thinning left it unstaged —
+  /// called on segment breaks (pause, fix loss) so a segment always ends
+  /// exactly at its last raw fix, never mid-jump: the next segment starts
+  /// after unrecorded time, and the jump across it must not be folded
+  /// into one point.
+  void _flushSegmentEnd() {
+    final t = _lastFix;
+    if (t == null || _stagedTime == t) return; // nothing pending
+    stage.appendPoint(
+        lat: _lastLat!, lon: _lastLon!, time: t, ele: _currentEle);
+    // The live trace mirrors the staged file one to one — the flushed
+    // point lands in both or neither.
+    _liveSegments.last.add(LatLng(_lastLat!, _lastLon!));
+    _liveTimes.last.add(t);
+    _stagedLat = _lastLat;
+    _stagedLon = _lastLon;
+    _stagedTime = t;
+    _points++;
   }
 
   /// Resumes: the next accepted fix opens a new `<trkseg>`.
@@ -260,15 +314,35 @@ class RecordingSession {
         return FixDisposition.rejectedSpeed;
       }
     }
-    if (brokeSegment) stage.breakSegment();
-    if (_segmentOpen || brokeSegment) {
+    if (brokeSegment) {
+      _flushSegmentEnd();
+      stage.breakSegment();
+    }
+    final newSegment = _segmentOpen || brokeSegment;
+    if (newSegment) {
       _liveSegments.add([]);
       _liveTimes.add([]);
       _segmentOpen = false;
     }
-    _liveSegments.last.add(LatLng(fix.lat, fix.lon));
-    _liveTimes.last.add(fix.time);
-    stage.appendPoint(lat: fix.lat, lon: fix.lon, time: fix.time, ele: fix.ele);
+    // Distance thinning: a fix is staged when it starts a segment (its
+    // endpoints anchor the corridor), or when it has moved far enough
+    // from what is already recorded, or when too much time has passed
+    // (slow and stationary stretches still leave points). Stats and
+    // distance below run on every raw fix regardless.
+    final stageIt = newSegment ||
+        _stagedTime == null ||
+        haversineMeters(_stagedLat!, _stagedLon!, fix.lat, fix.lon) >=
+            recordDistanceMeters ||
+        fix.time.difference(_stagedTime!) >= recordMaxAge;
+    if (stageIt) {
+      _liveSegments.last.add(LatLng(fix.lat, fix.lon));
+      _liveTimes.last.add(fix.time);
+      stage.appendPoint(lat: fix.lat, lon: fix.lon, time: fix.time, ele: fix.ele);
+      _stagedLat = fix.lat;
+      _stagedLon = fix.lon;
+      _stagedTime = fix.time;
+      _points++;
+    }
 
     if (!first) {
       final step = haversineMeters(_lastLat!, _lastLon!, fix.lat, fix.lon);
@@ -301,7 +375,6 @@ class RecordingSession {
     _lastLat = fix.lat;
     _lastLon = fix.lon;
     _currentEle = fix.ele;
-    _points++;
     return FixDisposition.accepted;
   }
 

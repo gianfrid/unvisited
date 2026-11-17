@@ -2689,11 +2689,13 @@ void main() {
 
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
-    fakeFix(source, 1, prevLat: 52.5200, lat: 52.5201);
+    // 22.2 m from fix(0): past the thinning threshold, so the live trace
+    // (staged points only) carries both.
+    fakeFix(source, 1, prevLat: 52.5200, lat: 52.5202);
     await tester.pump();
     await tester.pump();
 
-    // While recording, one recording-red polyline carries the two accepted
+    // While recording, one recording-red polyline carries the two staged
     // fixes — distinct from the catalog tint. The fake fixes carry an old
     // timestamp, so the age fade has dimmed it below the full trace alpha.
     expect(tracePolylines(), 1);
