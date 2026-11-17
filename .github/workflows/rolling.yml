@@ -1,6 +1,9 @@
-# Nightly alpha APK: builds a signed release APK on a schedule (or manual
-# dispatch) and attaches it to the moving `nightly` GitHub release, where
-# Obtanium picks it up (repo gianfrid/unvisited, asset unvisited-nightly-arm64.apk).
+# Rolling release APK: builds a signed release APK on every push to `slop`
+# (plus a daily cron and manual dispatch) and attaches it to the moving
+# `rolling` GitHub release, where Obtanium picks it up (repo
+# gianfrid/unvisited, asset unvisited-rolling-arm64.apk). One workflow for
+# all triggers, so the run_number versionCode stays monotonic across pushes
+# and scheduled runs alike.
 #
 # Signing: the release keystore is a repo secret, passed via env vars —
 # see android/app/build.gradle.kts. Set these secrets in the repo settings:
@@ -9,21 +12,23 @@
 #   UNVISITED_KEY_ALIAS         key alias
 #   UNVISITED_KEY_PASSWORD      key password
 #
-# The alpha label rides in the version name; the version code is the
-# workflow run number, which increases monotonically so every nightly is
+# The rolling label rides in the version name; the version code is the
+# workflow run number, which increases monotonically so every build is
 # seen as an update.
-name: Nightly alpha APK
+name: Rolling release APK
 
 on:
+  push:
+    branches: [slop]
   schedule:
     - cron: '0 3 * * *' # 03:00 UTC daily
   workflow_dispatch:
 
 permissions:
-  contents: write # create/update the nightly release
+  contents: write # create/update the rolling release
 
 concurrency:
-  group: nightly
+  group: rolling
   cancel-in-progress: true
 
 jobs:
@@ -59,7 +64,7 @@ jobs:
           done
           keytool -list -v -keystore /tmp/ks.bin -storepass "$UNVISITED_KEYSTORE_PASSWORD" 2>&1 | head -8
 
-      - name: Build release APK (alpha nightly)
+      - name: Build release APK (rolling)
         env:
           UNVISITED_KEYSTORE_B64: ${{ secrets.UNVISITED_KEYSTORE_B64 }}
           UNVISITED_KEYSTORE_PASSWORD: ${{ secrets.UNVISITED_KEYSTORE_PASSWORD }}
@@ -67,13 +72,13 @@ jobs:
           UNVISITED_KEY_PASSWORD: ${{ secrets.UNVISITED_KEY_PASSWORD }}
         run: |
           flutter build apk --release --split-per-abi --target-platform=android-arm64 \
-            --build-name "1.0.0-alpha" --build-number "${{ github.run_number }}"
-          cp build/app/outputs/flutter-apk/app-arm64-*-release.apk unvisited-nightly-arm64.apk
+            --build-name "1.0.0-rolling" --build-number "${{ github.run_number }}"
+          cp build/app/outputs/flutter-apk/app-arm64-*-release.apk unvisited-rolling-arm64.apk
 
-      - name: Publish to the moving nightly release
+      - name: Publish to the moving rolling release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: nightly
-          name: Nightly (alpha)
+          tag_name: rolling
+          name: Rolling
           make_latest: true
-          files: unvisited-nightly-arm64.apk
+          files: unvisited-rolling-arm64.apk
