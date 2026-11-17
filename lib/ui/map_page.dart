@@ -160,6 +160,32 @@ class _MapPageState extends State<MapPage> {
   /// key — the locate button's shortcut re-arms the follow.
   final _dashboardKey = GlobalKey<RecordingDashboardState>();
 
+  /// The camera rotation the recording marker draws against. The
+  /// dashboard publishes it after each rotation it applies (and after a
+  /// gesture rotation), so the marker reads the *post-move* rotation in
+  /// the same frame — reading `camera.rotation` at build time would lag
+  /// one fix behind, because the marker layer mounts before the
+  /// dashboard and so rebuilds from the fix channel first.
+  final _markerRotation = ValueNotifier<double>(0);
+
+  /// The bottom overlay column (action stack, selection bar, recording
+  /// chip and panel), measured so the follow-camera frames the fix above
+  /// it instead of under it — the column grows when the stats panel opens
+  /// and with the paused/recording action count.
+  final _bottomColumnKey = GlobalKey();
+
+  /// Pixels the bottom overlay column currently occupies, measured from
+  /// the screen bottom (its own height plus the SafeArea inset the column
+  /// sits on). Zero until the first layout.
+  double bottomOverlap() {
+    final box = _bottomColumnKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return 0;
+    // The column sits on a SafeArea minimum of 16 that the system inset
+    // raises, not adds to.
+    final safe = MediaQuery.paddingOf(_bottomColumnKey.currentContext!);
+    return box.size.height + math.max(safe.bottom, 16);
+  }
+
   /// The fit-request epoch MapPage handled last (see the import epoch):
   /// a track-tile tap asks for a fit to its aggregate.
   int _seenFitRequestEpoch = 0;
@@ -187,6 +213,7 @@ class _MapPageState extends State<MapPage> {
   void dispose() {
     _mapEvents?.cancel();
     _fixRetryTimer?.cancel();
+    _markerRotation.dispose();
     widget.model.removeListener(_onModelChanged);
     super.dispose();
   }
@@ -297,16 +324,18 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  /// The recording marker: at the last accepted fix. With a rotating mode
-  /// (`mapRotation` 'course') the nose is pinned screen-up — the camera
-  /// carries the course, and pinning keeps the marker from swinging while
-  /// the rotation eases in. With course-up off the marker rotates to the
-  /// course on screen — a geographic bearing shows at screen bearing
-  /// course + camera rotation, since a positive rotation turns the map
-  /// clockwise — so it follows the direction of travel. A fix without a
-  /// heading and no bearing yet renders unrotated. Rebuilt per fix through
-  /// the recording-live channel; still a direct child of the map's layer
-  /// stack, which its marker positioning depends on.
+  /// The recording marker: at the last accepted fix. The nose always
+  /// follows the course on screen — a geographic bearing shows at screen
+  /// bearing course + camera rotation, since a positive rotation turns the
+  /// map clockwise — so it nets to straight-up exactly while the camera
+  /// rides the course, and still shows the direction of travel after a
+  /// gesture releases the follow (or in north-up mode). The rotation is
+  /// read from [_markerRotation], which the dashboard publishes *after*
+  /// each camera move, so the nose never lags the easing rotation by a
+  /// fix. A fix without a heading and no bearing yet renders unrotated.
+  /// Rebuilt per fix through the recording-live channel (and per rotation
+  /// through the notifier); still a direct child of the map's layer stack,
+  /// which its marker positioning depends on.
   List<Widget> _recordingMarkers() {
     final session = widget.model.recording;
     final lat = session?.currentLat;
@@ -314,7 +343,10 @@ class _MapPageState extends State<MapPage> {
     if (lat == null || lon == null) return const [];
     return [
       ListenableBuilder(
-        listenable: widget.model.recordingLive,
+        listenable: Listenable.merge([
+          widget.model.recordingLive,
+          _markerRotation,
+        ]),
         builder: (context, _) => MarkerLayer(
           markers: [
             Marker(
@@ -323,15 +355,10 @@ class _MapPageState extends State<MapPage> {
               height: 44,
               child: Transform.rotate(
                 key: const ValueKey('recording-marker-rotate'),
-                // Rotating mode ('course'): pinned screen-up.
-                // 'north': the nose follows the course on screen (bearing +
-                // rotation, positive rotation turns the map clockwise).
-                angle: widget.model.mapRotation != 'north'
-                    ? 0
-                    : ((session!.currentCourse ?? 0) +
-                            _mapController.camera.rotation) *
-                        math.pi /
-                        180,
+                angle: ((session!.currentCourse ?? 0) +
+                        _markerRotation.value) *
+                    math.pi /
+                    180,
                 child: Container(
                   key: const ValueKey('recording-marker-disc'),
                   decoration: BoxDecoration(
@@ -853,6 +880,7 @@ class _MapPageState extends State<MapPage> {
             child: SafeArea(
               minimum: const EdgeInsets.only(bottom: 16),
               child: Column(
+                key: _bottomColumnKey,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // The action stack (locate / record / pause / stop) at the
@@ -903,10 +931,9 @@ class _MapPageState extends State<MapPage> {
                     key: _dashboardKey,
                     model: widget.model,
                     mapController: _mapController,
+                    markerRotation: _markerRotation,
+                    bottomOverlap: bottomOverlap,
                   ),
-                  // The dashboard's primary readout: the live speed, just
-                  // under the chip while a session runs.
-                  RecordingSpeedReadout(model: widget.model),
                 ],
               ),
             ),

@@ -1,5 +1,5 @@
 /// The recording dashboard's expanded stats panel: the engine's live
-/// numbers as labeled rows in the card under the HUD chip.
+/// numbers as a compact two-column grid in the card under the HUD chip.
 library;
 
 import 'package:flutter/material.dart';
@@ -24,8 +24,7 @@ class StatsPanel extends StatelessWidget {
         ? session.distanceMeters / moving.inSeconds
         : null;
     final rows = <(String, String)>[
-      // The live speed is the primary readout — the big one below the
-      // map's top chip (see _recordingSpeed) — not a panel row.
+      // The live speed is the chip's headline readout, not a panel row.
       (strings.statAvgSpeed, kmh(avg)),
       (
         strings.statDistance,
@@ -38,33 +37,58 @@ class StatsPanel extends StatelessWidget {
       if (session.currentEle != null)
         (strings.statAltitude, '${session.currentEle!.round()} m'),
     ];
+    // Two per row: five stats become three rows instead of five, keeping
+    // the card (and the bottom column the follow-camera must clear) short.
+    final grid = <TableRow>[
+      for (var i = 0; i < rows.length; i += 2)
+        TableRow(
+          children: [
+            _cell(context, rows[i]),
+            if (i + 1 < rows.length)
+              _cell(context, rows[i + 1])
+            else
+              const SizedBox.shrink(),
+          ],
+        ),
+    ];
     return Card(
       key: const ValueKey('stats-panel'),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final (label, value) in rows)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        label,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(value, style: Theme.of(context).textTheme.bodyMedium),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 4),
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        child: Table(
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          columnWidths: const {
+            0: FlexColumnWidth(),
+            1: FlexColumnWidth(),
+          },
+          children: grid,
         ),
+      ),
+    );
+  }
+
+  /// One stat: the label above its value, in a fixed half-width cell.
+  Widget _cell(BuildContext context, (String, String) stat) {
+    final (label, value) = stat;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
       ),
     );
   }

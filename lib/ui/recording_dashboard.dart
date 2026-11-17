@@ -40,11 +40,10 @@ IconData rotationModeIcon(String mode) => switch (mode) {
 /// The recording dashboard: everything a running session shows, and the
 /// follow-camera that rides it. Extracted from `map_page.dart`'s state
 /// (which keeps the map, the fog overlay, the locate/record buttons and
-/// the fits): the HUD chip with
-/// its per-fix duration/distance readout and the expandable stats panel —
-/// a child of the page's bottom stack (the headline speed rides just under
-/// it, see `RecordingSpeedReadout`) — the screen latch, and
-/// the follow-camera release-on-gesture semantics. The widget listens to the
+/// the fits): the HUD chip with its per-fix duration, distance and
+/// headline speed in one row, and the expandable stats panel — a child of
+/// the page's bottom stack — the screen latch, and the follow-camera
+/// release-on-gesture semantics. The widget listens to the
 /// per-fix channel ([AppModel.recordingLive]) with a [ListenableBuilder],
 /// so a 1 Hz fix repaints the dashboard — and only the dashboard; the
 /// map's other layers never rebuild for a fix except where they
@@ -54,10 +53,23 @@ class RecordingDashboard extends StatefulWidget {
     super.key,
     required this.model,
     required this.mapController,
+    required this.markerRotation,
+    required this.bottomOverlap,
   });
 
   final AppModel model;
   final MapController mapController;
+
+  /// The camera rotation the map page's recording marker draws against;
+  /// published here after every rotation this dashboard applies (and after
+  /// a gesture rotation), so the marker reads the post-move value in the
+  /// same frame instead of lagging a fix behind (see `MapPage`).
+  final ValueNotifier<double> markerRotation;
+
+  /// Pixels the page's bottom overlay column occupies from the screen
+  /// bottom right now (see `MapPage.bottomOverlap`): the follow-camera
+  /// keeps the fix above it, so the marker never hides under the HUD.
+  final double Function() bottomOverlap;
 
   @override
   RecordingDashboardState createState() => RecordingDashboardState();
@@ -142,11 +154,19 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// recording view never gets too zoomed out.
   static const double followZoomFloor = 17.0;
 
-  /// The follow-camera offsets this fraction of the screen height opposite
-  /// screen-up from the fix, so the position marker sits horizontally
-  /// centered but slightly below the vertical center — more of what is
-  /// ahead stays in view.
+  /// The follow-camera offsets at most this fraction of the screen height
+  /// opposite screen-up from the fix, so the position marker sits
+  /// horizontally centered but slightly below the vertical center — more
+  /// of what is ahead stays in view. The lead shrinks when the bottom
+  /// overlay column needs the room (see [followLeadMargin] and
+  /// [RecordingDashboard.bottomOverlap]) so the marker never hides under
+  /// the HUD; on a short screen with the panel open it reaches zero and
+  /// the fix sits at the center.
   static const double followLeadFraction = 0.18;
+
+  /// Breathing room between the marker and the top of the bottom overlay
+  /// column.
+  static const double followLeadMargin = 16;
 
   /// Compass stream override for tests; production reads
   /// [FlutterCompass.events].
@@ -186,6 +206,10 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     // report through their own sources after the gesture ends. Plain taps
     // don't release it. Only a locate-button tap re-arms it.
     _mapEvents = widget.mapController.mapEventStream.listen((event) {
+      // A gesture rotation (armed or after a release) moves the camera
+      // under the marker: republish so the nose keeps tracking the course
+      // on screen.
+      _publishRotation();
       if (!_follow || !_moveGestures.contains(event.source)) return;
       _releaseFollow(event.source);
     });
@@ -324,35 +348,17 @@ class RecordingDashboardState extends State<RecordingDashboard> {
         'gpsHeading=${heading?.toStringAsFixed(1)} speed=${speed?.toStringAsFixed(1)}',
       );
     }
-    // Frame the fix slightly below the vertical center in screen space:
-    // shift the camera center opposite screen-up (geographic bearing
-    // 360 - rotation) by a fraction of the screen height, so the position
-    // sits bottom-center in both north-up and course-up modes.
     final zoom = math.max(
       widget.mapController.camera.zoom,
       followZoomFloor,
     );
-    var center = LatLng(lat, lon);
-    final view = View.of(context);
-    final height = view.physicalSize.height / view.devicePixelRatio;
-    if (height > 0) {
-      final metersPerPixel =
-          156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
-      final offsetMeters = metersPerPixel * height * followLeadFraction;
-      final upRad = (360 - widget.mapController.camera.rotation) * math.pi / 180;
-      center = LatLng(
-        lat + offsetMeters * math.cos(upRad) / 111320,
-        lon +
-            offsetMeters *
-                math.sin(upRad) /
-                (111320 * math.cos(lat * math.pi / 180)),
-      );
-    }
+    var center = _framedCenter(lat, lon, zoom);
     if (effectiveHeading == null ||
         stale ||
         mode == 'north' ||
         (compassDriven && _compassHeading == null)) {
       widget.mapController.move(center, zoom);
+      _publishRotation();
     } else {
       // With a reported heading, currentCourse is that same heading. The
       // rotation target is the circular mean of the last few usable
@@ -390,9 +396,70 @@ class RecordingDashboardState extends State<RecordingDashboard> {
           zoom,
           applied,
         );
+        _publishRotation();
       } else {
         widget.mapController.move(center, zoom);
+        _publishRotation();
       }
+    }
+  }
+
+  /// The camera center for a fix: shifted opposite screen-up (geographic
+  /// bearing 360 - rotation) so the position sits below the vertical
+  /// center — bottom-center in both north-up and course-up modes, with
+  /// more of what is ahead in view. The lead is capped by the room the
+  /// bottom overlay column leaves, so the marker never hides under the
+  /// HUD; a short screen with the panel open puts the fix at the center.
+  LatLng _framedCenter(double lat, double lon, double zoom) {
+    final view = View.of(context);
+    final height = view.physicalSize.height / view.devicePixelRatio;
+    if (height <= 0) return LatLng(lat, lon);
+    final lead = math.min(
+      height * followLeadFraction,
+      math.max(height / 2 - widget.bottomOverlap() - followLeadMargin, 0),
+    );
+    if (lead <= 0) return LatLng(lat, lon);
+    final metersPerPixel =
+        156543.03392 * math.cos(lat * math.pi / 180) / math.pow(2, zoom);
+    final offsetMeters = metersPerPixel * lead;
+    final upRad = (360 - widget.mapController.camera.rotation) * math.pi / 180;
+    return LatLng(
+      lat + offsetMeters * math.cos(upRad) / 111320,
+      lon +
+          offsetMeters *
+              math.sin(upRad) /
+              (111320 * math.cos(lat * math.pi / 180)),
+    );
+  }
+
+  /// Re-applies the follow framing to the session's last fix without
+  /// touching the rotation — used when the bottom column's height changes
+  /// (the stats panel opens or closes) while the follow is armed.
+  void _recenterOnFix() {
+    if (!mounted || !widget.model.isRecording || !_follow) return;
+    final session = widget.model.recording;
+    final lat = session?.currentLat;
+    final lon = session?.currentLon;
+    if (lat == null || lon == null) return;
+    final zoom = math.max(widget.mapController.camera.zoom, followZoomFloor);
+    // The panel's new size is laid out by the frame this setState
+    // schedules; measure and move once it has.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.mapController.move(
+        _framedCenter(lat, lon, zoom),
+        zoom,
+      );
+    });
+  }
+
+  /// Publishes the camera rotation the recording marker draws against.
+  /// Called after every move this dashboard applies, so the marker reads
+  /// the post-move value in the same frame (see `MapPage._markerRotation`).
+  void _publishRotation() {
+    final rotation = widget.mapController.camera.rotation;
+    if (widget.markerRotation.value != rotation) {
+      widget.markerRotation.value = rotation;
     }
   }
 
@@ -458,11 +525,13 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   }
 
   /// The dashboard's part: the HUD chip and the expandable stats panel,
-  /// as one child of the page's bottom column (under the selection bar,
-  /// above the speed readout and the action stack — see `MapPage`). The
-  /// headline speed rides just under it (`RecordingSpeedReadout`).
+  /// as one child of the page's bottom column (under the selection bar and
+  /// the action stack — see `MapPage`). The chip carries the headline
+  /// speed alongside the duration and distance: one row, so the column
+  /// stays short enough for the follow-camera to keep the marker above it.
   Widget _dashboard(RecordingSession session, AppStrings strings) {
     final meters = session.distanceMeters;
+    final speed = session.currentSpeed;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Column(
@@ -472,7 +541,13 @@ class RecordingDashboardState extends State<RecordingDashboard> {
             child: InkWell(
               key: const ValueKey('recording-chip'),
               borderRadius: BorderRadius.circular(12),
-              onTap: () => setState(() => _panelOpen = !_panelOpen),
+              onTap: () {
+                setState(() => _panelOpen = !_panelOpen);
+                // The column just grew or shrank: re-frame now instead of
+                // on the next fix, so the marker never sits under the
+                // panel for up to a second.
+                _recenterOnFix();
+              },
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -498,7 +573,25 @@ class RecordingDashboardState extends State<RecordingDashboard> {
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
+                    // The headline speed — the stem display a bike computer
+                    // shows the rider. A dash before the first fix and
+                    // while paused (paused sessions are silent). Bounded so
+                    // a large text scale ellipsizes instead of overflowing
+                    // the row, while the chip keeps its compact width.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 84),
+                      child: Text(
+                        speed == null
+                            ? '—'
+                            : '${(speed * 3.6).toStringAsFixed(1)} km/h',
+                        key: const ValueKey('recording-speed'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
                     IconButton(
                       key: const ValueKey('rotation-mode-button'),
                       tooltip: rotationModeName(
@@ -530,48 +623,6 @@ class RecordingDashboardState extends State<RecordingDashboard> {
           if (_panelOpen) StatsPanel(session: session, strings: strings),
         ],
       ),
-    );
-  }
-}
-
-/// The dashboard's primary readout: the live speed, big — the stem display
-/// a bike computer shows the rider. It is a child of the page's bottom
-/// column, directly under the recording chip. Before the first fix and
-/// while paused (paused sessions are silent) it shows a dash, like the
-/// stats panel's not-yet-measured values. The per-fix channel rebuilds
-/// only this card.
-class RecordingSpeedReadout extends StatelessWidget {
-  const RecordingSpeedReadout({super.key, required this.model});
-
-  final AppModel model;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: model.recordingLive,
-      builder: (context, _) {
-        final session = model.recording;
-        if (session == null) return const SizedBox.shrink();
-        final currentSpeed = session.currentSpeed;
-        return Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 4),
-          child: Card(
-            key: const ValueKey('recording-speed'),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 10,
-              ),
-              child: Text(
-                currentSpeed == null
-                    ? '—'
-                    : '${(currentSpeed * 3.6).toStringAsFixed(1)} km/h',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }

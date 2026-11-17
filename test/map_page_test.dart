@@ -726,9 +726,10 @@ void main() {
         sameCameraAs(panned),
         reason: 'the pan released the follow',
       );
-      // Course-up is on, so the marker stays pinned screen-up even though
-      // the course changed (the camera itself stayed at 90 after the pan).
-      expect(markerAngle(), closeTo(0.0, 0.05));
+      // The released follow leaves the camera at -90 while the course
+      // turns to 180: the marker still shows the course on screen
+      // (180 + 270 = 90 mod 360), like north-up mode.
+      expect(markerAngle(), closeTo(math.pi / 2, 0.05));
     },
   );
 
@@ -1177,7 +1178,8 @@ void main() {
   );
 
   testWidgets(
-    'course-up on pins the marker up even while the camera is still easing',
+    'course-up on: the marker shows the course on screen while the camera '
+    'is still easing',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
@@ -1206,13 +1208,13 @@ void main() {
 
       await model.startRecording(source: source, permissionGate: false);
       // One fix on a 90° course: the camera has eased only partway (-36°),
-      // so course-relative rotation would NOT net to up — but course-up
-      // pins the marker regardless.
+      // so the marker must show the course on screen, not stay pinned up:
+      // 90 + (-36) = 54°.
       fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
       await tester.pump();
       await tester.pump();
       expect(camera().rotation % 360, closeTo(324.0, 0.1));
-      expect(markerAngle(), closeTo(0.0, 1e-6));
+      expect(markerAngle(), closeTo(54 * math.pi / 180, 1e-6));
     },
   );
 
@@ -1801,12 +1803,14 @@ void main() {
       }
       expect(selection.top, greaterThanOrEqualTo(locate.bottom));
       expect(chip.top, greaterThanOrEqualTo(selection.bottom));
-      expect(speed.top, greaterThanOrEqualTo(chip.bottom));
+      // The headline speed rides inside the chip row now, so the column is
+      // one card shorter and the follow-camera keeps the marker above it.
+      expect(chip.contains(speed.topLeft), isTrue);
+      expect(chip.contains(speed.bottomRight), isTrue);
       expect(
-        mapRect.bottom - speed.bottom,
+        mapRect.bottom - chip.bottom,
         closeTo(20.0, 1.0),
-        reason:
-            'the speed readout clears the bottom safe-area inset plus its own padding',
+        reason: 'the chip clears the bottom safe-area inset',
       );
 
       // End the session without the dialog (its import never settles in
@@ -3266,6 +3270,120 @@ void main() {
       reason: 'saved tracks: fit at startup via the engine-guarded path',
     );
   });
+
+  testWidgets(
+    'the marker shows the course on screen while the camera eases in',
+    (tester) async {
+      // Regression: the marker used to be pinned screen-up in course mode,
+      // so during the rotation easing (and after a released follow) the
+      // nose pointed nowhere near the direction of travel.
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('course');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      double markerAngle() {
+        final m = tester
+            .widget<Transform>(
+              find.byKey(const ValueKey('recording-marker-rotate')),
+            )
+            .transform;
+        return math.atan2(m.entry(1, 0), m.entry(0, 0));
+      }
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, heading: 90);
+      fakeFix(source, 1, lat: 52.5201, heading: 90);
+      await tester.pump();
+      await tester.pump();
+
+      // The camera has eased only partway: the marker still shows the
+      // course on screen — course + camera rotation, same frame.
+      final rotation = camera().rotation;
+      expect(rotation, lessThan(-10.0));
+      expect(
+        markerAngle(),
+        closeTo((90 + rotation) * math.pi / 180, 0.05),
+      );
+    },
+  );
+
+  for (final surface in const [Size(411, 915), Size(411, 800), Size(360, 740)]) {
+    testWidgets(
+      'the marker clears the bottom column on $surface, panel open or not',
+      (tester) async {
+        // Regression: the follow-camera framed the fix at a fixed fraction
+        // of the screen height, so on shorter screens (and with the stats
+        // panel open) the marker rendered under the HUD cards — it read as
+        // disappearing.
+        await tester.binding.setSurfaceSize(surface);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final root = createRoot();
+        final cache = createCache();
+        final model = await createModel(root);
+        await model.setMapRotation('course');
+        final source = FakePositionSource();
+
+        await pumpMapPage(
+          tester,
+          model: model,
+          cache: cache,
+          locationSupported: true,
+        );
+        await tester.pump();
+
+        await model.startRecording(source: source, permissionGate: false);
+        for (var i = 0; i < 5; i++) {
+          fakeFix(source, i, lat: 52.5200 + i * 1e-4, heading: 90, speed: 2.0);
+        }
+        await tester.pump();
+        await tester.pump();
+
+        Rect rect(Key key) => tester.getRect(find.byKey(key));
+        bool overlaps(Rect a, Rect b) => a.overlaps(b.deflate(1));
+
+        void assertClear(String state) {
+          final marker = rect(const ValueKey('recording-marker-disc'));
+          for (final key in const [
+            ValueKey('recording-chip'),
+            ValueKey('recording-speed'),
+          ]) {
+            expect(
+              overlaps(marker, rect(key)),
+              isFalse,
+              reason: '$state: the marker sits under $key',
+            );
+          }
+        }
+
+        assertClear('panel closed');
+        await tester.tap(find.byKey(const ValueKey('recording-chip')));
+        await tester.pump();
+        assertClear('panel open');
+        expect(
+          overlaps(
+            rect(const ValueKey('recording-marker-disc')),
+            rect(const ValueKey('stats-panel')),
+          ),
+          isFalse,
+          reason: 'panel open: the marker sits under the stats panel',
+        );
+        // The chip row must fit the narrowest surface without overflowing.
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }
 
 /// Mirrors the app's private `_AppLocaleDelegate` (main.dart): MaterialApp
