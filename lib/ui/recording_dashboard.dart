@@ -63,9 +63,14 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// circularly into the rotation target (see [_onRecordingFix]).
   final List<double> _recentHeadings = [];
 
-  /// Latest compass heading (rotation-vector fused), used only below the
-  /// speed gate — where the GPS course says where the user *was*.
+  /// Latest compass heading (rotation-vector fused), used in compass mode —
+  /// where the GPS course says where the user *was*.
   double? _compassHeading;
+
+  /// Whether the rotation currently takes its heading from the compass
+  /// (below [compassEnterGateMps]) rather than the GPS course; switches only
+  /// across the hysteresis band between the two gates.
+  bool _compassMode = false;
 
   /// The compass subscription, alive only while recording with rotation
   /// on (battery hygiene: no continuous sensor stream otherwise).
@@ -91,11 +96,16 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// many degrees; below, leave the rotation untouched.
   static const double courseDeltaThreshold = 1.0;
 
-  /// Speed gate for the course-up camera rotation: below this ground
-  /// speed (m/s) the course/heading is stale or noise, so the camera
-  /// keeps its last rotation instead of spinning at a standstill. A fix
-  /// with unknown speed does not trip the gate.
-  static const double rotationSpeedGateMps = 1.0;
+  /// Speed gates for switching the rotation's heading source, with
+  /// hysteresis (Coros-style): below [compassEnterGateMps] (~2 km/h) the
+  /// GPS course is stale or noise, so the compass drives the rotation;
+  /// the course takes over again only above [compassExitGateMps]
+  /// (~5 km/h). The two thresholds keep a speed hovering at the boundary
+  /// from flapping the source fix-to-fix. A fix with unknown speed keeps
+  /// the current mode. In compass mode without a compass reading the
+  /// camera holds its last rotation instead of spinning at a standstill.
+  static const double compassEnterGateMps = 0.6;
+  static const double compassExitGateMps = 1.4;
 
   /// Exponential smoothing for the course-up rotation: each fix that
   /// clears the hysteresis moves the camera this fraction of the way to
@@ -233,6 +243,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
       });
       _lastFixAt = null;
       _recentHeadings.clear();
+      _compassMode = false;
     }
     _updateCompassSubscription();
     // Applied best-effort from here: the window flag matters only while
@@ -269,13 +280,30 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     _lastFixAt = now;
     final heading = session?.currentHeading;
     final speed = session?.currentSpeed;
-    final belowGate = speed != null && speed < rotationSpeedGateMps;
+    // Two-threshold hysteresis: enter compass mode below the enter gate,
+    // leave it only above the exit gate, so a speed hovering between the
+    // two does not flap the heading source fix-to-fix. A fix with unknown
+    // speed keeps the current mode.
+    if (speed != null) {
+      if (!_compassMode && speed < compassEnterGateMps) {
+        _compassMode = true;
+        DebugLog.instance.info(
+          'compass mode on (speed=${speed.toStringAsFixed(1)})',
+        );
+      } else if (_compassMode && speed > compassExitGateMps) {
+        _compassMode = false;
+        DebugLog.instance.info(
+          'compass mode off (speed=${speed.toStringAsFixed(1)})',
+        );
+      }
+    }
+    final belowGate = _compassMode;
     final effectiveHeading =
         (belowGate && _compassHeading != null) ? _compassHeading : heading;
     if (belowGate && _compassHeading != null) {
       DebugLog.instance.info(
         'compass override: heading=${_compassHeading!.toStringAsFixed(1)} '
-        'gpsHeading=${heading?.toStringAsFixed(1)} speed=${speed.toStringAsFixed(1)}',
+        'gpsHeading=${heading?.toStringAsFixed(1)} speed=${speed?.toStringAsFixed(1)}',
       );
     }
     // Frame the fix slightly below the vertical center in screen space:

@@ -977,6 +977,78 @@ void main() {
   );
 
   testWidgets(
+    'the course/compass gate has hysteresis: no source flapping between the thresholds',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('on');
+      final source = FakePositionSource();
+      final compass = StreamController<double?>();
+      RecordingDashboardState.compassEvents = () => compass.stream;
+      addTearDown(() {
+        RecordingDashboardState.compassEvents =
+            () => FlutterCompass.events!.map((e) => e.heading);
+        compass.close();
+      });
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      // Course mode while moving: the camera eases to -90 (east up).
+      fakeFix(source, 0, heading: 90, speed: 5.0);
+      for (var i = 1; i < 16; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
+      }
+      await tester.pump();
+      await tester.pump();
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
+
+      // The compass now faces south while the speed drops into the
+      // hysteresis band (0.8 m/s: above the 0.6 enter gate, below the 1.4
+      // exit gate) — still course mode, so the rotation must not swing.
+      compass.add(180.0);
+      await tester.pump();
+      for (var i = 16; i < 24; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 0.8);
+      }
+      await tester.pump();
+      expect(camera().rotation % 360, closeTo(270.0, 2.0));
+
+      // Below the enter gate: compass mode, the rotation follows the compass.
+      for (var i = 24; i < 32; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 0.3);
+      }
+      await tester.pump();
+      expect(camera().rotation % 360, closeTo(180.0, 10.0));
+
+      // Rising but still inside the band (1.0 m/s): hysteresis holds the
+      // compass mode.
+      for (var i = 32; i < 40; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 1.0);
+      }
+      await tester.pump();
+      expect(camera().rotation % 360, closeTo(180.0, 10.0));
+
+      // Above the exit gate: back to the GPS course.
+      for (var i = 40; i < 56; i++) {
+        fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
+      }
+      await tester.pump();
+      expect(camera().rotation % 360, closeTo(270.0, 2.0));
+    },
+  );
+
+  testWidgets(
     'noisy headings rotate the camera smoothly toward their mean',
     (tester) async {
       final root = createRoot();
