@@ -1,4 +1,4 @@
-package io.github.gianfrid.unvisited
+package gianfrid.unvisited
 
 import android.Manifest
 import android.app.Activity
