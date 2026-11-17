@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:latlong2/latlong.dart';
 
@@ -264,9 +265,17 @@ class ImportCoordinator {
   Future<ImportSummary> importViaFilePicker() async {
     final summary = ImportSummary();
     final newPoints = <LatLng>[];
+    // Android's document picker filters by MIME type, and the track
+    // extensions (gpx, fit, kmz, tcx) have no mapping in Android's
+    // MimeTypeMap — an extension filter greys out exactly the files we
+    // accept. Pick unfiltered there and let the content sniffer decide
+    // (SPEC: detection is content-based, never by extension); desktop
+    // pickers honor extensions natively, so keep the filter for them.
+    final android = defaultTargetPlatform == TargetPlatform.android;
     final picked = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['gpx', 'fit', 'kmz', 'kml', 'tcx'],
+      type: android ? FileType.any : FileType.custom,
+      allowedExtensions:
+          android ? null : const ['gpx', 'fit', 'kmz', 'kml', 'tcx'],
     );
     for (final pf in picked) {
       final path = pf.path;

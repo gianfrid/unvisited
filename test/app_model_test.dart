@@ -14,6 +14,7 @@ import 'package:file_picker/file_picker.dart'
         WebOptions,
         WindowsOptions;
 import 'package:flutter/material.dart' show ThemeMode;
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/widgets.dart';
@@ -59,6 +60,29 @@ class FakeFilePicker extends FilePickerPlatform {
 
   final PlatformFile? picked;
   final String? savedTo;
+
+  /// The arguments the last [pickFiles] call received, for asserting how
+  /// the picker was opened (filter vs. unfiltered).
+  (FileType, List<String>?)? lastPickArgs;
+
+  @override
+  Future<List<PlatformFile>> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    lastPickArgs = (type, allowedExtensions);
+    final p = picked;
+    return p == null ? const [] : [p];
+  }
 
   @override
   Future<PlatformFile?> pickFile({
@@ -131,6 +155,46 @@ void main() {
     // Coordinates must come from the imported fixtures, not the Berlin
     // start position.
     expect(model.lastImportedPoints.first.latitude, isNot(52.52));
+  });
+
+  test('file picker on Android opens unfiltered and imports the gpx', () async {
+    // Android's document picker cannot filter by the track extensions
+    // (no MimeTypeMap mapping), so the coordinator must open the picker
+    // with FileType.any there and let the content sniffer decide.
+    final dir = Directory.systemTemp.createTempSync('unvisited-pick');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final gpxPath = '${dir.path}${Platform.pathSeparator}walk.gpx';
+    File(gpxPath).writeAsBytesSync(fixture('main_street_walk.gpx'));
+    final picker = FakeFilePicker(FakePickedFile('walk.gpx', gpxPath));
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = MethodChannelFilePicker());
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    final summary = await model.importViaFilePicker();
+
+    expect(summary.imported, 1);
+    expect(picker.lastPickArgs?.$1, FileType.any);
+    expect(picker.lastPickArgs?.$2, isNull);
+  });
+
+  test('file picker off Android keeps the extension filter', () async {
+    // flutter_test's defaultTargetPlatform is android; pin a desktop one.
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final dir = Directory.systemTemp.createTempSync('unvisited-pick');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final gpxPath = '${dir.path}${Platform.pathSeparator}walk.gpx';
+    File(gpxPath).writeAsBytesSync(fixture('main_street_walk.gpx'));
+    final picker = FakeFilePicker(FakePickedFile('walk.gpx', gpxPath));
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = MethodChannelFilePicker());
+
+    final summary = await model.importViaFilePicker();
+
+    expect(summary.imported, 1);
+    expect(picker.lastPickArgs?.$1, FileType.custom);
+    expect(picker.lastPickArgs?.$2, ['gpx', 'fit', 'kmz', 'kml', 'tcx']);
   });
 
   test('re-importing the same files is a no-op for the refit state', () async {
