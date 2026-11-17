@@ -1,9 +1,7 @@
 # Rolling release APK: builds a signed release APK on every push to `slop`
-# (plus a daily cron and manual dispatch) and attaches it to the moving
-# `rolling` GitHub release, where Obtanium picks it up (repo
-# gianfrid/unvisited, asset unvisited-rolling-arm64.apk). One workflow for
-# all triggers, so the run_number versionCode stays monotonic across pushes
-# and scheduled runs alike.
+# (or manual dispatch) and attaches it to the moving `rolling` GitHub
+# release, where Obtanium picks it up (repo gianfrid/unvisited, asset
+# unvisited-rolling-arm64.apk).
 #
 # Signing: the release keystore is a repo secret, passed via env vars —
 # see android/app/build.gradle.kts. Set these secrets in the repo settings:
@@ -20,8 +18,6 @@ name: Rolling release APK
 on:
   push:
     branches: [slop]
-  schedule:
-    - cron: '0 3 * * *' # 03:00 UTC daily
   workflow_dispatch:
 
 permissions:
