@@ -7,7 +7,7 @@ project(runner LANGUAGES CXX)
 set(BINARY_NAME "unvisited")
 # The unique GTK application identifier for this application. See:
 # https://wiki.gnome.org/HowDoI/ChooseApplicationID
-set(APPLICATION_ID "io.github.gianfrid.unvisited")
+set(APPLICATION_ID "gianfrid.unvisited")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -129,7 +129,7 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/icons/"
   COMPONENT Runtime)
 
 # Freedesktop identity: the session resolves the running window's icon by
-# matching the application id (io.github.gianfrid.unvisited, see my_application.cc)
+# matching the application id (gianfrid.unvisited, see my_application.cc)
 # against a .desktop file. There is no per-window mechanism on Wayland at
 # all (GTK's backend ignores the GTK window icon there), so the entry is
 # what the dash and taskbar resolve this app by. It lands in the user's
@@ -140,7 +140,7 @@ option(INSTALL_DESKTOP_FILES
   "Install the desktop entry and hicolor icon into the user's XDG data dirs" ON)
 if(INSTALL_DESKTOP_FILES AND DEFINED ENV{HOME})
   install(CODE "
-    file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/io.github.gianfrid.unvisited.desktop\"
+    file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/gianfrid.unvisited.desktop\"
          DESTINATION \"\$ENV{HOME}/.local/share/applications\")
     set(_hicolor \"\$ENV{HOME}/.local/share/icons/hicolor/256x256/apps\")
     file(COPY \"${CMAKE_CURRENT_SOURCE_DIR}/icons/256x256.png\" DESTINATION \"\${_hicolor}\")
