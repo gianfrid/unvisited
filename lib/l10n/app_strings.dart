@@ -135,7 +135,6 @@ abstract class AppStrings {
   // Rotation mode names (recording chip button tooltip, Settings segments).
   String get rotationModeNorth;
   String get rotationModeCourse;
-  String get rotationModeCompass;
 
   String get language;
   String get languageSubtitle;
@@ -428,8 +427,6 @@ class EnglishStrings extends AppStrings {
   String get rotationModeNorth => 'North up';
   @override
   String get rotationModeCourse => 'Course up';
-  @override
-  String get rotationModeCompass => 'Compass up';
   @override
   String get language => 'Language';
   @override
@@ -739,8 +736,6 @@ class ItalianStrings extends AppStrings {
   String get rotationModeNorth => 'Nord in alto';
   @override
   String get rotationModeCourse => 'Corso in alto';
-  @override
-  String get rotationModeCompass => 'Bussola in alto';
   @override
   String get language => 'Lingua';
   @override

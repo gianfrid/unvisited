@@ -861,11 +861,18 @@ void main() {
       await reloaded.load();
       expect(reloaded.mapRotation, 'course');
 
-      await reloaded.setMapRotation('compass');
-      expect(reloaded.mapRotation, 'compass');
-
       await reloaded.setMapRotation('north');
       expect(reloaded.mapRotation, 'north');
+    });
+
+    test('the removed compass mode migrates to course', () async {
+      final indexFile =
+          '${root.path}${Platform.pathSeparator}index.json';
+      await File(indexFile).writeAsString(
+          '{"settings": {"mapRotation": "compass"}, "tracks": []}');
+      final legacyCompass = AppModel(TrackStore(root));
+      await legacyCompass.load();
+      expect(legacyCompass.mapRotation, 'course');
     });
 
     test('legacy on/off settings migrate to course/north', () async {

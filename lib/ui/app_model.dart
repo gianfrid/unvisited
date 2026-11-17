@@ -458,13 +458,13 @@ class AppModel extends ChangeNotifier {
   String get tileLayer => store.tileLayer;
 
   /// The recording follow-camera's rotation mode: 'north' (the default —
-  /// the map stays north-up), 'course' (course-up) or 'compass'
-  /// (compass-up).
+  /// the map stays north-up) or 'course' (course-up, where below the
+  /// low-speed gate the compass takes over the rotation).
   String get mapRotation => store.mapRotation;
 
   /// The rotation modes in the order the recording chip's button cycles
   /// through them.
-  static const rotationModes = <String>['north', 'course', 'compass'];
+  static const rotationModes = <String>['north', 'course'];
 
   /// Whether the screen stays on while recording (the default). The
   /// dashboard's model listener applies the latch on every change, so a

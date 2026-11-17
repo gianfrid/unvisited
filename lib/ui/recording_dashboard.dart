@@ -26,15 +26,15 @@ double nearestEquivalentRotation(double course, double reference) =>
 /// the Settings segments.
 String rotationModeName(AppStrings strings, String mode) => switch (mode) {
       'course' => strings.rotationModeCourse,
-      'compass' => strings.rotationModeCompass,
       _ => strings.rotationModeNorth,
     };
 
-/// The chip button's icon for a rotation mode.
+/// The chip button's icon for a rotation mode: a compass rose while the
+/// map is locked north-up, the travel arrow (the position marker's glyph)
+/// while the camera rides the course.
 IconData rotationModeIcon(String mode) => switch (mode) {
-      'course' => Icons.trending_flat,
-      'compass' => Icons.compass_calibration,
-      _ => Icons.north,
+      'course' => Icons.navigation,
+      _ => Icons.explore,
     };
 
 /// The recording dashboard: everything a running session shows, and the
@@ -117,8 +117,9 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// the course takes over again only above [compassExitGateMps]
   /// (~5 km/h). The two thresholds keep a speed hovering at the boundary
   /// from flapping the source fix-to-fix. A fix with unknown speed keeps
-  /// the current mode. In compass mode without a compass reading the
-  /// camera holds its last rotation instead of spinning at a standstill.
+  /// the current mode. While the compass drives the rotation without a
+  /// compass reading the camera holds its last rotation instead of
+  /// spinning at a standstill.
   static const double compassEnterGateMps = 0.6;
   static const double compassExitGateMps = 1.4;
 
@@ -283,13 +284,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     // the rotation is gated on the device's *reported* heading, not the
     // bridged course: a magnetometer-less or bearing-only fix stream
     // keeps the camera north-up, because a bearing between fixes says
-    // where the user was, not where they face. 'compass': the rotation
-    // follows the compass whenever one is available, regardless of speed.
-    // No heading yet — a first fix — leaves the camera rotation alone.
-    // In compass-driven rotation without a compass reading the camera
-    // holds its last rotation: at a standstill the reported heading is
-    // stale, not a direction. A fix arriving more than [gpsLossHold]
-    // after the previous one is stale too: hold the rotation on it.
+    // where the user was, not where they face. No heading yet — a first
+    // fix — leaves the camera rotation alone. In compass-driven rotation
+    // (below the speed gate) without a compass reading the camera holds
+    // its last rotation: at a standstill the reported heading is stale,
+    // not a direction. A fix arriving more than [gpsLossHold] after the
+    // previous one is stale too: hold the rotation on it.
     final now = DateTime.now();
     final stale = _lastFixAt != null && now.difference(_lastFixAt!) > gpsLossHold;
     _lastFixAt = now;
@@ -313,10 +313,9 @@ class RecordingDashboardState extends State<RecordingDashboard> {
       }
     }
     final mode = widget.model.mapRotation;
-    // 'compass' mode drives the rotation from the compass whenever one is
-    // available, regardless of speed; 'course' mode does so only in
-    // compass mode (below the hysteresis gate).
-    final compassDriven = mode == 'compass' || _compassMode;
+    // Below the hysteresis gate the compass drives the rotation instead
+    // of the (stale or noisy) GPS course.
+    final compassDriven = _compassMode;
     final effectiveHeading =
         (compassDriven && _compassHeading != null) ? _compassHeading : heading;
     if (compassDriven && _compassHeading != null) {

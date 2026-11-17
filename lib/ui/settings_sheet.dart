@@ -180,10 +180,6 @@ class SettingsSheet extends StatelessWidget {
                           value: 'course',
                           label: Text(strings.rotationModeCourse),
                         ),
-                        ButtonSegment(
-                          value: 'compass',
-                          label: Text(strings.rotationModeCompass),
-                        ),
                       ],
                       selected: {model.mapRotation},
                       onSelectionChanged: (selection) =>

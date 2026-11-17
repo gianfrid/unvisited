@@ -211,8 +211,9 @@ class AppSettings {
   final String tileLayer;
 
   /// The recording follow-camera's rotation mode: 'north' (the default —
-  /// the map stays north-up), 'course' (course-up), or 'compass'
-  /// (compass-up). Legacy stored values 'off'/'on' migrate to
+  /// the map stays north-up) or 'course' (course-up, where below the
+  /// low-speed gate the compass takes over the rotation). Legacy stored
+  /// values 'off'/'on' and the removed 'compass' mode migrate to
   /// 'north'/'course' in [AppSettings.fromMap].
   final String mapRotation;
 
@@ -240,6 +241,9 @@ class AppSettings {
   static String _migrateMapRotation(String? v) => switch (v) {
         'on' => 'course',
         'off' => 'north',
+        // The removed explicit compass mode: course mode now contains
+        // its low-speed compass takeover.
+        'compass' => 'course',
         _ => v ?? 'north',
       };
 

@@ -298,7 +298,7 @@ class _MapPageState extends State<MapPage> {
   }
 
   /// The recording marker: at the last accepted fix. With a rotating mode
-  /// (`mapRotation` 'course' or 'compass') the nose is pinned screen-up — the camera
+  /// (`mapRotation` 'course') the nose is pinned screen-up — the camera
   /// carries the course, and pinning keeps the marker from swinging while
   /// the rotation eases in. With course-up off the marker rotates to the
   /// course on screen — a geographic bearing shows at screen bearing
@@ -323,7 +323,7 @@ class _MapPageState extends State<MapPage> {
               height: 44,
               child: Transform.rotate(
                 key: const ValueKey('recording-marker-rotate'),
-                // Rotating modes ('course'/'compass'): pinned screen-up.
+                // Rotating mode ('course'): pinned screen-up.
                 // 'north': the nose follows the course on screen (bearing +
                 // rotation, positive rotation turns the map clockwise).
                 angle: widget.model.mapRotation != 'north'
