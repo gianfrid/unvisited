@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -75,12 +76,25 @@ class RecordingDashboard extends StatefulWidget {
   RecordingDashboardState createState() => RecordingDashboardState();
 }
 
-class RecordingDashboardState extends State<RecordingDashboard> {
+class RecordingDashboardState extends State<RecordingDashboard>
+    with TickerProviderStateMixin {
   /// The follow-camera: a new session arms it, a user pan or two-finger
   /// rotation releases it — a fix must never pull the view back against
   /// the user's hand. The locate button's shortcut re-arms it immediately
   /// via [rearmFollow]/[armFollow].
   bool _follow = false;
+
+  /// The follow-camera glide: each fix stores its target here and the
+  /// ticker below eases the camera toward it frame by frame (flutter_map's
+  /// move is instant, so the 1 Hz fixes would otherwise stutter the view).
+  /// Null when nothing is gliding.
+  ({LatLng center, double zoom, double rotation})? _glideTarget;
+
+  /// The glide ticker, alive only while a target is pending or in flight.
+  Ticker? _glideTicker;
+
+  /// Elapsed time at the previous glide frame, for the per-frame delta.
+  Duration _prevGlideElapsed = Duration.zero;
 
   /// When the last fix was applied; a longer gap than [gpsLossHold] means
   /// the heading is stale and the rotation is held.
@@ -118,10 +132,22 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// survives a session's end even on a process kill.
   bool _screenOn = false;
 
-  /// Hysteresis for the course-up camera rotation: only rotate the
-  /// camera when the course delta vs its current rotation reaches this
-  /// many degrees; below, leave the rotation untouched.
+  /// Hysteresis for the course-up camera rotation: a fix only sets a new
+  /// rotation target when the course delta vs the current rotation reaches
+  /// this many degrees; below, the target keeps the current rotation.
   static const double courseDeltaThreshold = 1.0;
+
+  /// Time constant of the follow-camera glide (exponential approach,
+  /// critical-damped per frame): τ ≈ 350 ms, so the camera converges over
+  /// roughly a second after each fix instead of snapping at 1 Hz.
+  static const Duration followGlideTau = Duration(milliseconds: 350);
+
+  /// Settle epsilons below which the glide stops and the ticker idles:
+  /// the camera must not repaint at a standstill.
+  static const double _glideZoomEpsilon = 0.001;
+  static const double _glideLatEpsilon = 1e-7;
+  static const double _glideLonEpsilon = 1e-7;
+  static const double _glideRotationEpsilon = 0.05;
 
   /// Speed gates for switching the rotation's heading source, with
   /// hysteresis (Coros-style): below [compassEnterGateMps] (~2 km/h) the
@@ -134,12 +160,6 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// spinning at a standstill.
   static const double compassEnterGateMps = 0.6;
   static const double compassExitGateMps = 1.4;
-
-  /// Exponential smoothing for the course-up rotation: each fix that
-  /// clears the hysteresis moves the camera this fraction of the way to
-  /// the target instead of snapping, so the rotation eases in over a few
-  /// 1 Hz fixes rather than stepping.
-  static const double rotationSmoothingFactor = 0.4;
 
   /// Number of recent usable headings averaged (circular mean) into the
   /// rotation target, so 1 Hz heading noise glides instead of stepping the
@@ -221,6 +241,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
 
   @override
   void dispose() {
+    _stopGlide();
     widget.model.removeListener(_onModelChanged);
     widget.model.recordingLive.removeListener(_onRecordingFix);
     _mapEvents?.cancel();
@@ -234,6 +255,9 @@ class RecordingDashboardState extends State<RecordingDashboard> {
   /// export shows whether a drag or a stray tap disengaged the follow.
   void _releaseFollow(MapEventSource source) {
     DebugLog.instance.info('follow released by gesture (source=${source.name})');
+    // The pan owns the camera now: stop any in-flight glide, or the next
+    // frame would pull the view back against the user's hand.
+    _stopGlide();
     setState(() => _follow = false);
   }
 
@@ -284,6 +308,7 @@ class RecordingDashboardState extends State<RecordingDashboard> {
       _lastFixAt = null;
       _recentHeadings.clear();
       _compassMode = false;
+      _stopGlide();
     }
     _updateCompassSubscription();
     // Applied best-effort from here: the window flag matters only while
@@ -352,13 +377,15 @@ class RecordingDashboardState extends State<RecordingDashboard> {
       widget.mapController.camera.zoom,
       followZoomFloor,
     );
-    var center = _framedCenter(lat, lon, zoom);
+    final center = _framedCenter(lat, lon, zoom);
+    double targetRotation;
     if (effectiveHeading == null ||
         stale ||
         mode == 'north' ||
         (compassDriven && _compassHeading == null)) {
-      widget.mapController.move(center, zoom);
-      _publishRotation();
+      // No usable heading this fix: glide to the new center/zoom but keep
+      // the current rotation.
+      targetRotation = widget.mapController.camera.rotation;
     } else {
       // With a reported heading, currentCourse is that same heading. The
       // rotation target is the circular mean of the last few usable
@@ -384,24 +411,90 @@ class RecordingDashboardState extends State<RecordingDashboard> {
       final rotation = widget.mapController.camera.rotation;
       final courseDelta =
           nearestEquivalentRotation(target, rotation) - rotation;
-      if (courseDelta.abs() >= courseDeltaThreshold) {
-        final applied = rotation + courseDelta * rotationSmoothingFactor;
-        DebugLog.instance.info(
-          'rotate: mean=${meanHeading.toStringAsFixed(1)} '
-          'target=${target.toStringAsFixed(1)} '
-          'from=${rotation.toStringAsFixed(1)} to=${applied.toStringAsFixed(1)}',
-        );
-        widget.mapController.moveAndRotate(
-          center,
-          zoom,
-          applied,
-        );
-        _publishRotation();
-      } else {
-        widget.mapController.move(center, zoom);
-        _publishRotation();
-      }
+      targetRotation =
+          courseDelta.abs() >= courseDeltaThreshold ? target : rotation;
+      DebugLog.instance.info(
+        'glide target: mean=${meanHeading.toStringAsFixed(1)} '
+        'rotation=${targetRotation.toStringAsFixed(1)}',
+      );
     }
+    _setGlideTarget(center, zoom, targetRotation);
+  }
+
+  /// Stores the camera target for the next fix (or re-frame) and starts the
+  /// glide ticker if it is not running. The ticker eases the camera toward
+  /// it frame by frame; flutter_map's move is instant, so without it the
+  /// 1 Hz fixes would stutter the view.
+  void _setGlideTarget(LatLng center, double zoom, double rotation) {
+    _glideTarget = (center: center, zoom: zoom, rotation: rotation);
+    _prevGlideElapsed = Duration.zero;
+    _glideTicker ??= createTicker(_glideTick)..start();
+  }
+
+  /// One glide frame: exponential approach (critical damped, τ =
+  /// [followGlideTau]) of center, zoom and rotation toward the target,
+  /// rotation through the short arc. One `moveAndRotate` per frame, and the
+  /// marker rotation is published so the marker layer tracks the same
+  /// frame. Stops the ticker once settled — no repaint at a standstill.
+  void _glideTick(Duration elapsed) {
+    final target = _glideTarget;
+    if (!mounted || target == null) {
+      _stopGlide();
+      return;
+    }
+    final dtMs = (elapsed - _prevGlideElapsed).inMilliseconds;
+    _prevGlideElapsed = elapsed;
+    final k =
+        dtMs <= 0
+            ? 0.0
+            : 1 - math.exp(-dtMs / followGlideTau.inMilliseconds.toDouble());
+    final camera = widget.mapController.camera;
+    final newLat =
+        camera.center.latitude + (target.center.latitude - camera.center.latitude) * k;
+    final newLon =
+        camera.center.longitude +
+        (target.center.longitude - camera.center.longitude) * k;
+    final newZoom = camera.zoom + (target.zoom - camera.zoom) * k;
+    final rotDelta =
+        nearestEquivalentRotation(target.rotation, camera.rotation) -
+        camera.rotation;
+    final newRotation = camera.rotation + rotDelta * k;
+    widget.mapController.moveAndRotate(
+      LatLng(newLat, newLon),
+      newZoom,
+      newRotation,
+    );
+    _publishRotation();
+    // Settle on the *remaining* distance, not the frame's step: stopping on
+    // a small step would leave up to step/(1-k) of residual behind.
+    final remainingRot =
+        (nearestEquivalentRotation(target.rotation, newRotation) - newRotation)
+            .abs();
+    if (k > 0 &&
+        (target.zoom - newZoom).abs() < _glideZoomEpsilon &&
+        (target.center.latitude - newLat).abs() < _glideLatEpsilon &&
+        (target.center.longitude - newLon).abs() < _glideLonEpsilon &&
+        remainingRot < _glideRotationEpsilon) {
+      // Settled: snap to the exact target so no epsilon-sized residual
+      // (e.g. the zoom floor) is left behind, then idle.
+      widget.mapController.moveAndRotate(
+        target.center,
+        target.zoom,
+        target.rotation,
+      );
+      _publishRotation();
+      _stopGlide();
+    }
+  }
+
+  /// Stops the glide and forgets the target: the user's hand owns the
+  /// camera after a pan, the session owns it after it ends.
+  void _stopGlide() {
+    _glideTicker?.stop();
+    _glideTicker?.dispose();
+    _glideTicker = null;
+    _glideTarget = null;
+    _prevGlideElapsed = Duration.zero;
   }
 
   /// The camera center for a fix: shifted opposite screen-up (geographic
@@ -446,9 +539,12 @@ class RecordingDashboardState extends State<RecordingDashboard> {
     // schedules; measure and move once it has.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      widget.mapController.move(
+      // Glide to the re-framed position (panel toggle), keeping the
+      // current rotation.
+      _setGlideTarget(
         _framedCenter(lat, lon, zoom),
         zoom,
+        widget.mapController.camera.rotation,
       );
     });
   }

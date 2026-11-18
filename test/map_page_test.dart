@@ -600,8 +600,7 @@ void main() {
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
     fakeFix(source, 1, lat: 52.5201);
-    await tester.pump();
-    await tester.pump();
+    await pumpGlide(tester);
 
     // Follow-camera: each accepted fix centers the view on itself, framed
     // slightly below screen center (north-up: the center sits north of the
@@ -687,8 +686,8 @@ void main() {
       for (var i = 2; i < 16; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90);
       }
-      await tester.pump();
-      await tester.pump();
+      // The glide eases the camera to the fix targets over ~1 s of frames.
+      await pumpGlide(tester);
 
       // Course-up: the east-heading fixes rotate the camera to -90 (east
       // points screen-up; flutter_map rotation is clockwise-positive), and
@@ -754,16 +753,14 @@ void main() {
           MapController.of(tester.element(find.byType(TileLayer))).camera;
 
       await model.startRecording(source: source, permissionGate: false);
-      // One fix moves the rotation only part of the way (smoothing k=0.4):
-      // 0 -> ~-36, not straight to -90.
+      // One fix: the glide converges on the course (0 -> -90), not snapping.
       fakeFix(source, 0, heading: 90, speed: 5.0);
-      await tester.pump();
-      expect(camera().rotation % 360, closeTo(324.0, 0.1));
+      await pumpGlide(tester);
+      expect(camera().rotation % 360, closeTo(270.0, 0.1));
       for (var i = 1; i < 16; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
       }
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(270.0, 1.0));
 
       // Slow fix with a different heading: the camera holds its rotation
@@ -771,7 +768,7 @@ void main() {
       // only ~5.5 m from the last one — a backward jump would be rejected
       // by the speed-outlier filter.
       fakeFix(source, 16, lat: 52.5216 + 0.00005, heading: 180, speed: 0.2);
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(270.0, 1.0));
       // The camera frames the fix below screen center: with the camera
       // held at -90°, screen-up is geographic east, so the center sits
@@ -785,7 +782,7 @@ void main() {
         fakeFix(source, i, lat: 52.5216 + 0.00005 + (i - 16) * 1e-4,
             heading: 180, speed: 3.0);
       }
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(180.0, 1.0));
     },
   );
@@ -919,8 +916,7 @@ void main() {
       // the camera north-up, the center sits north of the fix, so the fix
       // renders below the vertical center.
       fakeFix(source, 0, lat: 52.5200, lon: 13.4050);
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().center.latitude, greaterThan(52.5200));
       expect(camera().center.longitude, closeTo(13.4050, 1e-5));
       // Zoom floor: even if the user zoomed out to 14, the follow keeps 17.
@@ -961,8 +957,7 @@ void main() {
       for (var i = 1; i < 16; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
       }
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(270.0, 1.0));
 
       // Standstill with a stale GPS heading but a live compass facing
@@ -972,7 +967,7 @@ void main() {
       for (var i = 16; i < 32; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 0.2);
       }
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(180.0, 10.0));
     },
   );
@@ -1010,8 +1005,7 @@ void main() {
       for (var i = 1; i < 16; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
       }
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(270.0, 1.0));
 
       // The compass now faces south while the speed drops into the
@@ -1022,14 +1016,14 @@ void main() {
       for (var i = 16; i < 24; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 0.8);
       }
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(270.0, 2.0));
 
       // Below the enter gate: compass mode, the rotation follows the compass.
       for (var i = 24; i < 32; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 0.3);
       }
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(180.0, 10.0));
 
       // Rising but still inside the band (1.0 m/s): hysteresis holds the
@@ -1037,15 +1031,17 @@ void main() {
       for (var i = 32; i < 40; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 1.0);
       }
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(180.0, 10.0));
 
       // Above the exit gate: back to the GPS course.
       for (var i = 40; i < 56; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
       }
-      await tester.pump();
-      expect(camera().rotation % 360, closeTo(270.0, 2.0));
+      await pumpGlide(tester);
+      // The window's mean sits a couple of degrees off 90 (the alternating
+      // tail), but the camera follows that smoothed mean, not the raw swing.
+      expect(camera().rotation % 360, closeTo(270.0, 4.0));
     },
   );
 
@@ -1075,8 +1071,7 @@ void main() {
       for (var i = 1; i < 16; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4, heading: 90, speed: 5.0);
       }
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(270.0, 1.0));
 
       // Headings now alternate 80/100 around the course. The smoothed
@@ -1087,18 +1082,24 @@ void main() {
       for (var i = 16; i < 28; i++) {
         fakeFix(source, i, lat: 52.5201 + i * 1e-4,
             heading: i % 2 == 0 ? 80.0 : 100.0, speed: 5.0);
-        await tester.pump();
+        // One 100 ms glide frame per fix: the camera advances only a
+        // fraction of the way, so per-frame rotation steps stay far below
+        // the 10° heading swing (an unsmoothed snap would step ~10°).
+        await tester.pump(const Duration(milliseconds: 100));
         final r = camera().rotation;
-        expect((r - prevRotation).abs(), lessThan(3.0),
+        expect((r - prevRotation).abs(), lessThan(4.0),
             reason: 'the rotation stepped with the raw heading noise');
         prevRotation = r;
       }
-      expect(camera().rotation % 360, closeTo(270.0, 2.0));
+      await pumpGlide(tester);
+      // The window's mean sits a couple of degrees off 90 (the alternating
+      // tail), but the camera follows that smoothed mean, not the raw swing.
+      expect(camera().rotation % 360, closeTo(270.0, 4.0));
     },
   );
 
   testWidgets(
-    'the chip rotation button cycles north → course → compass → north',
+    'the chip rotation button toggles north ↔ course',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
@@ -1164,8 +1165,7 @@ void main() {
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0, heading: 90);
       fakeFix(source, 1, lat: 52.5201, heading: 90);
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
 
       // mapRotation defaults to north: the camera never rotates, but the
       // follow still centers on the fix (framed below screen center, so
@@ -1207,14 +1207,25 @@ void main() {
       }
 
       await model.startRecording(source: source, permissionGate: false);
-      // One fix on a 90° course: the camera has eased only partway (-36°),
-      // so the marker must show the course on screen, not stay pinned up:
-      // 90 + (-36) = 54°.
+      // One fix on a 90° course, mid-glide after a few frames: the camera
+      // has eased only partway toward -90, so the marker must show the
+      // course on screen, not stay pinned up: angle = course + rotation.
       fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
-      await tester.pump();
-      await tester.pump();
-      expect(camera().rotation % 360, closeTo(324.0, 0.1));
-      expect(markerAngle(), closeTo(54 * math.pi / 180, 1e-6));
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final rotation = camera().rotation;
+      expect(rotation % 360, lessThan(350.0));
+      expect(rotation % 360, greaterThan(280.0));
+      expect(
+        markerAngle(),
+        closeTo((90 + rotation) * math.pi / 180, 0.05),
+        reason: 'mid-glide the marker still shows course + camera rotation',
+      );
+      // Settled: the camera converges on the course and the nose nets to up.
+      await pumpGlide(tester);
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
+      expect(markerAngle(), closeTo(0.0, 0.05));
     },
   );
 
@@ -1289,8 +1300,7 @@ void main() {
     await model.startRecording(source: source, permissionGate: false);
     fakeFix(source, 0);
     fakeFix(source, 1, lat: 52.5201);
-    await tester.pump();
-    await tester.pump();
+    await pumpGlide(tester);
 
     // A user pan releases the follow: the next fix stays where the pan put
     // it, and the toolbar keeps the Locate action to come back. (Drag from
@@ -1301,7 +1311,7 @@ void main() {
       const Offset(0, 80),
     );
     fakeFix(source, 2, lat: 52.5202);
-    await tester.pump();
+    await pumpGlide(tester);
     final zoom = camera().zoom;
     expect(find.byTooltip('Center on current position'), findsOneWidget);
 
@@ -1317,8 +1327,7 @@ void main() {
       reason: 'the tap returned the camera to the session fix',
     );
     fakeFix(source, 3, lat: 52.5203);
-    await tester.pump();
-    await tester.pump();
+    await pumpGlide(tester);
     // The re-armed follow frames the fix below screen center, so the
     // center sits slightly north of it.
     expect(camera().center.latitude, greaterThan(52.5203));
@@ -1354,15 +1363,13 @@ void main() {
     // through to the real locate attempt, whose fix arms the follow.
     await model.startRecording(source: source, permissionGate: false);
     await tester.tap(find.byTooltip('Center on current position'));
-    await tester.pump();
-    await tester.pump();
+    await pumpGlide(tester);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(camera().center.latitude, closeTo(52.5200, 1e-6));
     // The follow armed on the attempt's success: the session's fix takes
     // the camera from here (framed below screen center, so north of it).
     fakeFix(source, 0, lat: 52.5201);
-    await tester.pump();
-    await tester.pump();
+    await pumpGlide(tester);
     expect(camera().center.latitude, greaterThan(52.5201));
   });
 
@@ -1383,8 +1390,7 @@ void main() {
         cache: cache,
         locationSupported: true,
       );
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
 
       final mapRect = tester.getRect(find.byType(FlutterMap));
       Rect rectOf(String tooltip) => tester.getRect(find.byTooltip(tooltip));
@@ -1413,8 +1419,7 @@ void main() {
         position: {'lat': 52.5200, 'lon': 13.4050},
       );
       await tester.tap(find.byTooltip('Center on current position'));
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
       final record = rectOf('Record');
       final locateAfter = rectOf('Center on current position');
       expect(
@@ -1428,8 +1433,7 @@ void main() {
       // stack; the header keeps Tracks and Settings only.
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0);
-      await tester.pump();
-      await tester.pump();
+      await pumpGlide(tester);
       expect(find.text('Record'), findsNothing);
       expect(
         find.text('Stop'),
@@ -3272,6 +3276,51 @@ void main() {
   });
 
   testWidgets(
+    'the follow-camera glides: rotation converges monotonically, no snap',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await model.setMapRotation('course');
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
+      // Frame by frame: every step moves toward -90 (mod 360 = 270) through
+      // the short arc and never more than a fraction of the remaining gap —
+      // an instant move would jump the full 90° in the first frame.
+      var prev = camera().rotation;
+      var maxStep = 0.0;
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        final r = camera().rotation;
+        final step = (nearestEquivalentRotation(r, prev) - prev).abs();
+        maxStep = math.max(maxStep, step);
+        // Monotone approach: the remaining gap never grows.
+        final gapBefore =
+            (nearestEquivalentRotation(-90, prev) - prev).abs();
+        final gapAfter = (nearestEquivalentRotation(-90, r) - r).abs();
+        expect(gapAfter, lessThanOrEqualTo(gapBefore + 1e-9));
+        prev = r;
+      }
+      expect(maxStep, lessThan(30.0),
+          reason: 'a single frame snapped most of the way to the course');
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
+    },
+  );
+
+  testWidgets(
     'the marker shows the course on screen while the camera eases in',
     (tester) async {
       // Regression: the marker used to be pinned screen-up in course mode,
@@ -3305,13 +3354,14 @@ void main() {
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0, heading: 90);
       fakeFix(source, 1, lat: 52.5201, heading: 90);
-      await tester.pump();
-      await tester.pump();
-
-      // The camera has eased only partway: the marker still shows the
-      // course on screen — course + camera rotation, same frame.
+      // Mid-glide (a few frames, not converged): the marker still shows the
+      // course on screen — course + camera rotation, in the same frame.
+      for (var i = 0; i < 3; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
       final rotation = camera().rotation;
       expect(rotation, lessThan(-10.0));
+      expect(rotation, greaterThan(-80.0));
       expect(
         markerAngle(),
         closeTo((90 + rotation) * math.pi / 180, 0.05),
@@ -3454,6 +3504,15 @@ class _TestCupertinoDelegate
 
 /// One walking fix per second north along the Greenwich meridian, ~11.1 m
 /// between consecutive points.
+/// Pumps the follow-camera's glide ticker to convergence: 50 ms fake-time
+/// frames, ~4 s total ≈ 11 glide time constants, after which the camera
+/// has settled and the ticker is idle.
+Future<void> pumpGlide(WidgetTester tester, {int frames = 80}) async {
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void fakeFix(
   FakePositionSource source,
   int second, {
