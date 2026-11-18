@@ -17,6 +17,12 @@ import 'package:latlong2/latlong.dart';
 
 import 'road_format.dart';
 import 'road_store.dart';
+import 'way_geometry.dart';
+
+/// One viewport way's still-unmatched geometry: the way's id (stable
+/// across re-extracts) and the sub-polylines no corridor covers — the
+/// dark remainder the unvisited-roads overlay draws.
+typedef OverlayWay = (String id, List<List<LatLng>> stretches);
 
 /// The viewport's covered/total road question, answered in meters.
 class CoverageReport {
@@ -60,7 +66,8 @@ class CoverageReport {
 /// camera re-centers at an unchanged rectangle skip all work.
 class ViewportCoverage {
   ViewportCoverage(this._store,
-      {this.maxTilesPerAxis = 6, this.maxCachedBuckets = 64});
+      {this.maxTilesPerAxis = 6, this.overlayMaxTiles = 3,
+       this.maxCachedBuckets = 64});
 
   final RoadStore _store;
 
@@ -68,6 +75,12 @@ class ViewportCoverage {
   /// this report nothing - whole-region compute is seconds even on
   /// desktop, and the share is meaningless at that zoom anyway.
   final int maxTilesPerAxis;
+
+  /// The overlay's floor, tighter than the chip's: drawing every
+  /// unmatched way across a 6x6-tile city view is dense noise, so the
+  /// dashed layer only renders when the viewport spans at most this
+  /// many z12 tiles per axis. The chip keeps its wider floor.
+  final int overlayMaxTiles;
 
   final int maxCachedBuckets;
 
@@ -90,6 +103,63 @@ class ViewportCoverage {
   void invalidate() {
     _corridorVersion++;
     _lastReport = null;
+    _lastOverlay = const [];
+  }
+
+  String? _lastOverlayRectangle;
+
+  int _computedOverlayAtVersion = -1;
+
+  List<OverlayWay> _lastOverlay = const [];
+
+  /// The still-unvisited stretches of every way in the viewport, for
+  /// the dashed overlay layer (see [coverage] for the corner semantics
+  /// and the corridor merge). Geometry reads go through the store's own
+  /// bucket LRU: one transient decode per settle, no second geometry
+  /// cache here. Ways fully covered by some corridor draw nothing, so
+  /// they stay out. Below the [overlayMaxTiles] floor the list is
+  /// empty - the chip keeps the wider view, the overlay abstains.
+  Future<List<OverlayWay>> unvisitedIn(
+    LatLng southWest,
+    LatLng northEast,
+    Map<String, List<List<LatLng>>> corridorsByWay,
+  ) async {
+    final rectangle = _rectangleFor(southWest, northEast,
+        maxTiles: overlayMaxTiles);
+    if (rectangle == null) {
+      if (identical(_lastOverlay, const [])) return _lastOverlay;
+      _lastOverlay = const [];
+      _lastOverlayRectangle = null;
+      return _lastOverlay;
+    }
+    final (x0, y0, x1, y1) = rectangle;
+    final memoKey = '$x0,$y0,$x1,$y1';
+    if (memoKey == _lastOverlayRectangle &&
+        _computedOverlayAtVersion == _corridorVersion) {
+      return _lastOverlay;
+    }
+    _lastOverlayRectangle = memoKey;
+
+    // Multi-bucket ways register in every bucket their bbox touches -
+    // deduplicate by id; the stretches would be identical anyway.
+    final seen = <String>{};
+    final out = <OverlayWay>[];
+    for (var x = x0; x <= x1; x++) {
+      for (var y = y0; y <= y1; y++) {
+        final tileKey = _tileKey(x, y);
+        if (!_hasBucket(tileKey)) continue;
+        for (final way in _store.bucketByKey(tileKey)) {
+          if (!seen.add(way.id)) continue;
+          final stretches =
+              unvisitedStretches(way.points, corridorsByWay[way.id] ?? const []);
+          if (stretches.isNotEmpty) out.add((way.id, stretches));
+        }
+      }
+      await Future<void>.delayed(Duration.zero);
+    }
+    _computedOverlayAtVersion = _corridorVersion;
+    _lastOverlay = out;
+    return out;
   }
 
   String _tileKey(int x, int y) => '${x}_$y';
@@ -103,15 +173,17 @@ class ViewportCoverage {
 
   /// The z12 tile rectangle (x0, y0, x1, y1) covering the viewport from
   /// its [southWest] to its [northEast] corner, or null when it is
-  /// wider or taller than [maxTilesPerAxis] tiles.
-  (int, int, int, int)? _rectangleFor(LatLng southWest, LatLng northEast) {
+  /// wider or taller than [maxTiles] tiles (the caller's floor).
+  (int, int, int, int)? _rectangleFor(LatLng southWest, LatLng northEast,
+      {int? maxTiles}) {
     final (swX, swY) = _tileOf(southWest);
     final (neX, neY) = _tileOf(northEast);
     final x0 = math.min(swX, neX);
     final y0 = math.min(swY, neY);
     final x1 = math.max(swX, neX);
     final y1 = math.max(swY, neY);
-    if (x1 - x0 + 1 > maxTilesPerAxis || y1 - y0 + 1 > maxTilesPerAxis) {
+    final floor = maxTiles ?? maxTilesPerAxis;
+    if (x1 - x0 + 1 > floor || y1 - y0 + 1 > floor) {
       return null;
     }
     return (x0, y0, x1, y1);

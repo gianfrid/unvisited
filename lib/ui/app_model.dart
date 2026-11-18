@@ -115,11 +115,18 @@ class AppModel extends ChangeNotifier {
   CoverageReport? _viewportReport;
   CoverageReport? get viewportReport => _viewportReport;
 
+  /// The unvisited-roads overlay for the settled viewport: one entry
+  /// per viewport way with unmatched stretches, empty when the overlay
+  /// floor says no (the chip may still answer at wider views).
+  List<OverlayWay> _viewportOverlay = const [];
+  List<OverlayWay> get viewportOverlay => _viewportOverlay;
+
   /// Catalog or unlock state changed: any memoized coverage report is
-  /// stale at an unchanged viewport too, so it is dropped before the
-  /// UI repaints.
+  /// stale at an unchanged viewport too, so it is dropped and the still-
+  /// settled viewport recomputed before the UI repaints.
   void _catalogDataChanged() {
     _viewportCoverage?.invalidate();
+    if (_viewportCorners != null) _recomputeViewportCoverage();
     notifyListeners();
   }
 
@@ -141,32 +148,46 @@ class AppModel extends ChangeNotifier {
     final coverage = _viewportCoverage;
     final corners = _viewportCorners;
     if (coverage == null || corners == null) {
+      var changed = false;
       if (_viewportReport != null) {
         _viewportReport = null;
-        notifyListeners();
+        changed = true;
       }
+      if (_viewportOverlay.isNotEmpty) {
+        _viewportOverlay = const [];
+        changed = true;
+      }
+      if (changed) notifyListeners();
       return;
     }
-    final report = await coverage.coverage(
-      corners.$1,
-      corners.$2,
-      mergedCorridors(),
-    );
+    final corridors = mergedCorridors();
+    final report =
+        await coverage.coverage(corners.$1, corners.$2, corridors);
+    if (_viewportCorners != corners) return;
+    final overlay =
+        await coverage.unvisitedIn(corners.$1, corners.$2, corridors);
+    if (_viewportCorners != corners) return;
     // A later settle superseded this pass while it awaited: its answer
     // would arrive out of order.
-    if (_viewportCorners != corners) return;
-    if (!identical(report, _viewportReport)) {
-      _viewportReport = report;
-      notifyListeners();
-    }
+    final changed = !identical(report, _viewportReport) ||
+        !identical(overlay, _viewportOverlay);
+    _viewportReport = report;
+    _viewportOverlay = overlay;
+    if (changed) notifyListeners();
   }
 
-  /// All tracks' unlock corridors merged by way id — the coverage
-  /// input; corridors from other regions' way ids simply do not
-  /// intersect the active store's buckets and contribute nothing.
+  /// All *visible* tracks' unlock corridors merged by way id - the
+  /// coverage input. Visible only on purpose: the corridor layer also
+  /// draws visible tracks only, so hiding a track must return its
+  /// roads to the unvisited overlay (and to the chip's share) rather
+  /// than leave grey roads the chip still counts as walked. Matching
+  /// and persistence stay unconditional; visibility is presentation.
+  /// Corridors from other regions' way ids simply do not intersect the
+  /// active store's buckets and contribute nothing.
   Map<String, List<List<LatLng>>> mergedCorridors() {
     final merged = <String, List<List<LatLng>>>{};
     for (final t in store.tracks) {
+      if (!t.visible) continue;
       t.unlockedWays.forEach((wayId, corridors) {
         merged.putIfAbsent(wayId, () => []).addAll(corridors);
       });
@@ -192,6 +213,7 @@ class AppModel extends ChangeNotifier {
       _viewportCoverage = ViewportCoverage(road);
     }
     _viewportReport = null;
+    _viewportOverlay = const [];
     notifyListeners();
   }
 
@@ -264,6 +286,10 @@ class AppModel extends ChangeNotifier {
     } finally {
       notifyListeners();
     }
+    // The camera has not moved, but the answer changed with the region
+    // and the rematch: recompute the still-settled viewport right away
+    // instead of waiting for the next camera settle.
+    if (_viewportCorners != null) _recomputeViewportCoverage();
     return null;
   }
 
@@ -376,7 +402,7 @@ class AppModel extends ChangeNotifier {
 
   Future<void> toggleVisible(StoredTrack t) async {
     await store.setVisible(t, !t.visible);
-    notifyListeners();
+    _catalogDataChanged();
   }
 
   /// True when every track is visible (an empty catalog counts as true).
@@ -385,7 +411,7 @@ class AppModel extends ChangeNotifier {
   /// Selects or deselects every track at once.
   Future<void> setAllVisible(bool visible) async {
     await store.setAllVisible(visible);
-    notifyListeners();
+    _catalogDataChanged();
   }
 
   /// Select-all with loading feedback (the drawer's select/deselect-all
@@ -799,7 +825,7 @@ class AppModel extends ChangeNotifier {
       final t = matches.isEmpty ? null : matches.first;
       if (t != null && t.visible) await store.setVisible(t, false);
     }
-    notifyListeners();
+    _catalogDataChanged();
   }
 
   /// The selected aggregate's color override key, or null for the palette

@@ -686,6 +686,26 @@ class _MapPageState extends State<MapPage> {
   /// coincide; double-drawing would double-darken the shared stretch).
   /// flutter_map culls off-screen polylines and simplifies them per zoom;
   /// LOD variants are deferred until catalog scale demands them.
+  /// The unvisited roads of the settled viewport: every way's
+  /// unmatched stretches as dashed polylines in a neutral ink that
+  /// reads as "background target" - deliberately outside the
+  /// exploration tint family, since these are the roads nothing has
+  /// discovered yet. Dashes keep them distinct from the solid dark
+  /// corridors drawn over them.
+  List<Polyline> _buildUnvisitedPolylines() {
+    return [
+      for (final way in widget.model.viewportOverlay)
+        for (final stretch in way.$2)
+          if (stretch.length > 1)
+            Polyline(
+              points: stretch,
+              strokeWidth: 3,
+              color: Colors.blueGrey.withValues(alpha: 0.55),
+              pattern: StrokePattern.dashed(segments: [8, 6]),
+            ),
+    ];
+  }
+
   List<Polyline> _buildCorridors(List<MapTrack> tracks) {
     final tintKeys = widget.model.aggregateTintKeys;
     final anchors = <String, String>{};
@@ -714,6 +734,7 @@ class _MapPageState extends State<MapPage> {
     final strings = AppStrings.ofContext(context);
     final mapTracks = widget.model.visibleTracks;
     final corridors = _buildCorridors(mapTracks);
+    final unvisited = _buildUnvisitedPolylines();
     return Scaffold(
       // No app bar: the labeled actions live on a compact floating
       // toolbar that hugs its content at the top-right corner, so the
@@ -795,6 +816,10 @@ class _MapPageState extends State<MapPage> {
                       : const DisabledMapCachingProvider(),
                 ),
               ),
+              // The unvisited-roads overlay right above the tiles and
+              // below the fog: undiscovered roads are background hints,
+              // and everything discovered paints over them.
+              if (unvisited.isNotEmpty) PolylineLayer(polylines: unvisited),
               CircleLayer(circles: _buildFogCircles(mapTracks)),
               // Unlocked road corridors (fog-of-war for streets), above
               // the circles so the corridor reads on top of the blobs.

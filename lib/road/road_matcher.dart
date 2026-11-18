@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../ui/fog_of_war.dart' show unlockRadiusMeters;
 import 'road_format.dart';
 import 'road_store.dart';
+import 'way_geometry.dart';
 
 /// Meters per degree of latitude (WGS-84 mean) — the same constant
 /// `fog_of_war.dart` uses for the unlock grid; kept local so the road
@@ -141,14 +142,14 @@ class GeometricRoadMatcher extends RoadMatcher {
       // that never came within the radius (e.g. a parallel street in the
       // same bucket) unlocks nothing and must not be reported.
       if (intervals.isEmpty) return;
-      final merged = _merge(intervals);
+      final merged = mergeIntervals(intervals);
       matched[id] = _spanLength(merged);
       corridors[id] = [
         // One corridor polyline per merged covered stretch — cutting each
         // interval separately keeps disjoint stretches disjoint (a way
         // visited at both ends shows two lit pieces, not a lit gap).
         for (final interval in merged)
-          _cut(index.geometry[id]!, interval[0], interval[1]),
+          cutGeometry(index.geometry[id]!, interval[0], interval[1]),
       ];
     });
     return RoadMatchResult(matched, index.totals, corridors);
@@ -191,53 +192,8 @@ class GeometricRoadMatcher extends RoadMatcher {
     }
   }
 
-  /// Sorts and merges overlapping meter intervals along a way.
-  List<List<double>> _merge(List<List<double>> intervals) {
-    if (intervals.isEmpty) return const [];
-    final sorted = List.of(intervals)..sort((a, b) => a[0].compareTo(b[0]));
-    final merged = <List<double>>[sorted.first];
-    for (final interval in sorted.skip(1)) {
-      final last = merged.last;
-      if (interval[0] > last[1]) {
-        merged.add(interval);
-      } else if (interval[1] > last[1]) {
-        last[1] = interval[1];
-      }
-    }
-    return merged;
-  }
-
   double _spanLength(List<List<double>> merged) =>
       merged.fold(0.0, (sum, i) => sum + (i[1] - i[0]));
-
-  /// The way's points from [fromM] to [toM] meters along its geometry, with
-  /// interpolated endpoints where the cut falls inside a segment.
-  List<LatLng> _cut(List<LatLng> pts, double fromM, double toM) {
-    final out = <LatLng>[];
-    var walked = 0.0;
-    for (var i = 0; i + 1 < pts.length && walked < toM; i++) {
-      final a = pts[i];
-      final b = pts[i + 1];
-      final segLen = const Distance().distance(a, b);
-      final segEnd = walked + segLen;
-      if (segEnd > fromM && segLen > 0) {
-        // Start: interpolated when the cut opens inside this segment,
-        // otherwise the segment's own start point.
-        if (out.isEmpty) {
-          out.add(fromM > walked ? _lerp(a, b, (fromM - walked) / segLen) : a);
-        }
-        // End: interpolated when the cut closes inside this segment,
-        // otherwise the segment's own end point.
-        out.add(toM < segEnd ? _lerp(a, b, (toM - walked) / segLen) : b);
-      }
-      walked = segEnd;
-    }
-    return out;
-  }
-
-  static LatLng _lerp(LatLng a, LatLng b, double t) => LatLng(
-      a.latitude + (b.latitude - a.latitude) * t,
-      a.longitude + (b.longitude - a.longitude) * t);
 }
 
 double _pow2(double x) => x * x;

@@ -645,17 +645,59 @@ void main() {
       // unvisited, but not all of it.
       expect(report.unvisitedRatio, greaterThan(0.4));
       expect(report.unvisitedRatio, lessThan(1.0));
+
+      // The overlay agrees with the paper math: the walked way drops
+      // out of the dashed layer, the others stay dark.
+      final overlayIds = model.viewportOverlay.map((w) => w.$1).toSet();
+      expect(overlayIds, isNotEmpty);
+      expect(overlayIds, isNot(contains('1001')));
+    });
+
+    test('hiding a track returns its roads to the overlay and the chip',
+        () async {
+      activateRoad();
+      final dir = stageDir();
+      File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
+          .writeAsBytesSync(fixture('main_street_walk.gpx'));
+      await model.importFromDirectory(dir.path);
+
+      await settle(const LatLng(52.515, 13.400), const LatLng(52.525, 13.415));
+      final walkedBefore = model.viewportReport!.matchedMeters;
+      expect(model.viewportOverlay.map((w) => w.$1), isNot(contains('1001')));
+
+      // Hiding the track is a presentation change: its corridors stop
+      // counting, even at the unchanged camera.
+      await model.setAllVisible(false);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+
+      expect(
+        model.viewportOverlay.map((w) => w.$1),
+        contains('1001'),
+        reason: 'hidden track: its roads are unvisited again',
+      );
+      expect(model.viewportReport!.matchedMeters,
+          lessThan(walkedBefore));
+    });
+
+    test('below the zoom floor there is no report', () async {
+      activateRoad();
+
+      await settle(const LatLng(52.0, 13.0), const LatLng(53.0, 15.0));
+
+      expect(model.viewportReport, isNull);
+      // The overlay's floor is tighter still: nothing to draw there,
+      // and nothing drawn at the chip's floor either.
+      expect(model.viewportOverlay, isEmpty);
+      await settle(const LatLng(52.4, 13.2), const LatLng(52.65, 13.65));
+      expect(model.viewportReport, isNotNull);
+      expect(model.viewportOverlay, isEmpty,
+          reason: 'within the chip floor but wider than the overlay floor');
     });
 
     test('without a road region there is no report', () async {
       await settle(const LatLng(52.515, 13.400), const LatLng(52.525, 13.415));
       expect(model.viewportReport, isNull);
-    });
-
-    test('below the zoom floor there is no report', () async {
-      activateRoad();
-      await settle(const LatLng(52.0, 13.0), const LatLng(53.0, 15.0));
-      expect(model.viewportReport, isNull);
+      expect(model.viewportOverlay, isEmpty);
     });
   });
 

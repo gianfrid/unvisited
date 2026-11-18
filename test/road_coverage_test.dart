@@ -138,4 +138,77 @@ void main() {
     // (now empty) corridor input.
     expect(store.parsedBucketCount, parsed);
   });
+
+  group('unvisited overlay', () {
+    test('no corridors leaves every way fully dark', () async {
+      final overlay =
+          await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
+      expect(overlay.map((w) => w.$1).toSet(), {'1001', '1002', '1003', '1004'});
+      for (final way in overlay) {
+        expect(way.$2, hasLength(1));
+      }
+    });
+
+    test('a fully walked way drops out of the overlay', () async {
+      final overlay = await coverage.unvisitedIn(
+        blockView().$1,
+        blockView().$2,
+        {
+          // Main Street walked end to end.
+          '1001': [
+            List.of(store
+                .bucketAt(52.5200, 13.4075)
+                .singleWhere((w) => w.id == '1001')
+                .points),
+          ],
+        },
+      );
+      expect(overlay.map((w) => w.$1), isNot(contains('1001')));
+      expect(overlay.map((w) => w.$1), containsAll(['1002', '1003', '1004']));
+    });
+
+    test('a mid-way corridor darkens only the ends', () async {
+      final main = store
+          .bucketAt(52.5200, 13.4075)
+          .singleWhere((w) => w.id == '1001');
+      final total = const Distance()
+          .distance(main.points.first, main.points.last);
+      final overlay = await coverage.unvisitedIn(
+        blockView().$1,
+        blockView().$2,
+        {
+          '1001': [
+            [main.points.first, const LatLng(52.5200, 13.4075)],
+          ],
+        },
+      );
+      final entry = overlay.singleWhere((w) => w.$1 == '1001');
+      expect(entry.$2.length, 1);
+      final dark = entry.$2.fold<double>(
+          0, (sum, s) => sum + const Distance().distance(s.first, s.last));
+      expect(dark, closeTo(total / 2, total * 0.02));
+    });
+
+    test('the overlay floor is tighter than the chip floor', () async {
+      // A viewport within the chip's 6x6 floor but wider than the
+      // overlay's 3x3: the chip answers, the overlay abstains.
+      final wide = await coverage
+          .coverage(const LatLng(52.4, 13.2), const LatLng(52.65, 13.65), {});
+      expect(wide, isNotNull);
+      final overlay = await coverage.unvisitedIn(
+          const LatLng(52.4, 13.2), const LatLng(52.65, 13.65), {});
+      expect(overlay, isEmpty);
+    });
+
+    test('memoized: an unchanged viewport decodes nothing new', () async {
+      await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
+      final parsed = store.parsedBucketCount;
+      final first =
+          await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
+      final second =
+          await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
+      expect(identical(first, second), isTrue);
+      expect(store.parsedBucketCount, parsed);
+    });
+  });
 }

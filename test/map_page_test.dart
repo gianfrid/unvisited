@@ -3463,7 +3463,52 @@ void main() {
     expect(find.byType(RoadCoverageChip), findsOneWidget);
     expect(find.textContaining('Unvisited roads here'), findsOneWidget);
   });
+
+  testWidgets('the unvisited-roads overlay dashes only with a region',
+      (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+
+    // No region: the settled Berlin start camera shows no dashed
+    // roads at all.
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(_dashedPolylines(tester), isEmpty);
+
+    final roadFile = File(
+      '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
+    );
+    roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
+    expect(await model.activateRoadFile(roadFile.path), isNull);
+    // Activation recomputes the still camera itself; the pump carries
+    // the debounce-free async pass through.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+
+    final dashed = _dashedPolylines(tester);
+    expect(dashed, isNotEmpty,
+        reason: 'the start camera covers the fixture streets');
+    expect(dashed.first.pattern, isA<StrokePattern>());
+    // All four fixture ways are dark with no walked tracks yet.
+    expect(dashed.length, greaterThanOrEqualTo(4));
+  });
 }
+
+/// The map's dashed (unvisited-roads) polylines - every other polyline
+/// in the layers is a solid corridor or live trace.
+List<Polyline> _dashedPolylines(WidgetTester tester) => [
+      for (final layer
+          in tester.widgetList<PolylineLayer>(find.byType(PolylineLayer)))
+        for (final p in layer.polylines)
+          if (p.pattern.segments != null) p,
+    ];
 
 /// Mirrors the app's private `_AppLocaleDelegate` (main.dart): MaterialApp
 /// only needs *a* delegate that loads AppStrings for the test to exercise
