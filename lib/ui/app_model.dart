@@ -17,6 +17,7 @@ import '../geo.dart' show haversineMeters;
 import '../host_channel.dart' show hostChannel;
 import '../l10n/app_strings.dart';
 import '../road/road_format.dart' show RoadFormatException;
+import '../road/road_coverage.dart';
 import '../road/road_matcher.dart';
 import '../road/road_store.dart';
 import '../recording/position_source.dart' show PositionSource;
@@ -82,12 +83,12 @@ class AppModel extends ChangeNotifier {
     imports = ImportCoordinator(
       store: store,
       roadMatcher: () => _roadMatcher,
-      onChanged: notifyListeners,
+      onChanged: _catalogDataChanged,
     );
     recorder = RecordingController(
       store: store,
       imports: imports,
-      onChanged: notifyListeners,
+      onChanged: _catalogDataChanged,
     );
   }
 
@@ -106,7 +107,72 @@ class AppModel extends ChangeNotifier {
   /// overlay is circles-only and unlock state stays empty.
   RoadStore? _roadStore;
   GeometricRoadMatcher? _roadMatcher;
+  ViewportCoverage? _viewportCoverage;
   RoadStore? get roadStore => _roadStore;
+
+  /// The viewport chip's last answer, or null when there is nothing to
+  /// show: no region, below the zoom floor, or no roads in view.
+  CoverageReport? _viewportReport;
+  CoverageReport? get viewportReport => _viewportReport;
+
+  /// Catalog or unlock state changed: any memoized coverage report is
+  /// stale at an unchanged viewport too, so it is dropped before the
+  /// UI repaints.
+  void _catalogDataChanged() {
+    _viewportCoverage?.invalidate();
+    notifyListeners();
+  }
+
+  /// The camera settled on a new viewport (or the map finished a
+  /// programmatic move): recompute the unvisited share once the camera
+  /// has been still for a moment, so a pan or zoom burst pays one pass.
+  /// The camera settled on a new viewport: recompute the unvisited
+  /// share for it now. The map page owns the settle-debounce (a view
+  /// concern); this is what its timer fires. The pass is asynchronous
+  /// and lands the result, or null, with one notifyListeners.
+  void viewportSettled(LatLng southWest, LatLng northEast) {
+    _viewportCorners = (southWest, northEast);
+    _recomputeViewportCoverage();
+  }
+
+  (LatLng, LatLng)? _viewportCorners;
+
+  Future<void> _recomputeViewportCoverage() async {
+    final coverage = _viewportCoverage;
+    final corners = _viewportCorners;
+    if (coverage == null || corners == null) {
+      if (_viewportReport != null) {
+        _viewportReport = null;
+        notifyListeners();
+      }
+      return;
+    }
+    final report = await coverage.coverage(
+      corners.$1,
+      corners.$2,
+      mergedCorridors(),
+    );
+    // A later settle superseded this pass while it awaited: its answer
+    // would arrive out of order.
+    if (_viewportCorners != corners) return;
+    if (!identical(report, _viewportReport)) {
+      _viewportReport = report;
+      notifyListeners();
+    }
+  }
+
+  /// All tracks' unlock corridors merged by way id — the coverage
+  /// input; corridors from other regions' way ids simply do not
+  /// intersect the active store's buckets and contribute nothing.
+  Map<String, List<List<LatLng>>> mergedCorridors() {
+    final merged = <String, List<List<LatLng>>>{};
+    for (final t in store.tracks) {
+      t.unlockedWays.forEach((wayId, corridors) {
+        merged.putIfAbsent(wayId, () => []).addAll(corridors);
+      });
+    }
+    return merged;
+  }
 
   /// Activates a side-loaded road file for matching (null deactivates).
   ///
@@ -118,11 +184,14 @@ class AppModel extends ChangeNotifier {
     if (path == null) {
       _roadStore = null;
       _roadMatcher = null;
+      _viewportCoverage = null;
     } else {
       final road = RoadStore.open(path);
       _roadStore = road;
       _roadMatcher = GeometricRoadMatcher(road);
+      _viewportCoverage = ViewportCoverage(road);
     }
+    _viewportReport = null;
     notifyListeners();
   }
 
@@ -228,7 +297,12 @@ class AppModel extends ChangeNotifier {
           merged[entry.key] = entry.value;
           changed = true;
         }
-        if (changed) store.saveUnlockedWays(t, merged);
+        if (changed) {
+          store.saveUnlockedWays(t, merged);
+          // Freshly matched corridors change the unvisited share even at
+          // an unchanged viewport.
+          _viewportCoverage?.invalidate();
+        }
       }
       imports.invalidateCache(t.id);
       // Yield between tracks so a slow recompute repaints the busy

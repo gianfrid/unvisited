@@ -14,6 +14,7 @@ import 'app_model.dart';
 import 'fog_of_war.dart';
 import 'map_actions.dart';
 import 'recording_dashboard.dart';
+import 'road_coverage_chip.dart';
 import 'settings_sheet.dart';
 import 'track_colors.dart';
 import 'track_list.dart';
@@ -98,6 +99,11 @@ class _MapPageState extends State<MapPage> {
         }
       }
       if (dirty) setState(() => _fogCellSize = cell);
+      // Every camera change — gesture or programmatic — is an input to
+      // the unvisited-roads chip (flutter_map also emits the controller's
+      // own moves here). The debounce restarts, so a burst of camera
+      // movement pays one coverage pass once it settles.
+      _scheduleCoverageUpdate();
     });
     // Start silently with the last saved position (never prompting) and
     // let a live fix override it once it arrives. With no location
@@ -105,6 +111,27 @@ class _MapPageState extends State<MapPage> {
     // asks.
     _silentPositionUpdate();
     _startFixRetryTimer();
+    // The startup camera is static: no map event ever announces it, so
+    // the unvisited-roads chip gets its first answer here (even a null
+    // one — the map starts below the zoom floor with no region).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scheduleCoverageUpdate();
+    });
+  }
+
+  /// The debounce of the unvisited-roads chip: one coverage pass per
+  /// 300 ms of camera stillness. Page-owned on purpose — the model
+  /// outlives pages and must never hold a timer no page listens to;
+  /// especially when a test swaps the model under a reused element.
+  Timer? _coverageDebounce;
+
+  void _scheduleCoverageUpdate() {
+    _coverageDebounce?.cancel();
+    _coverageDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final visible = _mapController.camera.visibleBounds;
+      widget.model.viewportSettled(visible.southWest, visible.northEast);
+    });
   }
 
   late final bool _cacheUsable;
@@ -213,6 +240,7 @@ class _MapPageState extends State<MapPage> {
   void dispose() {
     _mapEvents?.cancel();
     _fixRetryTimer?.cancel();
+    _coverageDebounce?.cancel();
     _markerRotation.dispose();
     widget.model.removeListener(_onModelChanged);
     super.dispose();
@@ -883,6 +911,16 @@ class _MapPageState extends State<MapPage> {
                 key: _bottomColumnKey,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // The unvisited-roads chip: first in the column so it
+                  // never covers an action button, and hidden without a
+                  // region (see RoadCoverageChip).
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: RoadCoverageChip(model: widget.model),
+                    ),
+                  ),
                   // The action stack (locate / record / pause / stop) at the
                   // top of the bottom column (see `BottomActionStack`; its
                   // record slot only shows once a real fix has arrived), so

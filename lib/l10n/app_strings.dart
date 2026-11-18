@@ -163,6 +163,8 @@ abstract class AppStrings {
   String get roadDataChoose;
   String get roadDataRemove;
   String get roadDataInvalid;
+  String roadsUnvisitedInView(int percent);
+  String get roadsUnvisitedUnknown;
 
   // Battery optimization (Android-only, soft advisory for recording).
   String get batteryOptimization;
@@ -467,6 +469,10 @@ class EnglishStrings extends AppStrings {
   String get roadDataRemove => 'Remove road data';
   @override
   String get roadDataInvalid => 'That file is not an Unvisited roads file';
+  @override
+  String roadsUnvisitedInView(int percent) => 'Unvisited roads here: $percent%';
+  @override
+  String get roadsUnvisitedUnknown => 'Unvisited roads here: —';
 
   @override
   String get batteryOptimization => 'Battery optimization';
@@ -776,6 +782,11 @@ class ItalianStrings extends AppStrings {
   @override
   String get roadDataInvalid =>
       'Questo file non è un file di strade di Unvisited';
+  @override
+  String roadsUnvisitedInView(int percent) =>
+      'Strade non visitate qui: $percent%';
+  @override
+  String get roadsUnvisitedUnknown => 'Strade non visitate qui: —';
 
   @override
   String get batteryOptimization => 'Ottimizzazione batteria';

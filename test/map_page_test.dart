@@ -28,6 +28,7 @@ import 'package:unvisited/ui/fog_of_war.dart';
 import 'package:unvisited/ui/map_actions.dart';
 import 'package:unvisited/ui/map_page.dart';
 import 'package:unvisited/ui/recording_dashboard.dart';
+import 'package:unvisited/ui/road_coverage_chip.dart';
 import 'package:unvisited/ui/track_colors.dart';
 
 import 'helpers.dart';
@@ -3434,6 +3435,34 @@ void main() {
       },
     );
   }
+
+  testWidgets('the unvisited-roads chip is gated on road data', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
+
+    // Without a region the chip renders nothing (the widget stays in
+    // the tree but paints no answer), whatever the camera sees.
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    expect(find.textContaining('Unvisited roads here'), findsNothing);
+
+    // Activating a region is enough to show it — with the em dash
+    // until a settled camera produces an answer.
+    final roadFile = File(
+      '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
+    );
+    roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
+    final failure = await model.activateRoadFile(roadFile.path);
+    expect(failure, isNull);
+    await tester.pump();
+    expect(find.byType(RoadCoverageChip), findsOneWidget);
+    expect(find.textContaining('Unvisited roads here'), findsOneWidget);
+  });
 }
 
 /// Mirrors the app's private `_AppLocaleDelegate` (main.dart): MaterialApp

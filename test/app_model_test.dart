@@ -611,6 +611,54 @@ void main() {
     });
   });
 
+  group('viewport road coverage', () {
+    /// Copies the synthetic road fixture into the temp root and activates
+    /// it on the model.
+    void activateRoad() {
+      final roadFile = File(
+        '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
+      );
+      roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
+      model.setRoadFile(roadFile.path);
+    }
+
+    /// Signals a settled camera and lets the model's 300 ms debounce
+    /// fire and the coverage pass finish.
+    Future<void> settle(LatLng southWest, LatLng northEast) async {
+      model.viewportSettled(southWest, northEast);
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    }
+
+    test('reports the unvisited share over the current view', () async {
+      activateRoad();
+      final dir = stageDir();
+      File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
+          .writeAsBytesSync(fixture('main_street_walk.gpx'));
+      await model.importFromDirectory(dir.path);
+
+      await settle(const LatLng(52.515, 13.400), const LatLng(52.525, 13.415));
+
+      final report = model.viewportReport;
+      expect(report, isNotNull);
+      expect(report!.wayCount, 4);
+      // The walk covered Main Street; some of the rest stays
+      // unvisited, but not all of it.
+      expect(report.unvisitedRatio, greaterThan(0.4));
+      expect(report.unvisitedRatio, lessThan(1.0));
+    });
+
+    test('without a road region there is no report', () async {
+      await settle(const LatLng(52.515, 13.400), const LatLng(52.525, 13.415));
+      expect(model.viewportReport, isNull);
+    });
+
+    test('below the zoom floor there is no report', () async {
+      activateRoad();
+      await settle(const LatLng(52.0, 13.0), const LatLng(53.0, 15.0));
+      expect(model.viewportReport, isNull);
+    });
+  });
+
   group('road data settings', () {
     void installPicker(PlatformFile? picked) {
       FilePickerPlatform.instance = FakeFilePicker(picked);
