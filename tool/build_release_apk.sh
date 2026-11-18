@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Launches a release APK build in the background and returns immediately.
 #
-# Triggered by the task workflow after a TODO.md item is committed (see
-# AGENTS.md): the caller never waits — the next prompt is never blocked
-# by a build. At least 5 minutes must pass between builds, measured from
+# On-demand only (see AGENTS.md): invoked when the user explicitly asks
+# for a release APK, never automatically after commits. The caller never
+# waits — the next prompt is never blocked by a build. At least 5 minutes must pass between builds, measured from
 # the previous build's end (success or failure); a build still in flight
 # also makes later calls skip. No queueing, no retry loop: failures land
 # in build.log and the next call after the window tries again.

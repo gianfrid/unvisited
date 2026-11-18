@@ -17,6 +17,7 @@ lib/
 ├── tile_source.dart         # OSM tile provider
 ├── geo.dart                 # shared geodesy (haversine distance, bearing)
 ├── build_version.dart       # the git-derived About build time
+├── debug_log.dart           # opt-in debug log file (Settings switch)
 ├── aggregate/               # union-find clustering of visible tracks into aggregates
 ├── import/                  # one unified import pipeline
 │   ├── track_parser.dart    #   TrackParser interface + content sniffing helpers
