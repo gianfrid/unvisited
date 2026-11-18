@@ -211,4 +211,43 @@ void main() {
       expect(store.parsedBucketCount, parsed);
     });
   });
+
+  group('viewport clipping', () {
+    test('ways in the tile but outside the screen do not count', () async {
+      // A tight view at the tile's south-west corner: Cross Avenue
+      // (lon 13.4075) misses it by longitude, Main Street/Parallel/
+      // Service (lat ~52.5200) miss it by latitude - nothing on screen,
+      // so the answer is null, not the whole tile's share.
+      final report = await coverage.coverage(
+          const LatLng(52.5181, 13.4051), const LatLng(52.5183, 13.4055), {});
+      expect(report, isNull);
+    });
+
+    test('a partially visible way still counts fully', () async {
+      // The screen cuts Main Street's west end: its bbox straddles the
+      // edge, so the way is in the sums (bbox conservatism, same rule
+      // as bucket registration).
+      final report = await coverage.coverage(
+          const LatLng(52.5199, 13.4070), const LatLng(52.5201, 13.4090), {});
+      expect(report, isNotNull);
+      // Main Street (lat 52.5200), Service Road (lat 52.5200719) and
+      // Cross Avenue (lat 52.5180..52.5220, lon 13.4075) all reach this
+      // rectangle; only Parallel Lane (lat 52.5204) is off-screen.
+      expect(report!.wayCount, 3);
+    });
+
+    test('the overlay draws only the bbox-intersecting ways', () async {
+      final overlay = await coverage.unvisitedIn(
+          const LatLng(52.5199, 13.4070), const LatLng(52.5201, 13.4090), {});
+      expect(overlay.map((w) => w.$1).toSet(), {'1001', '1002', '1004'});
+    });
+
+    test('the wide view still sees every street', () async {
+      final report = await coverage.coverage(blockView().$1, blockView().$2, {});
+      expect(report!.wayCount, 4);
+      final overlay =
+          await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
+      expect(overlay.length, 4);
+    });
+  });
 }

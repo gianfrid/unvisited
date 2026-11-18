@@ -24,6 +24,18 @@ import 'way_geometry.dart';
 /// dark remainder the unvisited-roads overlay draws.
 typedef OverlayWay = (String id, List<List<LatLng>> stretches);
 
+/// One way's cached scalars: geometry length in meters and its
+/// bounding box as (minLat, maxLat, minLon, maxLon) - everything the
+/// coverage and overlay passes need per way, without ever holding the
+/// geometry itself.
+typedef WayBox = (
+  double length,
+  double minLat,
+  double maxLat,
+  double minLon,
+  double maxLon,
+);
+
 /// The viewport's covered/total road question, answered in meters.
 class CoverageReport {
   const CoverageReport({
@@ -84,10 +96,10 @@ class ViewportCoverage {
 
   final int maxCachedBuckets;
 
-  /// Bucket key to way-id-to-geometry-length (meters), decoded lazily.
-  final Map<String, Map<String, double>> _totals = {};
+  /// Bucket key to way-id-to-[WayBox] (length + bbox), decoded lazily.
+  final Map<String, Map<String, WayBox>> _summaries = {};
 
-  /// LRU order over [_totals]' keys, oldest first.
+  /// LRU order over [_summaries]' keys, oldest first.
   final List<String> _lru = [];
 
   String? _lastRectangle;
@@ -150,8 +162,28 @@ class ViewportCoverage {
         if (!_hasBucket(tileKey)) continue;
         for (final way in _store.bucketByKey(tileKey)) {
           if (!seen.add(way.id)) continue;
+          final pts = way.points;
+          if (pts.length < 2) continue;
+          // Same clip as the chip pass: only ways whose bbox reaches
+          // the visible rectangle are drawn.
+          var minLat = double.infinity;
+          var maxLat = double.negativeInfinity;
+          var minLon = double.infinity;
+          var maxLon = double.negativeInfinity;
+          for (final p in pts) {
+            if (p.latitude < minLat) minLat = p.latitude;
+            if (p.latitude > maxLat) maxLat = p.latitude;
+            if (p.longitude < minLon) minLon = p.longitude;
+            if (p.longitude > maxLon) maxLon = p.longitude;
+          }
+          if (minLat > northEast.latitude ||
+              maxLat < southWest.latitude ||
+              minLon > northEast.longitude ||
+              maxLon < southWest.longitude) {
+            continue;
+          }
           final stretches =
-              unvisitedStretches(way.points, corridorsByWay[way.id] ?? const []);
+              unvisitedStretches(pts, corridorsByWay[way.id] ?? const []);
           if (stretches.isNotEmpty) out.add((way.id, stretches));
         }
       }
@@ -193,33 +225,62 @@ class ViewportCoverage {
   /// buckets (ocean, outside the extract) are skipped without a read.
   bool _hasBucket(String key) => _store.bucketPayloadBytes(key) > 0;
 
-  /// Way-id-to-geometry-length for [key], from cache or by decoding
-  /// the bucket's ways once. Ways register in every bucket their bbox
-  /// touches, so a way's total is identical in each of its buckets.
-  Map<String, double> _bucketTotals(String key) {
-    final cached = _totals[key];
+  /// Way-id-to-[WayBox] for [key], from cache or by decoding the
+  /// bucket's ways once. Length and bbox come from one walk over the
+  /// way's geometry. Ways register in every bucket their bbox touches,
+  /// so a way's summary is identical in each of its buckets.
+  Map<String, WayBox> _bucketSummaries(String key) {
+    final cached = _summaries[key];
     if (cached != null) {
       _lru.remove(key);
       _lru.add(key);
       return cached;
     }
-    final totals = <String, double>{};
+    final map = <String, WayBox>{};
     final distance = const Distance();
     for (final way in _store.bucketByKey(key)) {
       final pts = way.points;
-      var total = 0.0;
-      for (var i = 1; i < pts.length; i++) {
-        total += distance.distance(pts[i - 1], pts[i]);
+      if (pts.length < 2) continue;
+      var length = 0.0;
+      var minLat = double.infinity;
+      var maxLat = double.negativeInfinity;
+      var minLon = double.infinity;
+      var maxLon = double.negativeInfinity;
+      for (var i = 0; i < pts.length; i++) {
+        final p = pts[i];
+        if (p.latitude < minLat) minLat = p.latitude;
+        if (p.latitude > maxLat) maxLat = p.latitude;
+        if (p.longitude < minLon) minLon = p.longitude;
+        if (p.longitude > maxLon) maxLon = p.longitude;
       }
-      if (total > 0) totals[way.id] = total;
+      for (var i = 1; i < pts.length; i++) {
+        length += distance.distance(pts[i - 1], pts[i]);
+      }
+      if (length > 0) {
+        map[way.id] = (length, minLat, maxLat, minLon, maxLon);
+      }
     }
-    _totals[key] = totals;
+    _summaries[key] = map;
     _lru.add(key);
     while (_lru.length > maxCachedBuckets) {
-      _totals.remove(_lru.removeAt(0));
+      _summaries.remove(_lru.removeAt(0));
     }
-    return totals;
+    return map;
   }
+
+  /// Whether a way bbox intersects the camera's lat/lon rectangle - the
+  /// clip that makes the pass answer "the roads on screen", not "the
+  /// whole touched tiles". A way straddling an edge still counts, same
+  /// conservatism as bucket registration itself.
+  bool _intersects(
+    WayBox box,
+    LatLng southWest,
+    LatLng northEast,
+  ) =>
+      box.$2 <= northEast.latitude &&
+      box.$3 >= southWest.latitude &&
+      box.$4 <= northEast.longitude &&
+      box.$5 >= southWest.longitude;
 
   /// The covered/uncovered road lengths over the viewport from its
   /// [southWest] to its [northEast] corner, from [corridorsByWay]
@@ -242,25 +303,27 @@ class ViewportCoverage {
     }
     _lastRectangle = key;
 
-    // Way totals for the viewport, deduplicated across tiles: a way
+    // Way summaries for the viewport, deduplicated across tiles: a way
     // registers in every bucket its bbox touches, so it must count
-    // once, by its full length.
-    final wayTotals = <String, double>{};
+    // once, by its full length. Roads whose bbox misses the camera's
+    // rectangle (the rest of the touched tiles) stay out of both sums.
+    final wayBoxes = <String, WayBox>{};
     var bucketCount = 0;
     for (var x = x0; x <= x1; x++) {
       for (var y = y0; y <= y1; y++) {
         final tileKey = _tileKey(x, y);
         if (!_hasBucket(tileKey)) continue;
-        final totals = _bucketTotals(tileKey);
-        if (totals.isEmpty) continue;
+        final summaries = _bucketSummaries(tileKey);
+        if (summaries.isEmpty) continue;
         bucketCount++;
-        totals.forEach((id, total) {
-          wayTotals.putIfAbsent(id, () => total);
-        });
+        for (final entry in summaries.entries) {
+          if (!_intersects(entry.value, southWest, northEast)) continue;
+          wayBoxes.putIfAbsent(entry.key, () => entry.value);
+        }
       }
       await Future<void>.delayed(Duration.zero);
     }
-    if (wayTotals.isEmpty) {
+    if (wayBoxes.isEmpty) {
       _computedAtVersion = _corridorVersion;
       _lastReport = null;
       return null;
@@ -269,8 +332,8 @@ class ViewportCoverage {
     var totalMeters = 0.0;
     var coveredMeters = 0.0;
     final distance = const Distance();
-    for (final entry in wayTotals.entries) {
-      final total = entry.value;
+    for (final entry in wayBoxes.entries) {
+      final total = entry.value.$1;
       totalMeters += total;
       final corridors = corridorsByWay[entry.key];
       if (corridors == null) continue;
@@ -286,7 +349,7 @@ class ViewportCoverage {
     final report = CoverageReport(
       totalMeters: totalMeters,
       matchedMeters: coveredMeters,
-      wayCount: wayTotals.length,
+      wayCount: wayBoxes.length,
       bucketCount: bucketCount,
     );
     _lastReport = report;
