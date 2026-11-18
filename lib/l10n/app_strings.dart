@@ -163,6 +163,8 @@ abstract class AppStrings {
   String get roadDataChoose;
   String get roadDataRemove;
   String get roadDataInvalid;
+  String get showUnvisitedRoads;
+  String get showUnvisitedRoadsSubtitle;
   String roadsUnvisitedInView(int percent);
   String get roadsUnvisitedUnknown;
 
@@ -469,6 +471,11 @@ class EnglishStrings extends AppStrings {
   String get roadDataRemove => 'Remove road data';
   @override
   String get roadDataInvalid => 'That file is not an Unvisited roads file';
+  @override
+  String get showUnvisitedRoads => 'Show unvisited roads';
+  @override
+  String get showUnvisitedRoadsSubtitle =>
+      'Dashed: the roads this view still has left';
   @override
   String roadsUnvisitedInView(int percent) => 'Unvisited roads here: $percent%';
   @override
@@ -782,6 +789,11 @@ class ItalianStrings extends AppStrings {
   @override
   String get roadDataInvalid =>
       'Questo file non è un file di strade di Unvisited';
+  @override
+  String get showUnvisitedRoads => 'Mostra le strade non visitate';
+  @override
+  String get showUnvisitedRoadsSubtitle =>
+      'Tratteggiate: le strade che restano da esplorare qui';
   @override
   String roadsUnvisitedInView(int percent) =>
       'Strade non visitate qui: $percent%';

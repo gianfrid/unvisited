@@ -694,6 +694,43 @@ void main() {
           reason: 'within the chip floor but wider than the overlay floor');
     });
 
+    test('the unvisited overlay toggle skips and restores the pass',
+        () async {
+      activateRoad();
+      final dir = stageDir();
+      File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
+          .writeAsBytesSync(fixture('main_street_walk.gpx'));
+      await model.importFromDirectory(dir.path);
+
+      await settle(const LatLng(52.515, 13.400), const LatLng(52.525, 13.415));
+      expect(model.showUnvisitedRoads, isTrue,
+          reason: 'the overlay is on until the user opts out');
+      expect(model.viewportOverlay, isNotEmpty);
+
+      // Off: the pass is skipped, the dashed layer's state clears, and
+      // the chip keeps its number.
+      await model.setShowUnvisitedRoads(false);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(model.viewportOverlay, isEmpty);
+      expect(model.viewportReport, isNotNull);
+
+      // Back on: the still-settled viewport recomputes without a new
+      // settle, walk and all.
+      await model.setShowUnvisitedRoads(true);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(
+        model.viewportOverlay.map((w) => w.$1),
+        isNot(contains('1001')),
+        reason: 'the walked way is dark again, not dashed',
+      );
+
+      // The choice survives a restart through the settings round trip.
+      await model.setShowUnvisitedRoads(false);
+      final reloaded = TrackStore(root);
+      await reloaded.load();
+      expect(reloaded.showUnvisitedRoads, isFalse);
+    });
+
     test('without a road region there is no report', () async {
       await settle(const LatLng(52.515, 13.400), const LatLng(52.525, 13.415));
       expect(model.viewportReport, isNull);

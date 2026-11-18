@@ -188,6 +188,7 @@ class AppSettings {
     this.mapRotation = 'north',
     this.keepScreenOn = true,
     this.debugLogging = false,
+    this.showUnvisitedRoads = true,
     this.roadsFile,
     this.aggregateColors = const {},
   });
@@ -226,6 +227,12 @@ class AppSettings {
   /// logging", default off). While off, logging calls are no-ops.
   final bool debugLogging;
 
+  /// Whether the dashed unvisited-roads overlay draws (Settings ->
+  /// "Show unvisited roads", default on). While off the overlay pass
+  /// is skipped entirely — no geometry decode per settle — and the
+  /// coverage chip keeps its own answer.
+  final bool showUnvisitedRoads;
+
   /// The side-loaded road region file's *name* (relative to `roads/` under
   /// the root), or null when none is set. The app owns a copy of the file;
   /// see `TrackStore.adoptRoadFile`.
@@ -259,6 +266,7 @@ class AppSettings {
         mapRotation: _migrateMapRotation(m['mapRotation'] as String?),
         keepScreenOn: (m['keepScreenOn'] as bool?) ?? true,
         debugLogging: (m['debugLogging'] as bool?) ?? false,
+        showUnvisitedRoads: (m['showUnvisitedRoads'] as bool?) ?? true,
         roadsFile: m['roadsFile'] as String?,
         aggregateColors:
             (m['aggregateColors'] as Map<Object?, Object?>? ?? {})
@@ -275,6 +283,7 @@ class AppSettings {
     String? mapRotation,
     bool? keepScreenOn,
     bool? debugLogging,
+    bool? showUnvisitedRoads,
     String? roadsFile,
     bool clearRoadsFile = false,
     Map<String, String>? aggregateColors,
@@ -289,6 +298,7 @@ class AppSettings {
         mapRotation: mapRotation ?? this.mapRotation,
         keepScreenOn: keepScreenOn ?? this.keepScreenOn,
         debugLogging: debugLogging ?? this.debugLogging,
+        showUnvisitedRoads: showUnvisitedRoads ?? this.showUnvisitedRoads,
         roadsFile:
             clearRoadsFile ? null : roadsFile ?? this.roadsFile,
         aggregateColors: aggregateColors ?? this.aggregateColors,
@@ -304,6 +314,7 @@ class AppSettings {
         'mapRotation': mapRotation,
         'keepScreenOn': keepScreenOn,
         'debugLogging': debugLogging,
+        'showUnvisitedRoads': showUnvisitedRoads,
         'recordingTint': recordingTint,
         if (roadsFile != null) 'roadsFile': roadsFile,
         if (aggregateColors.isNotEmpty)
@@ -362,6 +373,9 @@ class TrackStore {
   String get mapRotation => _settings.mapRotation;
   bool get keepScreenOn => _settings.keepScreenOn;
   bool get debugLogging => _settings.debugLogging;
+
+  /// Whether the dashed unvisited-roads overlay draws (default on).
+  bool get showUnvisitedRoads => _settings.showUnvisitedRoads;
   String? get roadsFile => _settings.roadsFile;
 
   /// Applies a new settings snapshot and persists the index.
@@ -449,6 +463,11 @@ class TrackStore {
   /// Saves whether the in-app debug log accumulates (default off).
   Future<void> saveDebugLogging(bool on) async =>
       _apply(_settings.copyWith(debugLogging: on));
+
+  /// Saves whether the dashed unvisited-roads overlay draws (default
+  /// on); the coverage chip is not affected.
+  Future<void> saveShowUnvisitedRoads(bool on) async =>
+      _apply(_settings.copyWith(showUnvisitedRoads: on));
 
   /// Saves the live recording trace's tint key.
   Future<void> saveRecordingTint(String tint) async =>

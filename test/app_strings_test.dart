@@ -116,6 +116,8 @@ Map<String, String> allStrings(AppStrings s) => {
       'roadDataChoose': s.roadDataChoose,
       'roadDataRemove': s.roadDataRemove,
       'roadDataInvalid': s.roadDataInvalid,
+      'showUnvisitedRoads': s.showUnvisitedRoads,
+      'showUnvisitedRoadsSubtitle': s.showUnvisitedRoadsSubtitle,
       'roadsUnvisitedInView(50)': s.roadsUnvisitedInView(50),
       'roadsUnvisitedInView(100)': s.roadsUnvisitedInView(100),
       'roadsUnvisitedUnknown': s.roadsUnvisitedUnknown,

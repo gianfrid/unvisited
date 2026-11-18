@@ -164,8 +164,12 @@ class AppModel extends ChangeNotifier {
     final report =
         await coverage.coverage(corners.$1, corners.$2, corridors);
     if (_viewportCorners != corners) return;
-    final overlay =
-        await coverage.unvisitedIn(corners.$1, corners.$2, corridors);
+    // The overlay is opt-out: while off, no geometry pass at all - and
+    // any previously computed stretches clear so the layer disappears.
+    var overlay = const <OverlayWay>[];
+    if (showUnvisitedRoads) {
+      overlay = await coverage.unvisitedIn(corners.$1, corners.$2, corridors);
+    }
     if (_viewportCorners != corners) return;
     // A later settle superseded this pass while it awaited: its answer
     // would arrive out of order.
@@ -619,6 +623,22 @@ class AppModel extends ChangeNotifier {
   /// picks the change up through the usual notification.
   Future<void> setKeepScreenOn(bool on) async {
     await store.saveKeepScreenOn(on);
+    notifyListeners();
+  }
+
+  /// Whether the dashed unvisited-roads overlay draws (the coverage
+  /// chip answers regardless). Turning it back on recomputes the
+  /// still-settled viewport — a static camera never settles again on
+  /// its own, and the layer must not wait for the next pan.
+  bool get showUnvisitedRoads => store.showUnvisitedRoads;
+
+  Future<void> setShowUnvisitedRoads(bool value) async {
+    if (value == showUnvisitedRoads) return;
+    await store.saveShowUnvisitedRoads(value);
+    // Either way the visible answer changes: off clears the dashed
+    // layer's state immediately, on restores it — a static camera
+    // never settles again on its own.
+    if (_viewportCorners != null) _recomputeViewportCoverage();
     notifyListeners();
   }
 

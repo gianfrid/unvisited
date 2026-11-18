@@ -3464,6 +3464,68 @@ void main() {
     expect(find.textContaining('Unvisited roads here'), findsOneWidget);
   });
 
+  testWidgets('the overlay toggle row is absent without a region', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Without a region there is nothing to toggle: no row.
+    expect(find.text('Show unvisited roads'), findsNothing);
+  });
+
+  testWidgets('the overlay toggle switches the dashed layer off', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
+    final roadFile = File(
+      '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
+    );
+    roadFile.writeAsBytesSync(fixture('test_roads.unvisited-roads'));
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    expect(await model.activateRoadFile(roadFile.path), isNull);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(_dashedPolylines(tester), isNotEmpty, reason: 'on by default');
+
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(find.text('Show unvisited roads'));
+    await tester.pump();
+    expect(find.text('Show unvisited roads'), findsOneWidget);
+
+    final row = find.ancestor(
+      of: find.text('Show unvisited roads'),
+      matching: find.byType(ListTile),
+    );
+    await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(model.showUnvisitedRoads, isFalse);
+    // The map below the sheet rebuilds: dashed roads gone, chip stays.
+    expect(_dashedPolylines(tester), isEmpty);
+    expect(find.textContaining('Unvisited roads here'), findsOneWidget);
+  });
+
   testWidgets('the unvisited-roads overlay dashes only with a region',
       (tester) async {
     final root = createRoot();

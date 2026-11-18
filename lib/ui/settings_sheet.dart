@@ -232,6 +232,25 @@ class SettingsSheet extends StatelessWidget {
                     ),
                     onTap: () => _pickRoadData(context, model),
                   ),
+                  // Show the dashed unvisited-roads overlay: a persistent
+                  // setting (default on) shown only with an active region -
+                  // without one there is nothing to toggle and an inert
+                  // switch would read as a bug. The coverage chip answers
+                  // either way.
+                  if (model.roadsName != null)
+                    ListTile(
+                      dense: true,
+                      title: Text(strings.showUnvisitedRoads),
+                      subtitle: Text(strings.showUnvisitedRoadsSubtitle),
+                      trailing: Switch(
+                        value: model.showUnvisitedRoads,
+                        onChanged: (on) => model.setShowUnvisitedRoads(on),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
                   // Battery optimization: Android-only, and soft — the row
                   // only reports the state and its tap opens the system
                   // page; nothing blocks, nothing is requested for the app.
