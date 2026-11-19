@@ -379,8 +379,13 @@ class AppModel extends ChangeNotifier {
   List<String> get salvagedRecordingNames => recorder.salvagedRecordingNames;
   void notifyRecordingFix() => recorder.notifyRecordingFix();
   Future<String?> startRecording(
-          {PositionSource? source, bool permissionGate = true}) =>
-      recorder.startRecording(source: source, permissionGate: permissionGate);
+          {PositionSource? source, bool permissionGate = true}) async {
+    // A session and a replay would fight over the one follow-camera;
+    // the menu gates starting a replay during a session, this rules
+    // the reverse — the live session wins, the replay yields.
+    player.stop();
+    return recorder.startRecording(source: source, permissionGate: permissionGate);
+  }
   Future<void> stopRecording({String? name}) =>
       recorder.stopRecording(name: name);
   Future<void> discardRecording() => recorder.discardRecording();
