@@ -3370,6 +3370,109 @@ void main() {
     },
   );
 
+  testWidgets(
+    'the recording marker mounts with the session\'s first fix',
+    (tester) async {
+      // Regression: the marker's subtree was keyed to MapPage.build, which
+      // never re-runs for a fix — fixes notify only the recording-live
+      // channel, while the session-start frame builds before the first
+      // GPS fix exists. The marker never mounted, so on-device the icon
+      // was gone for the whole ride. The other marker tests feed their
+      // fixtures before the first pump, and the queued fixes flush into
+      // the session as microtasks ahead of that frame's build — a harness
+      // artifact this test rules out by settling the start frame first.
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      await model.startRecording(source: source, permissionGate: false);
+      // The session-start frame: field timing — the notify-dirty page
+      // builds while the session still has no fix (the first one lands
+      // about a second after the record tap).
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('recording-marker-disc')),
+        findsNothing,
+      );
+
+      // The first fix per the real channel (not a build-time read): the
+      // marker must come with the fix it reports.
+      fakeFix(source, 0, lat: 52.5200, heading: 90, speed: 3.0);
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        find.byKey(const ValueKey('recording-marker-disc')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('the recording marker follows each fix, not the page build', (
+    tester,
+  ) async {
+    // Regression: the marker's point was read once at MapPage.build and
+    // captured in the per-fix builder's closure. An incidental model
+    // notify mid-ride (a road overlay change, a settings write) mounted
+    // the marker frozen at that fix; the follow-camera then glided on
+    // with the live ones and the stale marker slid under the HUD and
+    // off-screen — "the icon keeps disappearing".
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
+    final source = FakePositionSource();
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
+    await tester.pump();
+
+    LatLng markerPoint() {
+      final layer = tester.widget<MarkerLayer>(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('recording-marker-disc')),
+              matching: find.byType(MarkerLayer),
+            )
+            .first,
+      );
+      return layer.markers.single.point;
+    }
+
+    await model.startRecording(source: source, permissionGate: false);
+    await tester.pump(); // The start frame, at field timing: no fix yet.
+    fakeFix(source, 0, lat: 52.5200, heading: 0, speed: 2.0);
+    await tester.pump(const Duration(seconds: 1));
+    // Mount the marker the way a field device does mid-ride: any model
+    // notify rebuilds the page. 'north' is chosen because it never arms
+    // the compass stream in a widget test.
+    await model.setMapRotation('north');
+    await tester.pump();
+    expect(markerPoint().latitude, closeTo(52.5200, 1e-9), reason: 'first fix');
+
+    // Fix follows fix: the marker must ride along with each accepted one,
+    // not stay pinned to whichever fix last coexisted with a page rebuild.
+    for (var i = 1; i <= 5; i++) {
+      fakeFix(source, i, lat: 52.5200 + i * 1e-4, heading: 0, speed: 2.0);
+      await tester.pump(const Duration(seconds: 1));
+    }
+    expect(
+      markerPoint().latitude,
+      closeTo(52.5200 + 5 * 1e-4, 1e-9),
+      reason: 'the marker tracks the latest fix, not the mount-time one',
+    );
+  });
+
   for (final surface in const [Size(411, 915), Size(411, 800), Size(360, 740)]) {
     testWidgets(
       'the marker clears the bottom column on $surface, panel open or not',

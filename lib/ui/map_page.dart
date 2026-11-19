@@ -361,55 +361,70 @@ class _MapPageState extends State<MapPage> {
   /// read from [_markerRotation], which the dashboard publishes *after*
   /// each camera move, so the nose never lags the easing rotation by a
   /// fix. A fix without a heading and no bearing yet renders unrotated.
-  /// Rebuilt per fix through the recording-live channel (and per rotation
-  /// through the notifier); still a direct child of the map's layer stack,
-  /// which its marker positioning depends on.
+  ///
+  /// The subtree mounts with the session itself (a boundary always
+  /// notifies the model and rebuilds this page), while the position is
+  /// read *inside* the per-fix builder: fixes notify the recording-live
+  /// channel only, never the model, so a page build must never decide
+  /// the marker's existence or position. Reading either of those at build
+  /// time mounts nothing until an incidental notify happens to rebuild
+  /// the page (the session's very first frame predates the first fix) and
+  /// then freezes the marker at whatever fix that rebuild caught — the
+  /// camera rides on with the live fixes and the stale marker slides off
+  /// the screen. Until the first fix the builder renders an empty layer.
+  /// The builder also listens to [_markerRotation] so gesture rotations
+  /// turn the nose in the same frame.
   List<Widget> _recordingMarkers() {
     final session = widget.model.recording;
-    final lat = session?.currentLat;
-    final lon = session?.currentLon;
-    if (lat == null || lon == null) return const [];
+    if (session == null) return const [];
     return [
       ListenableBuilder(
         listenable: Listenable.merge([
           widget.model.recordingLive,
           _markerRotation,
         ]),
-        builder: (context, _) => MarkerLayer(
-          markers: [
-            Marker(
-              point: LatLng(lat, lon),
-              width: 44,
-              height: 44,
-              child: Transform.rotate(
-                key: const ValueKey('recording-marker-rotate'),
-                angle: ((session!.currentCourse ?? 0) +
-                        _markerRotation.value) *
-                    math.pi /
-                    180,
-                child: Container(
-                  key: const ValueKey('recording-marker-disc'),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Theme.of(context).colorScheme.surface,
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.primary,
-                      width: 2,
+        builder: (context, _) {
+          final lat = session.currentLat;
+          final lon = session.currentLon;
+          if (lat == null || lon == null) {
+            return const MarkerLayer(markers: []);
+          }
+          return MarkerLayer(
+            markers: [
+              Marker(
+                point: LatLng(lat, lon),
+                width: 44,
+                height: 44,
+                child: Transform.rotate(
+                  key: const ValueKey('recording-marker-rotate'),
+                  angle: ((session.currentCourse ?? 0) +
+                          _markerRotation.value) *
+                      math.pi /
+                      180,
+                  child: Container(
+                    key: const ValueKey('recording-marker-disc'),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).colorScheme.surface,
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(blurRadius: 4, color: Colors.black38),
+                      ],
                     ),
-                    boxShadow: const [
-                      BoxShadow(blurRadius: 4, color: Colors.black38),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.navigation,
-                    size: 32,
-                    color: Theme.of(context).colorScheme.primary,
+                    child: Icon(
+                      Icons.navigation,
+                      size: 32,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     ];
   }
