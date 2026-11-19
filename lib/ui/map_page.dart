@@ -8,11 +8,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_strings.dart';
+import '../playback/track_playback.dart';
 import '../recording/recording_session.dart';
 import '../tile_source.dart';
 import 'app_model.dart';
 import 'fog_of_war.dart';
 import 'map_actions.dart';
+import 'playback_dashboard.dart';
 import 'recording_dashboard.dart';
 import 'road_coverage_chip.dart';
 import 'settings_sheet.dart';
@@ -77,6 +79,7 @@ class _MapPageState extends State<MapPage> {
       );
     }
     widget.model.addListener(_onModelChanged);
+    widget.model.player.playbackLive.addListener(_onPlaybackLive);
     // Cross a zoom level: the fog coarseness is keyed to the zoom, so the
     // overlay must be rebuilt when the view moves between zoom levels
     // (the cell grid doubles per band — see fogCellSizeFor).
@@ -187,6 +190,147 @@ class _MapPageState extends State<MapPage> {
   /// key — the locate button's shortcut re-arms the follow.
   final _dashboardKey = GlobalKey<RecordingDashboardState>();
 
+  /// The engine whose start the page last handled: a non-identical
+  /// instance on a model change is a new replay (the controller
+  /// replaces the engine), which fits the track once. See
+  /// [_onModelChanged].
+  TrackPlayback? _seenPlayback;
+
+  /// The replay tick. Page-owned on purpose (the same rule as the
+  /// coverage debounce: the model outlives pages and must never hold a
+  /// timer no page listens to): while the engine plays, it advances the
+  /// engine with wall-clock deltas and fires the per-tick repaint
+  /// channel (`playbackLive`) — the bar, the marker, the trace and the
+  /// playback dashboard's follow-camera feed rebuild off it, never the
+  /// model.
+  Timer? _playbackTimer;
+  DateTime? _playbackLastTick;
+
+  /// The largest wall delta one tick may advance the timeline by: a
+  /// backgrounded app resumes with hours of unmeasured time, and a
+  /// replay must not jump its state as if hours of watching happened.
+  static const _playbackTickMaxDelta = Duration(milliseconds: 500);
+
+  void _updatePlaybackTimer() {
+    final playing = widget.model.playback?.status == PlaybackStatus.playing;
+    if (!playing) {
+      _playbackTimer?.cancel();
+      _playbackTimer = null;
+      _playbackLastTick = null;
+      return;
+    }
+    if (_playbackTimer == null) {
+      _playbackLastTick = DateTime.now();
+      _playbackTimer = Timer.periodic(
+        const Duration(milliseconds: 50),
+        _playbackTick,
+      );
+    }
+  }
+
+  void _playbackTick(Timer timer) {
+    final playback = widget.model.playback;
+    if (playback == null) return; // stop path cancels the timer anyway
+    final now = DateTime.now();
+    final delta = now.difference(_playbackLastTick ?? now);
+    _playbackLastTick = now;
+    playback.advance(
+        delta > _playbackTickMaxDelta ? _playbackTickMaxDelta : delta);
+    widget.model.player.playbackLive.notify();
+  }
+
+  /// The play/pause/speed state lives on the live channel (per-tick
+  /// concerns never notify the whole model), so the tick timer tracks
+  /// the engine's state through it.
+  void _onPlaybackLive() {
+    if (!mounted) return;
+    _updatePlaybackTimer();
+  }
+
+  /// The replay's layers, in the recording layers' twin pattern:
+  /// mounted with the playback's model notification (the page build
+  /// itself), rebuilt per tick via the live channel only — a moving
+  /// marker never repaints the fog. The trace is the played prefix with
+  /// the interpolated position at its head (the recording live trace's
+  /// look by design: an in-progress line over the fog, legible even
+  /// where a hidden track has no circles), the marker the course-up
+  /// disc the recording marker is, in the trace color — its child's
+  /// angle is the course in map-content space, same rule as the
+  /// recording marker (flutter_map renders layer children inside the
+  /// camera's content rotation, which supplies the camera term on
+  /// screen).
+  List<Widget> _playbackLayers() {
+    return [
+      ListenableBuilder(
+        listenable: widget.model.player.playbackLive,
+        builder: (context, _) {
+          final playback = widget.model.playback;
+          if (playback == null) {
+            return PolylineLayer(polylines: const <Never>[]);
+          }
+          final played = playback.positions.sublist(
+            0,
+            math.min(playback.playedIndex + 1, playback.positions.length),
+          );
+          return PolylineLayer(
+            polylines: [
+              Polyline(
+                points: [...played, playback.position],
+                color: recordingTraceColor(widget.model.recordingTint),
+                strokeWidth: 4,
+              ),
+            ],
+          );
+        },
+      ),
+      ListenableBuilder(
+        listenable: widget.model.player.playbackLive,
+        builder: (context, _) {
+          final playback = widget.model.playback;
+          if (playback == null) {
+            return MarkerLayer(markers: const <Never>[]);
+          }
+          return MarkerLayer(
+            markers: [
+              Marker(
+                point: playback.position,
+                width: 44,
+                height: 44,
+                child: Transform.rotate(
+                  key: const ValueKey('playback-marker-rotate'),
+                  angle: (playback.course ?? 0) * math.pi / 180,
+                  child: Container(
+                    key: const ValueKey('playback-marker-disc'),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).colorScheme.surface,
+                      border: Border.all(
+                        color: recordingTraceColor(
+                          widget.model.recordingTint,
+                        ),
+                        width: 2,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(blurRadius: 4, color: Colors.black38),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.navigation,
+                      size: 32,
+                      color: recordingTraceColor(
+                        widget.model.recordingTint,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    ];
+  }
+
   /// The bottom overlay column (action stack, selection bar, recording
   /// chip and panel), measured so the follow-camera frames the fix above
   /// it instead of under it — the column grows when the stats panel opens
@@ -233,7 +377,9 @@ class _MapPageState extends State<MapPage> {
     _mapEvents?.cancel();
     _fixRetryTimer?.cancel();
     _coverageDebounce?.cancel();
+    _playbackTimer?.cancel();
     widget.model.removeListener(_onModelChanged);
+    widget.model.player.playbackLive.removeListener(_onPlaybackLive);
     super.dispose();
   }
 
@@ -260,6 +406,24 @@ class _MapPageState extends State<MapPage> {
         _fitWhenSized(
           CameraFit.coordinates(
             coordinates: selected.points,
+            padding: _fitPadding,
+          ),
+        );
+      }
+    }
+    // A new replay (the controller replaces the engine instance) fits
+    // the whole track once, so the replay starts visible wherever the
+    // camera was; the follow-camera takes over from the next tick. The
+    // tick timer follows the state here and through the live channel
+    // (play/pause ride on it, see [_onPlaybackLive]).
+    final playback = widget.model.playback;
+    if (!identical(playback, _seenPlayback)) {
+      _seenPlayback = playback;
+      _updatePlaybackTimer();
+      if (playback != null && playback.positions.isNotEmpty) {
+        _fitWhenSized(
+          CameraFit.coordinates(
+            coordinates: playback.positions,
             padding: _fitPadding,
           ),
         );
@@ -866,6 +1030,10 @@ class _MapPageState extends State<MapPage> {
               // The recording marker (course-up) rides above the locate
               // one so a session's fixes read on top of a startup fix.
               ..._recordingMarkers(),
+              // The replay's trace and marker, above everything so the
+              // replay reads on top of the fog (it rides it — the
+              // follow-camera belongs to the playback dashboard below).
+              if (widget.model.playback != null) ..._playbackLayers(),
               RichAttributionWidget(
                 // The default flutter_map logo badge is redundant next to
                 // the OSM attribution this app already shows.
@@ -995,6 +1163,17 @@ class _MapPageState extends State<MapPage> {
                   // rebuilds the dashboard only.
                   RecordingDashboard(
                     key: _dashboardKey,
+                    model: widget.model,
+                    mapController: _mapController,
+                    bottomOverlap: bottomOverlap,
+                  ),
+                  // The playback bar ends the column: like the recording
+                  // chip it is measured into [bottomOverlap], so the
+                  // shared follow-camera frames a replay marker above
+                  // it. Never mounted next to a recording chip (the
+                  // model stops a replay when a session starts, the
+                  // menu gates starting one during a session).
+                  PlaybackDashboard(
                     model: widget.model,
                     mapController: _mapController,
                     bottomOverlap: bottomOverlap,

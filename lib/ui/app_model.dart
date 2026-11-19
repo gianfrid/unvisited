@@ -16,6 +16,7 @@ import '../debug_log.dart';
 import '../geo.dart' show haversineMeters;
 import '../host_channel.dart' show hostChannel;
 import '../l10n/app_strings.dart';
+import '../playback/track_playback.dart' show TrackPlayback;
 import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_coverage.dart';
 import '../road/road_matcher.dart';
@@ -25,6 +26,7 @@ import '../recording/recording_session.dart' show RecordingSession;
 import '../storage/track_store.dart';
 import 'fog_of_war.dart' show unlockCenters;
 import 'import_coordinator.dart';
+import 'playback_controller.dart';
 import 'recording_controller.dart';
 import 'recording_live.dart' show RecordingLiveState;
 import 'track_colors.dart' show defaultTintKey, explorationTints;
@@ -90,6 +92,7 @@ class AppModel extends ChangeNotifier {
       imports: imports,
       onChanged: _catalogDataChanged,
     );
+    player = PlaybackController(store: store, onChanged: notifyListeners);
   }
 
   final TrackStore store;
@@ -101,6 +104,12 @@ class AppModel extends ChangeNotifier {
   /// The recording concern: session lifecycle, staging, salvage, the
   /// per-fix repaint channel and the battery advisory.
   late final RecordingController recorder;
+
+  /// The playback concern: the replay of one stored track and its
+  /// per-tick repaint channel. Structural changes (start/stop) notify
+  /// the model — they mount and unmount map layers; per-tick repaints
+  /// stay on `player.playbackLive`.
+  late final PlaybackController player;
 
   /// The active road file, if any (user side-loaded; see
   /// `lib/road/road_format.dart`). Null means roads are not matched: the
@@ -370,8 +379,13 @@ class AppModel extends ChangeNotifier {
   List<String> get salvagedRecordingNames => recorder.salvagedRecordingNames;
   void notifyRecordingFix() => recorder.notifyRecordingFix();
   Future<String?> startRecording(
-          {PositionSource? source, bool permissionGate = true}) =>
-      recorder.startRecording(source: source, permissionGate: permissionGate);
+          {PositionSource? source, bool permissionGate = true}) async {
+    // A session and a replay would fight over the one follow-camera;
+    // the menu gates starting a replay during a session, this rules
+    // the reverse — the live session wins, the replay yields.
+    player.stop();
+    return recorder.startRecording(source: source, permissionGate: permissionGate);
+  }
   Future<void> stopRecording({String? name}) =>
       recorder.stopRecording(name: name);
   Future<void> discardRecording() => recorder.discardRecording();
@@ -384,6 +398,21 @@ class AppModel extends ChangeNotifier {
       recorder.requestPostNotifications();
   Future<void> openBatteryOptimizationSettings() =>
       recorder.openBatteryOptimizationSettings();
+
+  // --- Playback concern, delegated to [player] --------------------------
+
+  /// The running track replay, or null (the map's layers and bar read
+  /// this).
+  TrackPlayback? get playback => player.playback;
+
+  /// Starts replaying [track] (the track list's ⋮ menu — the menu
+  /// disables the entry for tracks without a walkable timeline, no
+  /// recording session and existing tracks only). Returns whether a
+  /// replay started.
+  bool startPlayback(StoredTrack track) => player.start(track);
+
+  /// Stops the replay (the playback bar's close button).
+  void stopPlayback() => player.stop();
 
   // --- Catalog -------------------------------------------------------------
 
@@ -437,6 +466,9 @@ class AppModel extends ChangeNotifier {
   Future<void> delete(StoredTrack t) async {
     await store.remove(t);
     imports.invalidateCache(t.id);
+    // A deleted track's replay stops with it — a marker replaying a
+    // track that no longer exists would be a ghost of deleted data.
+    player.trackRemoved(t.id);
     notifyListeners();
   }
 
@@ -444,6 +476,8 @@ class AppModel extends ChangeNotifier {
   Future<void> deleteAll() async {
     await store.clearAll();
     imports.clearCache();
+    // Every track is gone, the played one included.
+    player.stop();
     notifyListeners();
   }
 
@@ -898,6 +932,7 @@ class AppModel extends ChangeNotifier {
   @override
   void dispose() {
     recorder.recordingLive.dispose();
+    player.playbackLive.dispose();
     super.dispose();
   }
 }

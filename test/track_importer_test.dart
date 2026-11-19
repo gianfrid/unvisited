@@ -264,5 +264,67 @@ void main() {
       expect(reopened.tracks.first.durationSeconds, isNull);
       expect(reopened.tracks.first.distanceMeters, greaterThan(0));
     });
+
+    // The self-heal of the two tests below: opening a track fills a
+    // legacy entry's missing timeline fields from the parsed file and
+    // persists them (docs/plans/2026-11-19-catalog-timeline-backfill.md).
+
+    test('opening a track heals a legacy entry, and it persists', () async {
+      store.importBytes(fixture('morning_walk.gpx'),
+          filename: 'morning_walk.gpx');
+      // Simulate an old index: strip both timeline fields.
+      final f = File('${tmp.path}/index.json');
+      final entries = (jsonDecode(f.readAsStringSync())
+          as Map<String, dynamic>)['tracks'] as List;
+      for (final m in entries) {
+        (m as Map)
+          ..remove('durationSeconds')
+          ..remove('startTimeUtc');
+      }
+      f.writeAsStringSync(jsonEncode({'tracks': entries}));
+      final reopened = TrackStore(tmp);
+      await reopened.load();
+      final track = reopened.tracks.first;
+      expect(track.durationSeconds, isNull);
+      expect(track.startTimeUtc, isNull);
+
+      // One open heals: the morning walk spans 07:05:00 → 07:09:00.
+      final data = reopened.loadPoints(track);
+      expect(data, isNotNull);
+      expect(track.durationSeconds, 240);
+      expect(track.startTimeUtc, isNotNull);
+      // Healed is persisted: a restart keeps the timeline.
+      final healed = TrackStore(tmp);
+      await healed.load();
+      expect(healed.tracks.first.durationSeconds, 240);
+      expect(healed.tracks.first.startTimeUtc, isNotNull);
+    });
+
+    test('the heal never overwrites a set value, nor invents one', () async {
+      store.importBytes(fixture('morning_walk.gpx'),
+          filename: 'morning_walk.gpx');
+      // A wrong-but-set value stays: the index is the record of what was
+      // true at import, the heal only fills what is missing.
+      final f = File('${tmp.path}/index.json');
+      final entries = (jsonDecode(f.readAsStringSync())
+          as Map<String, dynamic>)['tracks'] as List;
+      (entries.first as Map)['durationSeconds'] = 999;
+      f.writeAsStringSync(jsonEncode({'tracks': entries}));
+      final reopened = TrackStore(tmp);
+      await reopened.load();
+      reopened.loadPoints(reopened.tracks.first);
+      expect(reopened.tracks.first.durationSeconds, 999);
+
+      // A timeline-less track keeps null: no fabricated duration.
+      final bare = store.importBytes(
+          '<?xml version="1.0"?><gpx version="1.1"><trk><name>bare</name>'
+              '<trkseg><trkpt lat="45" lon="9"/><trkpt lat="45.001" lon="9"/>'
+              '</trkseg></trk></gpx>'
+              .codeUnits,
+          filename: 'bare.gpx');
+      expect(bare.track!.durationSeconds, isNull);
+      store.loadPoints(bare.track!);
+      expect(bare.track!.durationSeconds, isNull);
+    });
   });
 }

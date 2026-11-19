@@ -229,6 +229,15 @@ abstract class AppStrings {
   String get trackMenuInfo;
   String get trackMenuExport;
 
+  // Track playback (the ⋮ menu entry and the replay bar): the entry
+  // starts the replay, the bar carries play/pause/replay, the speed
+  // chip, the rotation mode and the close. Pause reuses [pauseLabel].
+  String get trackMenuPlayback;
+  String get playbackPlay;
+  String get playbackReplay;
+  String get playbackSpeed;
+  String get playbackClose;
+
   // The track info dialog's labels (values are plain numbers/formats).
   String get infoStart;
   String get infoFormat;
@@ -272,6 +281,16 @@ class EnglishStrings extends AppStrings {
   String get trackMenuInfo => 'Info';
   @override
   String get trackMenuExport => 'Export';
+  @override
+  String get trackMenuPlayback => 'Playback';
+  @override
+  String get playbackPlay => 'Play';
+  @override
+  String get playbackReplay => 'Replay';
+  @override
+  String get playbackSpeed => 'Playback speed';
+  @override
+  String get playbackClose => 'Close playback';
   @override
   String get infoStart => 'Started';
   @override
@@ -580,6 +599,16 @@ class ItalianStrings extends AppStrings {
   String get trackMenuInfo => 'Info';
   @override
   String get trackMenuExport => 'Esporta';
+  @override
+  String get trackMenuPlayback => 'Riproduci';
+  @override
+  String get playbackPlay => 'Riproduci';
+  @override
+  String get playbackReplay => 'Ripeti';
+  @override
+  String get playbackSpeed => 'Velocità di riproduzione';
+  @override
+  String get playbackClose => 'Chiudi la riproduzione';
   @override
   String get infoStart => 'Iniziata';
   @override

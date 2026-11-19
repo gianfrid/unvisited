@@ -35,11 +35,17 @@ class StoredTrack {
   final String file; // relative to the store's tracks directory
   final int pointCount;
   final double distanceMeters;
-  final DateTime? startTimeUtc;
+
+  /// The track's start time, or null when the file carries none. Older
+  /// index entries carry none — [loadPoints] heals it on the first open
+  /// (the app's self-healing rule); a file without timestamps stays
+  /// null, which is honest, not stale.
+  DateTime? startTimeUtc;
 
   /// Moving-elapsed span of the point timestamps, in seconds. Older
-  /// indexes (and tracks without timestamps) carry none.
-  final double? durationSeconds;
+  /// indexes (and tracks without timestamps) carry none; like
+  /// [startTimeUtc], [loadPoints] heals it on the first open.
+  double? durationSeconds;
 
   bool visible;
 
@@ -684,17 +690,38 @@ class TrackStore {
     _saveIndex();
   }
 
-  /// Loads and parses the stored file for [track] (for map drawing).
+  /// Loads and parses the stored file for [track] (for map drawing) —
+  /// the one place a stored track is "opened", so it is also where a
+  /// legacy catalog entry self-heals: an index written before the
+  /// timeline fields existed keeps null in them although the file has
+  /// timestamps, and every metadata consumer (the info dialog, the
+  /// playback gate) would refuse a replayable track. The parsed data is
+  /// already in hand here, so the heal is free: fill what is missing,
+  /// persist once — a set value is never overwritten (the index is the
+  /// record of what was true at import), and a timeline-less track keeps
+  /// null, which is honest rather than fabricated.
   TrackData? loadPoints(StoredTrack track) {
     final f = File(_pathFor(track));
     if (!f.existsSync()) return null;
+    TrackData data;
     try {
-      return importer.import(f.readAsBytesSync(), filename: track.name);
+      data = importer.import(f.readAsBytesSync(), filename: track.name);
     } on TrackParseException {
       return null;
     } on UnsupportedTrackException {
       return null;
     }
+    var healed = false;
+    if (track.startTimeUtc == null && data.startTime != null) {
+      track.startTimeUtc = data.startTime!.toUtc();
+      healed = true;
+    }
+    if (track.durationSeconds == null && data.durationSeconds != null) {
+      track.durationSeconds = data.durationSeconds;
+      healed = true;
+    }
+    if (healed) _saveIndex();
+    return data;
   }
 
   void _saveIndex() {

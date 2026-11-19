@@ -1,3 +1,5 @@
 <!-- Open work lives here; completed items are deleted, not ticked. -->
 
 1. Recording: elevation vs the calibrated reference is unresolved — the field comparison showed the recorded GPX ~47 m above the watch, but the watch's barometric altimeter had no autocalibration that day, so the offset may be watch drift as much as the phone's raw-GPS-height-vs-MSL gap. Re-run the comparison with a calibrated reference before deciding whether unvisited needs a geoid correction or just a documented raw-altitude caveat.
+
+2. Playback: seek option — a draggable position scrubber on the playback bar (jump to any point of the timeline, marker/trace following while scrubbing). Two units: the engine's timeline cursor walks forward only, so backwards seeking needs a rewind-capable re-seek plus unit tests in lib/playback/track_playback.dart; then the bar gains the scrubber with widget tests — including the follow-camera's behavior while scrubbing (whether a manual scrub released the follow like a pan does, and what re-arms it).

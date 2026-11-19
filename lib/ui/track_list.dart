@@ -125,6 +125,12 @@ class _TrackTile extends StatelessWidget {
         true;
   }
 
+  /// Whether the track can be replayed: a track with no timestamp span
+  /// is a shape, not a timeline — the menu shows the entry greyed
+  /// instead of offering a control that can only fail.
+  bool get _replayable =>
+      track.durationSeconds != null && track.durationSeconds! > 0;
+
   /// The average speed as distance over duration in km/h, or null when
   /// either side is unknown or zero (never a fabricated 0 or infinity).
   double? _avgSpeed() {
@@ -269,6 +275,12 @@ class _TrackTile extends StatelessWidget {
             switch (entry) {
               case 'info':
                 _showInfo(context, strings);
+              case 'playback':
+                // Close the drawer first: the replay happens on the map,
+                // and the drawer's scrim would sit over it. The popup
+                // menu pops itself after this returns.
+                Scaffold.of(context).closeEndDrawer();
+                model.startPlayback(track);
               case 'delete':
                 if (await _confirmDelete(context, strings)) {
                   await model.delete(track);
@@ -307,6 +319,21 @@ class _TrackTile extends StatelessWidget {
                   const Icon(Icons.info_outline, size: 18),
                   const SizedBox(width: 10),
                   Text(strings.trackMenuInfo),
+                ],
+              ),
+            ),
+            // The replay entry is gated twice over on purpose: a track
+            // without timestamps has no timeline to walk, and a running
+            // recording owns the follow-camera (the model-side start also
+            // refuses such tracks — the menu gate is the visible one).
+            PopupMenuItem(
+              value: 'playback',
+              enabled: _replayable && !model.isRecording,
+              child: Row(
+                children: [
+                  const Icon(Icons.play_arrow, size: 18),
+                  const SizedBox(width: 10),
+                  Text(strings.trackMenuPlayback),
                 ],
               ),
             ),
