@@ -24,7 +24,7 @@ On desktop Linux the app runs identically (`flutter run -d linux`); only the pla
 
 ### Storage (`lib/storage/track_store.dart`)
 
-`TrackStore` persists each imported track as a file under `tracks/` and records metadata in `index.json`. Track identity is a 64-bit FNV-1a content hash (the id); the deduplication rules it implements are specified in [SPEC.md](SPEC.md).
+`TrackStore` persists each imported track as a file under `tracks/` and records metadata in `index.json`. Track identity is a 64-bit FNV-1a content hash (the id); the deduplication rules it implements are specified in [SPEC.md](SPEC.md). Opening a track (`loadPoints`, where the file is parsed anyway) self-heals a legacy entry's missing timeline metadata — an index written before the `durationSeconds` / `startTimeUtc` fields existed keeps `null` in them although the file has timestamps, so the first `loadPoints` fills what is missing and persists it; a set value is never overwritten and a timeline-less track stays `null` (the playback gate and the info dialog read these fields without opening files, so visible tracks — opened by the map overlay at startup — heal on the first launch; hidden, never-opened ones heal when something first opens them).
 
 ### Host channel (`lib/host_channel.dart`)
 
