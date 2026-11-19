@@ -288,11 +288,14 @@ void main() {
     }
 
     // Course-up: the due-east course rotates the camera to -90 (east
-    // points screen-up; flutter_map rotation is clockwise-positive),
-    // and the marker's own rotation nets to 0 — the nose points up on
-    // screen. Exactly what a session does at the same course.
+    // points screen-up; flutter_map rotation is clockwise-positive).
+    // The marker's own angle is the course alone in map-content space —
+    // flutter_map renders layer children inside the camera's content
+    // rotation, which supplies the camera term on screen — so the nose
+    // nets to screen-up (course 90 + rotation 270), exactly what a
+    // session's marker does at the same course.
     expect(camera().rotation % 360, closeTo(270.0, 1.0));
-    expect(markerAngle(), closeTo(0.0, 0.05));
+    expect(markerAngle(), closeTo(math.pi / 2, 0.05));
 
     // The marker sits framed below the vertical center (the follow lead),
     // east of the track's current point: the rotation turns the lead
