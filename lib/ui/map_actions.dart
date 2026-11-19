@@ -140,10 +140,10 @@ class HeaderAction extends StatelessWidget {
 /// The top toolbar pill, centered across the map's top edge instead of a
 /// full-width app bar. It is the only child of the page's top column (see
 /// `MapPage`; the selection bar and the recording chip live in the bottom
-/// column). While a session runs the
-/// header keeps Tracks and Settings only — Import and the record-mode
-/// dashboard fight for space and attention (locate and record live in
-/// the bottom-left stack).
+/// column). While a session runs the header keeps Tracks, the session's
+/// speed segment and Settings — Import and the record-mode dashboard fight
+/// for space and attention (locate and record live in the bottom-left
+/// stack).
 class TopToolbar extends StatelessWidget {
   const TopToolbar({
     super.key,
@@ -176,6 +176,7 @@ class TopToolbar extends StatelessWidget {
             onTap: () => Scaffold.of(context).openEndDrawer(),
           ),
         ),
+        if (model.isRecording) RecordingSpeedSegment(model: model),
         HeaderAction(
           icon: const Icon(Icons.settings_outlined),
           label: strings.settingsLabel,
@@ -183,6 +184,70 @@ class TopToolbar extends StatelessWidget {
           onTap: onOpenSettings,
         ),
       ],
+    );
+  }
+}
+
+/// The current speed as the top bar's centered segment while recording:
+/// the number a rider glances at, at displaySmall over a `km/h` caption
+/// in the [HeaderAction] caption style, so the pill reads as one coherent
+/// bar — [Tracks] speed [Settings] — instead of a gauge bolted onto a
+/// corner. It mounts with the session boundary (start and stop notify
+/// the model, which rebuilds the toolbar) and repaints per fix through
+/// the recording-live channel alone: the [ListenableBuilder] reads
+/// `currentSpeed` inside its builder, because reading it at toolbar
+/// build time would freeze the number between page rebuilds — the
+/// 2026-11-19 marker lesson. A dash before the first fix and while
+/// paused (paused sessions are silent), the chip's convention.
+class RecordingSpeedSegment extends StatelessWidget {
+  const RecordingSpeedSegment({super.key, required this.model});
+
+  final AppModel model;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: kToolbarHeight,
+      child: ListenableBuilder(
+        listenable: model.recordingLive,
+        builder: (context, _) {
+          final speed = model.recording?.currentSpeed;
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  speed == null
+                      ? '—'
+                      : (speed * 3.6).toStringAsFixed(1),
+                  key: const ValueKey('recording-speed'),
+                  maxLines: 1,
+                  style: Theme.of(context)
+                      .textTheme
+                      .displaySmall
+                      ?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        height: 1.0,
+                        color: scheme.onSurface,
+                      ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'km/h',
+                  style: TextStyle(
+                    fontSize: 10,
+                    height: 1.0,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

@@ -41,10 +41,11 @@ IconData rotationModeIcon(String mode) => switch (mode) {
 /// The recording dashboard: everything a running session shows, and the
 /// follow-camera that rides it. Extracted from `map_page.dart`'s state
 /// (which keeps the map, the fog overlay, the locate/record buttons and
-/// the fits): the HUD chip with its per-fix duration, distance and
-/// headline speed in one row, and the expandable stats panel — a child of
-/// the page's bottom stack — the screen latch, and the follow-camera
-/// release-on-gesture semantics. The widget listens to the
+/// the fits): the HUD chip with its per-fix duration and distance in one
+/// row, and the expandable stats panel — a child of the page's bottom
+/// stack — the screen latch, and the follow-camera release-on-gesture
+/// semantics. The headline speed is not here: it lives in the top bar's
+/// center (see `RecordingSpeedSegment` in `map_actions.dart`). The widget listens to the
 /// per-fix channel ([AppModel.recordingLive]) with a [ListenableBuilder],
 /// so a 1 Hz fix repaints the dashboard — and only the dashboard; the
 /// map's other layers never rebuild for a fix except where they
@@ -622,12 +623,11 @@ class RecordingDashboardState extends State<RecordingDashboard>
 
   /// The dashboard's part: the HUD chip and the expandable stats panel,
   /// as one child of the page's bottom column (under the selection bar and
-  /// the action stack — see `MapPage`). The chip carries the headline
-  /// speed alongside the duration and distance: one row, so the column
-  /// stays short enough for the follow-camera to keep the marker above it.
+  /// the action stack — see `MapPage`). One row without the headline
+  /// speed (it lives in the top bar), so the column stays short enough
+  /// for the follow-camera to keep the marker above it.
   Widget _dashboard(RecordingSession session, AppStrings strings) {
     final meters = session.distanceMeters;
-    final speed = session.currentSpeed;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Column(
@@ -670,24 +670,6 @@ class RecordingDashboardState extends State<RecordingDashboard>
                       ),
                     ],
                     const SizedBox(width: 10),
-                    // The headline speed — the stem display a bike computer
-                    // shows the rider. A dash before the first fix and
-                    // while paused (paused sessions are silent). Bounded so
-                    // a large text scale ellipsizes instead of overflowing
-                    // the row, while the chip keeps its compact width.
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 84),
-                      child: Text(
-                        speed == null
-                            ? '—'
-                            : '${(speed * 3.6).toStringAsFixed(1)} km/h',
-                        key: const ValueKey('recording-speed'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
                     IconButton(
                       key: const ValueKey('rotation-mode-button'),
                       tooltip: rotationModeName(

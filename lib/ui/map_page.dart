@@ -917,7 +917,9 @@ class _MapPageState extends State<MapPage> {
           // Compact floating toolbar at the top, centered across the
           // map's top edge instead of a full-width app bar — the only
           // overlay up there now; the selection bar and the recording
-          // chip live in the bottom column below.
+          // chip live in the bottom column below. While a session runs
+          // the bar's center is the session's speed (see TopToolbar and
+          // RecordingSpeedSegment in map_actions.dart).
           Positioned(
             top: 0,
             left: 0,

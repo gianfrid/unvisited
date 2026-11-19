@@ -199,30 +199,30 @@ void main() {
     // Recording: Import and Fit are hidden (they fight the dashboard for
     // space and attention) while Locate stays — its tap is the way back to
     // the follow after panning away. The slot reads Pause, with Stop above
-    // it the whole session. The live speed is the primary readout, big and
-    // bottom-center, from the engine's fix speed.
+    // it the whole session. The live speed is the primary readout, big in
+    // the top bar's center, from the engine's fix speed.
     expect(find.text('Import'), findsNothing);
     expect(find.text('Locate'), findsOneWidget);
     expect(find.text('Stop'), findsOneWidget);
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
     expect(speedCard, findsOneWidget);
-    // The speed readout sits in the bottom column, below the action stack
-    // at the bottom edge.
+    // The speed readout rides in the top bar's pill: the top half, above
+    // the whole bottom column.
     final mapRect = tester.getRect(find.byType(FlutterMap));
     final speedRect = tester.getRect(speedCard);
     final pauseRect = tester.getRect(find.byTooltip('Pause'));
     expect(
       speedRect.top,
-      greaterThan(mapRect.height * 0.5),
-      reason: 'the speed readout sits in the bottom half of the map',
+      lessThan(mapRect.height * 0.5),
+      reason: 'the speed readout sits in the top bar',
     );
     expect(
-      speedRect.top,
-      greaterThanOrEqualTo(pauseRect.bottom),
-      reason: 'the speed readout sits below the action stack',
+      speedRect.bottom,
+      lessThan(pauseRect.top),
+      reason: 'the speed readout never reaches the bottom column',
     );
-    expect(find.text('10.8 km/h'), findsOneWidget);
+    expect(find.text('10.8'), findsOneWidget);
 
     // The stop's import again never settles in the fake-async zone, so
     // it runs unawaited: stopRecording clears the session and notifies
@@ -553,12 +553,12 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('stats-panel')), findsOneWidget);
-    // The live speed is the primary readout — the big one below the map's
-    // top chip, showing the fix's own 1 m/s — no longer a panel row. The
-    // panel labels the averages, distance, both durations and the
-    // altitude the fix reported.
+    // The live speed is the primary readout — the big one in the top
+    // bar's center, showing the fix's own 1 m/s — no longer a panel row
+    // or a passenger in the chip row. The panel labels the averages,
+    // distance, both durations and the altitude the fix reported.
     expect(find.text('Speed'), findsNothing);
-    expect(find.text('3.6 km/h'), findsOneWidget);
+    expect(find.text('3.6'), findsOneWidget);
     expect(find.text('Avg speed'), findsOneWidget);
     expect(find.text('40.0 km/h'), findsOneWidget);
     expect(find.text('Distance'), findsOneWidget);
@@ -1803,15 +1803,19 @@ void main() {
       // All bars sit below the toolbar (at the bottom of the map), stacked
       // in the column without overlap, with the bars ending at the bottom
       // edge below the action stack.
-      for (final r in [selection, chip, speed]) {
+      for (final r in [selection, chip]) {
         expect(r.top, greaterThan(toolbar.bottom));
       }
       expect(selection.top, greaterThanOrEqualTo(locate.bottom));
       expect(chip.top, greaterThanOrEqualTo(selection.bottom));
-      // The headline speed rides inside the chip row now, so the column is
-      // one card shorter and the follow-camera keeps the marker above it.
-      expect(chip.contains(speed.topLeft), isTrue);
-      expect(chip.contains(speed.bottomRight), isTrue);
+      // The headline speed lives in the top bar's center while recording
+      // (out of the bottom column), riding inside the pill — which just
+      // widened by the segment, so re-measure it.
+      final toolbarNow = tester.getRect(
+        find.widgetWithText(FloatingToolbar, 'Tracks'),
+      );
+      expect(toolbarNow.contains(speed.topLeft), isTrue);
+      expect(toolbarNow.contains(speed.bottomRight), isTrue);
       expect(
         mapRect.bottom - chip.bottom,
         closeTo(20.0, 1.0),
@@ -3473,6 +3477,113 @@ void main() {
     );
   });
 
+  testWidgets(
+    'the top bar shows the session speed in its center',
+    (tester) async {
+      // The glanceable speed the rider wants: while recording the pill
+      // carries Tracks, the live speed and Settings — mounted with the
+      // session boundary, repainted per fix through the recording-live
+      // channel alone (never read at toolbar build time — the
+      // 2026-11-19 marker-mount lesson).
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      final segment = find.byKey(const ValueKey('recording-speed'));
+      expect(segment, findsNothing); // Idle: no speed in the bar.
+
+      await model.startRecording(source: source, permissionGate: false);
+      await tester.pump(); // The start frame, field timing: no fix yet.
+      expect(segment, findsOneWidget);
+      expect(tester.widget<Text>(segment).data, '—');
+
+      // The first fix is accepted but the speed is fused between two
+      // fixes, so the number arrives with the second one — through the
+      // per-fix channel; the caption names the unit.
+      fakeFix(source, 0, lat: 52.5200, heading: 0, speed: 5.0);
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.widget<Text>(segment).data, '—');
+      fakeFix(source, 1, prevLat: 52.5200, lat: 52.52005, heading: 0, speed: 5.0);
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.widget<Text>(segment).data, '18.0');
+      expect(find.text('km/h'), findsOneWidget);
+
+      // Between the two actions the bar keeps while recording, centered
+      // in the pill (the pill itself centered on the map's top edge).
+      final tracks = tester.getRect(find.byTooltip('Tracks'));
+      final s = tester.getRect(segment);
+      final settings = tester.getRect(find.byTooltip('Settings'));
+      expect(
+        s.left,
+        greaterThan(tracks.right),
+        reason: 'the speed segment rides right of Tracks',
+      );
+      expect(
+        s.right,
+        lessThan(settings.left),
+        reason: 'the speed segment rides left of Settings',
+      );
+      final pill = tester.getRect(find.byType(FloatingToolbar));
+      expect((s.center.dx - pill.center.dx).abs(), lessThan(2.0));
+    },
+  );
+
+  testWidgets(
+    'the recording toolbar fits the narrowest surface, panel open or not',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 740));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      await model.startRecording(source: source, permissionGate: false);
+      // A brisk two-digit number is about the widest the segment gets;
+      // pill = 48 + segment + 48 must still fit a 360 px surface. Two
+      // fixes: the speed fuses between them.
+      fakeFix(source, 0, lat: 52.5200, heading: 0, speed: 25.0);
+      fakeFix(
+        source,
+        1,
+        prevLat: 52.5200,
+        lat: 52.52025,
+        heading: 0,
+        speed: 25.0,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('recording-speed')))
+            .data,
+        '90.0',
+      );
+      expect(tester.takeException(), isNull);
+
+      // Toggling the stats panel never pushes the toolbar anywhere.
+      await tester.tap(find.byKey(const ValueKey('recording-chip')));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final surface in const [Size(411, 915), Size(411, 800), Size(360, 740)]) {
     testWidgets(
       'the marker clears the bottom column on $surface, panel open or not',
@@ -3509,16 +3620,11 @@ void main() {
 
         void assertClear(String state) {
           final marker = rect(const ValueKey('recording-marker-disc'));
-          for (final key in const [
-            ValueKey('recording-chip'),
-            ValueKey('recording-speed'),
-          ]) {
-            expect(
-              overlaps(marker, rect(key)),
-              isFalse,
-              reason: '$state: the marker sits under $key',
-            );
-          }
+          expect(
+            overlaps(marker, rect(const ValueKey('recording-chip'))),
+            isFalse,
+            reason: '$state: the marker sits under the chip',
+          );
         }
 
         assertClear('panel closed');
