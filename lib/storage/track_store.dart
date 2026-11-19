@@ -233,10 +233,10 @@ class AppSettings {
   /// logging", default off). While off, logging calls are no-ops.
   final bool debugLogging;
 
-  /// Whether the dashed unvisited-roads overlay draws (Settings ->
-  /// "Show unvisited roads", default on). While off the overlay pass
-  /// is skipped entirely — no geometry decode per settle — and the
-  /// coverage chip keeps its own answer.
+  /// Whether the unvisited-roads presentation draws (Settings ->
+  /// "Show unvisited roads", default on): the dashed overlay and the
+  /// coverage chip. While off the whole coverage pass is skipped — no
+  /// geometry decode per settle — and both disappear from the map.
   final bool showUnvisitedRoads;
 
   /// The side-loaded road region file's *name* (relative to `roads/` under

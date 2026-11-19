@@ -5,9 +5,10 @@ import '../l10n/app_strings.dart';
 
 /// The unvisited-roads chip at the top of the bottom overlay column: with
 /// a road region active, the share of road meters in the current view
-/// that no track has unlocked yet. Hidden without a region; an em dash
-/// while the camera is below the zoom floor or over a view without
-/// roads — the number is unknown there, not zero.
+/// that no track has unlocked yet. Hidden without a region or while
+/// "Show unvisited roads" is off; an em dash while the camera is below
+/// the zoom floor or over a view without roads — the number is unknown
+/// there, not zero.
 class RoadCoverageChip extends StatelessWidget {
   const RoadCoverageChip({super.key, required this.model});
 
@@ -15,7 +16,9 @@ class RoadCoverageChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (model.roadsName == null) return const SizedBox.shrink();
+    if (model.roadsName == null || !model.showUnvisitedRoads) {
+      return const SizedBox.shrink();
+    }
     final strings = AppStrings.ofContext(context);
     final report = model.viewportReport;
     final text = report == null

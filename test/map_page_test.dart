@@ -3788,8 +3788,16 @@ void main() {
     await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
     await tester.pump(const Duration(milliseconds: 400));
     expect(model.showUnvisitedRoads, isFalse);
-    // The map below the sheet rebuilds: dashed roads gone, chip stays.
+    // The map below the sheet rebuilds: dashed roads and the chip both
+    // go with the setting.
     expect(_dashedPolylines(tester), isEmpty);
+    expect(find.textContaining('Unvisited roads here'), findsNothing);
+
+    // Back on: the still-settled viewport restores both without a pan.
+    await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(model.showUnvisitedRoads, isTrue);
+    expect(_dashedPolylines(tester), isNotEmpty);
     expect(find.textContaining('Unvisited roads here'), findsOneWidget);
   });
 

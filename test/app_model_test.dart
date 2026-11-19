@@ -707,17 +707,18 @@ void main() {
           reason: 'the overlay is on until the user opts out');
       expect(model.viewportOverlay, isNotEmpty);
 
-      // Off: the pass is skipped, the dashed layer's state clears, and
-      // the chip keeps its number.
+      // Off: the whole pass is skipped, so the report and the dashed
+      // layer's state both clear.
       await model.setShowUnvisitedRoads(false);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(model.viewportOverlay, isEmpty);
-      expect(model.viewportReport, isNotNull);
+      expect(model.viewportReport, isNull);
 
       // Back on: the still-settled viewport recomputes without a new
-      // settle, walk and all.
+      // settle, report and walk included.
       await model.setShowUnvisitedRoads(true);
       await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(model.viewportReport, isNotNull);
       expect(
         model.viewportOverlay.map((w) => w.$1),
         isNot(contains('1001')),

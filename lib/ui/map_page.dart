@@ -1109,7 +1109,8 @@ class _MapPageState extends State<MapPage> {
                 children: [
                   // The unvisited-roads chip: first in the column so it
                   // never covers an action button, and hidden without a
-                  // region (see RoadCoverageChip).
+                  // region or while the overlay setting is off (see
+                  // RoadCoverageChip).
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(

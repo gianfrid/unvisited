@@ -232,11 +232,11 @@ class SettingsSheet extends StatelessWidget {
                     ),
                     onTap: () => _pickRoadData(context, model),
                   ),
-                  // Show the dashed unvisited-roads overlay: a persistent
+                  // Show the unvisited-roads presentation: a persistent
                   // setting (default on) shown only with an active region -
                   // without one there is nothing to toggle and an inert
-                  // switch would read as a bug. The coverage chip answers
-                  // either way.
+                  // switch would read as a bug. It gates the dashed overlay
+                  // and the coverage chip together.
                   if (model.roadsName != null)
                     ListTile(
                       dense: true,

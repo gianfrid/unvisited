@@ -120,7 +120,8 @@ class AppModel extends ChangeNotifier {
   RoadStore? get roadStore => _roadStore;
 
   /// The viewport chip's last answer, or null when there is nothing to
-  /// show: no region, below the zoom floor, or no roads in view.
+  /// show: no region, the unvisited-roads setting is off, below the zoom
+  /// floor, or no roads in view.
   CoverageReport? _viewportReport;
   CoverageReport? get viewportReport => _viewportReport;
 
@@ -156,7 +157,11 @@ class AppModel extends ChangeNotifier {
   Future<void> _recomputeViewportCoverage() async {
     final coverage = _viewportCoverage;
     final corners = _viewportCorners;
-    if (coverage == null || corners == null) {
+    // The setting is the feature switch: off means no report, no
+    // overlay, and no geometry pass at all. Clearing here (not just
+    // hiding the chip) keeps a stale answer from outliving the toggle
+    // and stops the pass from decoding buckets for nothing.
+    if (coverage == null || corners == null || !showUnvisitedRoads) {
       var changed = false;
       if (_viewportReport != null) {
         _viewportReport = null;
@@ -172,16 +177,13 @@ class AppModel extends ChangeNotifier {
     final corridors = mergedCorridors();
     final report =
         await coverage.coverage(corners.$1, corners.$2, corridors);
-    if (_viewportCorners != corners) return;
-    // The overlay is opt-out: while off, no geometry pass at all - and
-    // any previously computed stretches clear so the layer disappears.
-    var overlay = const <OverlayWay>[];
-    if (showUnvisitedRoads) {
-      overlay = await coverage.unvisitedIn(corners.$1, corners.$2, corridors);
-    }
-    if (_viewportCorners != corners) return;
-    // A later settle superseded this pass while it awaited: its answer
-    // would arrive out of order.
+    // A later settle, or switching the feature off, superseded this
+    // pass while it awaited: its answer would arrive out of order (and
+    // must not re-populate a switched-off chip).
+    if (_viewportCorners != corners || !showUnvisitedRoads) return;
+    final overlay =
+        await coverage.unvisitedIn(corners.$1, corners.$2, corridors);
+    if (_viewportCorners != corners || !showUnvisitedRoads) return;
     final changed = !identical(report, _viewportReport) ||
         !identical(overlay, _viewportOverlay);
     _viewportReport = report;
@@ -660,17 +662,18 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Whether the dashed unvisited-roads overlay draws (the coverage
-  /// chip answers regardless). Turning it back on recomputes the
-  /// still-settled viewport — a static camera never settles again on
-  /// its own, and the layer must not wait for the next pan.
+  /// Whether the unvisited-roads presentation draws: the dashed
+  /// overlay and the coverage chip together. Turning it back on
+  /// recomputes the still-settled viewport — a static camera never
+  /// settles again on its own, and neither the layer nor the chip must
+  /// wait for the next pan.
   bool get showUnvisitedRoads => store.showUnvisitedRoads;
 
   Future<void> setShowUnvisitedRoads(bool value) async {
     if (value == showUnvisitedRoads) return;
     await store.saveShowUnvisitedRoads(value);
-    // Either way the visible answer changes: off clears the dashed
-    // layer's state immediately, on restores it — a static camera
+    // Either way the visible answer changes: off clears the report and
+    // the dashed layer immediately, on restores both — a static camera
     // never settles again on its own.
     if (_viewportCorners != null) _recomputeViewportCoverage();
     notifyListeners();
