@@ -174,7 +174,11 @@ class RecordingSession {
   /// true north — the device's own heading when it reports one, else the
   /// bearing between the fixes it bridges, fix by fix. Null until a fix
   /// carries a heading or two fixes have been accepted: with one fix and
-  /// no heading the engine cannot yet tell which way is forward.
+  /// no heading the engine cannot yet tell which way is forward. A fix
+  /// below the moving speed updates nothing: while the user stands still
+  /// the previous course is the best answer (see [processFix] — a
+  /// standstill fix's reported heading is Android's "unknown" sentinel,
+  /// not a bearing).
   double? get currentCourse => _currentCourse;
   double? _currentCourse;
 
@@ -182,7 +186,9 @@ class RecordingSession {
   /// separate from the bridged-bearing `currentCourse` (bug 1): a fix
   /// that carries a heading sets both to the same value, a fix that
   /// does not leaves `currentHeading` null while `currentCourse` falls
-  /// back to the bearing between fixes.
+  /// back to the bearing between fixes — and a fix below the moving
+  /// speed sets this null (and holds `currentCourse`) so a standstill
+  /// never reports a fake bearing.
   double? get currentHeading => _currentHeading;
   double? _currentHeading;
 
@@ -344,6 +350,20 @@ class RecordingSession {
       _points++;
     }
 
+    // Ground speed as the engine fuses it: the sensor's own value when it
+    // reports one, else the displacement over the gap. A first fix has no
+    // gap to bridge, so a speed-less source leaves it unknown — the
+    // course logic below then falls back to trusting the heading.
+    final sensorSpeed =
+        (fix.speed != null && fix.speed! >= 0) ? fix.speed! : null;
+    final fused = sensorSpeed ??
+        (first
+            ? null
+            : gap.inMilliseconds == 0
+                ? 0.0
+                : haversineMeters(_lastLat!, _lastLon!, fix.lat, fix.lon) /
+                    (gap.inMilliseconds / 1000));
+
     if (!first) {
       final step = haversineMeters(_lastLat!, _lastLon!, fix.lat, fix.lon);
       _distance += step;
@@ -351,12 +371,7 @@ class RecordingSession {
         _recentSpeeds.add(impliedSpeed);
         if (_recentSpeeds.length > speedWindow) _recentSpeeds.removeAt(0);
       }
-      final fused = (fix.speed != null && fix.speed! >= 0)
-          ? fix.speed!
-          : gap.inMilliseconds == 0
-              ? 0.0
-              : step / (gap.inMilliseconds / 1000);
-      _currentSpeed = fused;
+      _currentSpeed = fused!;
       // Dead time (a pause or the gap over a broken segment) counts
       // nowhere: the timer does not tick the pause, and the resumed
       // stretch is not moving time for having been away.
@@ -365,12 +380,22 @@ class RecordingSession {
         if (fused >= movingSpeed) _movingMillis += gap.inMilliseconds;
       }
     }
-    // Course over ground: the device's own heading wins; otherwise the
-    // bearing the fix's displacement bridges. Computed before the last
-    // fix is overwritten below.
-    _currentCourse = fix.heading ??
-        (first ? null : initialBearingDeg(_lastLat!, _lastLon!, fix.lat, fix.lon));
-    _currentHeading = fix.heading;
+    // Course over ground: a moving fix's device heading wins; otherwise
+    // the bearing the fix's displacement bridges. A fix below the moving
+    // speed updates neither: Android reports bearing 0.0 when it cannot
+    // say — not null — so a standstill "heading" is an unknown sentinel
+    // (never a real due-north course), and a bridge across a standstill
+    // is a noise bearing between two nearly identical positions. The
+    // last known course is the best answer until movement resumes. A
+    // source whose fused speed is unknown keeps the legacy behavior —
+    // the engine cannot judge a stream that reports no speed at all.
+    if (fused == null || fused >= movingSpeed) {
+      _currentCourse = fix.heading ??
+          (first ? null : initialBearingDeg(_lastLat!, _lastLon!, fix.lat, fix.lon));
+      _currentHeading = fix.heading;
+    } else {
+      _currentHeading = null;
+    }
     _lastFix = fix.time;
     _lastLat = fix.lat;
     _lastLon = fix.lon;

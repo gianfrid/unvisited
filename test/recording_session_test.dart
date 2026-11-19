@@ -361,6 +361,45 @@ void main() {
         reason: 'a heading-less fix leaves currentHeading null');
   });
 
+  test('a standstill fix reports no heading and holds the course', () {
+    // Android reports bearing 0.0 (not null) at standstill; feeding that
+    // into the course dragged the course-up camera's circular heading
+    // mean toward north on every stop (field report 2026-11-19).
+    final session = newSession('Standstill')..start(FakeSource());
+    session.processFix(fix(0, heading: 170, speed: 1.2));
+    expect(session.currentCourse, 170);
+    expect(session.currentHeading, 170);
+    // The stop: speed under the moving threshold, "heading" 0 (and a
+    // GPS-jitter heading that would also be noise at a standstill).
+    session.processFix(fix(1, heading: 0, speed: 0.1));
+    expect(session.currentCourse, 170,
+        reason: 'a standstill fix never updates the course');
+    expect(session.currentHeading, isNull,
+        reason: "a standstill heading is Android's unknown sentinel");
+    // Movement resumes with a new heading: watched again.
+    session.processFix(fix(2, lat: 52.5201, heading: 170, speed: 1.2));
+    expect(session.currentCourse, 170);
+    expect(session.currentHeading, 170);
+  });
+
+  test('a standstill first fix leaves the course unset', () {
+    final session = newSession('Standstill start')..start(FakeSource());
+    // The session opens at a standstill: the sentinel must not read as
+    // a due-north course on fix one.
+    expect(session.processFix(fix(0, heading: 0, speed: 0.0)),
+        FixDisposition.accepted);
+    expect(session.currentCourse, isNull);
+    expect(session.currentHeading, isNull);
+    // A speed-less source measures its speed from displacement: a
+    // moving fix's heading is trusted without any sensor speed.
+    expect(
+      session.processFix(fix(1, lat: 52.5201, heading: 45)),
+      FixDisposition.accepted,
+    );
+    expect(session.currentCourse, 45);
+    expect(session.currentHeading, 45);
+  });
+
   test('course falls back to the bearing between fixes', () {
     final session = newSession('Bearing')..start(FakeSource());
     // The very first fix carries no heading: nothing is measured.

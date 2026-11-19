@@ -42,6 +42,7 @@ Out of scope: route planning, turn-by-turn navigation, per-service integrations,
 - The session logic (`RecordingSession`, filters, GPX writer, stats) is pure Dart behind a `PositionSource` interface — no Flutter imports, unit-testable against synthetic position streams, Android-swappable like the parsers.
 - Recording only ever starts in the foreground (Record action). Never request `ACCESS_BACKGROUND_LOCATION`; never start the location service from the background.
 - Accept filters and staging semantics are part of the contract: fixes worse than the accuracy threshold (~50 m) are dropped, fixes whose implied displacement speed is an outlier (absolute cap, or above the recent speed window's median + k·MAD Hampel threshold) are dropped, flush cadence keeps the loss window bounded, pause/fix-loss resume as new `<trkseg>` breaks with one track per session.
+- A fix below the session's moving-speed threshold (~0.5 m/s fused) reports no heading and holds the last known course: Android delivers `bearing = 0.0` (not null) at standstill, which is an "unknown" sentinel — feeding it into the course would point the recording marker and the course-up camera at noise on every stop.
 
 ## Testing strategy
 
