@@ -143,6 +143,12 @@ class RecordingDashboardState extends State<RecordingDashboard>
   static const double _glideLonEpsilon = 1e-7;
   static const double _glideRotationEpsilon = 0.05;
 
+  /// One glide frame may advance at most this much time of the ease: a
+  /// dropped frame or clock hiccup must not hand the exponential a
+  /// multiple-of-tau step (a visible snap). At 100 ms over τ = 350 ms no
+  /// single frame advances more than ~25% of the remaining distance.
+  static const int _glideMaxFrameMs = 100;
+
   /// Speed gates for switching the rotation's heading source, with
   /// hysteresis (Coros-style): below [compassEnterGateMps] (~2 km/h) the
   /// GPS course is stale or noise, so the compass drives the rotation;
@@ -417,22 +423,34 @@ class RecordingDashboardState extends State<RecordingDashboard>
   /// 1 Hz fixes would stutter the view.
   void _setGlideTarget(LatLng center, double zoom, double rotation) {
     _glideTarget = (center: center, zoom: zoom, rotation: rotation);
-    _prevGlideElapsed = Duration.zero;
-    _glideTicker ??= createTicker(_glideTick)..start();
+    // A fresh ticker starts its clock at zero — its first tick measures a
+    // one-frame dt. A ticker that is *still running* keeps its monotonic
+    // elapsed: resetting the clock here would make its next tick read the
+    // ticker's whole age as one frame's dt, and the exponential ease would
+    // jump most of the remaining distance in a single frame — the visible
+    // snap a fix arrives mid-glide (field video 2026-11-19).
+    if (_glideTicker == null) {
+      _prevGlideElapsed = Duration.zero;
+      _glideTicker = createTicker(_glideTick)..start();
+    }
   }
 
   /// One glide frame: exponential approach (critical damped, τ =
   /// [followGlideTau]) of center, zoom and rotation toward the target,
-  /// rotation through the short arc. One `moveAndRotate` per frame, and the
-  /// marker rotation is published so the marker layer tracks the same
-  /// frame. Stops the ticker once settled — no repaint at a standstill.
+  /// rotation through the short arc. One `moveAndRotate` per frame. Stops
+  /// the ticker once settled — no repaint at a standstill.
   void _glideTick(Duration elapsed) {
     final target = _glideTarget;
     if (!mounted || target == null) {
       _stopGlide();
       return;
     }
-    final dtMs = (elapsed - _prevGlideElapsed).inMilliseconds;
+    // Cap dt before the ease: a dropped-frame pause (or any clock hiccup)
+    // must not hand the exponential one multiple-of-tau step, or the ease
+    // lands a visible snap. At the 100 ms cap no frame advances more than
+    // ~25% of the remaining distance.
+    final rawDtMs = (elapsed - _prevGlideElapsed).inMilliseconds;
+    final dtMs = rawDtMs.clamp(0, _glideMaxFrameMs);
     _prevGlideElapsed = elapsed;
     final k =
         dtMs <= 0

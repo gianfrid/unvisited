@@ -639,6 +639,59 @@ void main() {
     );
   });
 
+  testWidgets('a fix arriving mid-glide steps the camera gently, not a snap', (
+    tester,
+  ) async {
+    // Regression (field video 2026-11-19): resetting the glide clock on a
+    // still-running ticker made one frame read the ticker's whole age as
+    // its dt — the camera jumped most of the remaining distance in a
+    // single frame whenever a fix arrived mid-ease, which reads as a
+    // "laggy" snap-glide-snap camera.
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
+    final source = FakePositionSource();
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
+    await tester.pump();
+
+    LatLng cameraCenter() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera.center;
+
+    await model.startRecording(source: source, permissionGate: false);
+    // The first fix glides in and settles — its ticker stops.
+    fakeFix(source, 0, lat: 52.5200);
+    await pumpGlide(tester);
+    // A second fix, three frames of easing in: far from settled, so its
+    // glide ticker is still running when the third fix lands.
+    fakeFix(source, 1, lat: 52.5201);
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final before = cameraCenter();
+    // The third fix re-targets the *running* ticker: one 16 ms frame must
+    // advance a fraction of the remaining distance, not most of it.
+    fakeFix(source, 2, lat: 52.5202);
+    await tester.pump(const Duration(milliseconds: 16));
+    final stepped = cameraCenter();
+    await pumpGlide(tester);
+    final settled = cameraCenter();
+    final step = (stepped.latitude - before.latitude).abs();
+    final remaining = (settled.latitude - before.latitude).abs();
+    expect(remaining, greaterThan(0), reason: 'the follow moved the camera');
+    expect(
+      step,
+      lessThan(remaining * 0.15),
+      reason: 'a reused glide ticker eased one 16 ms frame (k~0.045), '
+          'not a whole-age dt jump (~0.38 on the old clock reset)',
+    );
+  });
+
   test('nearestEquivalentRotation picks the nearest mod-360 equivalent', () {
     // Crossing the 0/360 boundary: 10 applied against 350, and 350
     // applied against 10, rotate through the short arc.
