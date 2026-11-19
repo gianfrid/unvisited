@@ -1,6 +1,6 @@
 # Unvisited
 
-A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog. The map stays north-up by default (dynamic rotation is backlog; Settings can opt into course-up while recording).
+A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog. The map stays north-up by default (dynamic rotation is backlog; Settings can opt into course-up while recording). Any stored track with timestamps can also be replayed from the track list's ⋮ menu: Playback animates a marker along the track's timeline at a controllable speed (1×–64×), riding the same follow-camera as an active recording.
 
 Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
 
@@ -36,11 +36,16 @@ lib/
 │   └── road_matcher.dart    #   geometric matching against unlock centers
 ├── l10n/app_strings.dart    # every user-visible string, English + Italian
 ├── models/track.dart        # TrackData model
+├── playback/                # track replay engine (pure Dart)
+│   └── track_playback.dart  #   timeline cursor: speeds, interpolation, finish
 ├── storage/track_store.dart # app-private track files + index.json catalog
-└── ui/                      # app_model + its import_coordinator / recording_controller
-                              # / recording_live concerns, map_page and the modules it
-                              # composes (map_actions, zoom_slider, format, stats_panel,
-                              # settings_sheet, track_list, fog_of_war, track_colors)
+└── ui/                      # app_model + its import_coordinator / recording_
+                              # controller / playback_controller concerns,
+                              # the shared follow_camera, map_page and the
+                              # modules it composes (map_actions, zoom_slider,
+                              # format, stats_panel, settings_sheet,
+                              # track_list, recording_dashboard,
+                              # playback_dashboard, fog_of_war, track_colors)
 test/                        # unit tests, fixtures in test/fixtures/
 assets/icon/icon.svg         # the app icon (source of truth)
 tool/make_fixtures.dart      # regenerates binary FIT/KMZ/PBF test fixtures
