@@ -102,7 +102,6 @@ Map<String, String> allStrings(AppStrings s) => {
       'trackMenuTooltip': s.trackMenuTooltip,
       'trackMenuInfo': s.trackMenuInfo,
       'trackMenuExport': s.trackMenuExport,
-      'infoTitle': s.infoTitle,
       'infoStart': s.infoStart,
       'infoFormat': s.infoFormat,
       'infoPoints': s.infoPoints,

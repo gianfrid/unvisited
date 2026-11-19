@@ -230,7 +230,6 @@ abstract class AppStrings {
   String get trackMenuExport;
 
   // The track info dialog's labels (values are plain numbers/formats).
-  String get infoTitle;
   String get infoStart;
   String get infoFormat;
   String get infoPoints;
@@ -273,8 +272,6 @@ class EnglishStrings extends AppStrings {
   String get trackMenuInfo => 'Info';
   @override
   String get trackMenuExport => 'Export';
-  @override
-  String get infoTitle => 'Track info';
   @override
   String get infoStart => 'Started';
   @override
@@ -583,8 +580,6 @@ class ItalianStrings extends AppStrings {
   String get trackMenuInfo => 'Info';
   @override
   String get trackMenuExport => 'Esporta';
-  @override
-  String get infoTitle => 'Info traccia';
   @override
   String get infoStart => 'Iniziata';
   @override
