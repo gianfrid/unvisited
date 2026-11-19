@@ -187,14 +187,6 @@ class _MapPageState extends State<MapPage> {
   /// key — the locate button's shortcut re-arms the follow.
   final _dashboardKey = GlobalKey<RecordingDashboardState>();
 
-  /// The camera rotation the recording marker draws against. The
-  /// dashboard publishes it after each rotation it applies (and after a
-  /// gesture rotation), so the marker reads the *post-move* rotation in
-  /// the same frame — reading `camera.rotation` at build time would lag
-  /// one fix behind, because the marker layer mounts before the
-  /// dashboard and so rebuilds from the fix channel first.
-  final _markerRotation = ValueNotifier<double>(0);
-
   /// The bottom overlay column (action stack, selection bar, recording
   /// chip and panel), measured so the follow-camera frames the fix above
   /// it instead of under it — the column grows when the stats panel opens
@@ -241,7 +233,6 @@ class _MapPageState extends State<MapPage> {
     _mapEvents?.cancel();
     _fixRetryTimer?.cancel();
     _coverageDebounce?.cancel();
-    _markerRotation.dispose();
     widget.model.removeListener(_onModelChanged);
     super.dispose();
   }
@@ -352,15 +343,16 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  /// The recording marker: at the last accepted fix. The nose always
-  /// follows the course on screen — a geographic bearing shows at screen
-  /// bearing course + camera rotation, since a positive rotation turns the
-  /// map clockwise — so it nets to straight-up exactly while the camera
-  /// rides the course, and still shows the direction of travel after a
-  /// gesture releases the follow (or in north-up mode). The rotation is
-  /// read from [_markerRotation], which the dashboard publishes *after*
-  /// each camera move, so the nose never lags the easing rotation by a
-  /// fix. A fix without a heading and no bearing yet renders unrotated.
+  /// The recording marker: at the last accepted fix. The child's angle is
+  /// the course in *map-content* space: flutter_map renders MarkerLayer
+  /// children inside the camera's content rotation (`MobileLayerTransformer`
+  /// wraps the layer), which (with the map content itself) composes with
+  /// the camera rotation on screen. So the nose lands at geographic
+  /// course + camera rotation on screen — straight up exactly while the
+  /// camera rides the course, and still along the direction of travel
+  /// after a gesture releases the follow (or in north-up mode) — without
+  /// this widget adding the rotation itself, which would count it twice.
+  /// A fix without a heading and no bearing yet renders unrotated.
   ///
   /// The subtree mounts with the session itself (a boundary always
   /// notifies the model and rebuilds this page), while the position is
@@ -372,17 +364,14 @@ class _MapPageState extends State<MapPage> {
   /// then freezes the marker at whatever fix that rebuild caught — the
   /// camera rides on with the live fixes and the stale marker slides off
   /// the screen. Until the first fix the builder renders an empty layer.
-  /// The builder also listens to [_markerRotation] so gesture rotations
-  /// turn the nose in the same frame.
+  /// Gesture rotations turn the nose with the content in the same frame
+  /// by construction.
   List<Widget> _recordingMarkers() {
     final session = widget.model.recording;
     if (session == null) return const [];
     return [
       ListenableBuilder(
-        listenable: Listenable.merge([
-          widget.model.recordingLive,
-          _markerRotation,
-        ]),
+        listenable: widget.model.recordingLive,
         builder: (context, _) {
           final lat = session.currentLat;
           final lon = session.currentLon;
@@ -397,10 +386,7 @@ class _MapPageState extends State<MapPage> {
                 height: 44,
                 child: Transform.rotate(
                   key: const ValueKey('recording-marker-rotate'),
-                  angle: ((session.currentCourse ?? 0) +
-                          _markerRotation.value) *
-                      math.pi /
-                      180,
+                  angle: (session.currentCourse ?? 0) * math.pi / 180,
                   child: Container(
                     key: const ValueKey('recording-marker-disc'),
                     decoration: BoxDecoration(
@@ -1011,7 +997,6 @@ class _MapPageState extends State<MapPage> {
                     key: _dashboardKey,
                     model: widget.model,
                     mapController: _mapController,
-                    markerRotation: _markerRotation,
                     bottomOverlap: bottomOverlap,
                   ),
                 ],

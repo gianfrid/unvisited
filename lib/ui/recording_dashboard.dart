@@ -55,18 +55,11 @@ class RecordingDashboard extends StatefulWidget {
     super.key,
     required this.model,
     required this.mapController,
-    required this.markerRotation,
     required this.bottomOverlap,
   });
 
   final AppModel model;
   final MapController mapController;
-
-  /// The camera rotation the map page's recording marker draws against;
-  /// published here after every rotation this dashboard applies (and after
-  /// a gesture rotation), so the marker reads the post-move value in the
-  /// same frame instead of lagging a fix behind (see `MapPage`).
-  final ValueNotifier<double> markerRotation;
 
   /// Pixels the page's bottom overlay column occupies from the screen
   /// bottom right now (see `MapPage.bottomOverlap`): the follow-camera
@@ -227,10 +220,6 @@ class RecordingDashboardState extends State<RecordingDashboard>
     // report through their own sources after the gesture ends. Plain taps
     // don't release it. Only a locate-button tap re-arms it.
     _mapEvents = widget.mapController.mapEventStream.listen((event) {
-      // A gesture rotation (armed or after a release) moves the camera
-      // under the marker: republish so the nose keeps tracking the course
-      // on screen.
-      _publishRotation();
       if (!_follow || !_moveGestures.contains(event.source)) return;
       _releaseFollow(event.source);
     });
@@ -465,7 +454,6 @@ class RecordingDashboardState extends State<RecordingDashboard>
       newZoom,
       newRotation,
     );
-    _publishRotation();
     // Settle on the *remaining* distance, not the frame's step: stopping on
     // a small step would leave up to step/(1-k) of residual behind.
     final remainingRot =
@@ -483,7 +471,6 @@ class RecordingDashboardState extends State<RecordingDashboard>
         target.zoom,
         target.rotation,
       );
-      _publishRotation();
       _stopGlide();
     }
   }
@@ -548,16 +535,6 @@ class RecordingDashboardState extends State<RecordingDashboard>
         widget.mapController.camera.rotation,
       );
     });
-  }
-
-  /// Publishes the camera rotation the recording marker draws against.
-  /// Called after every move this dashboard applies, so the marker reads
-  /// the post-move value in the same frame (see `MapPage._markerRotation`).
-  void _publishRotation() {
-    final rotation = widget.mapController.camera.rotation;
-    if (widget.markerRotation.value != rotation) {
-      widget.markerRotation.value = rotation;
-    }
   }
 
   /// Applies the latch if it changed: on while a session runs and the

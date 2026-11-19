@@ -692,7 +692,8 @@ void main() {
 
       // Course-up: the east-heading fixes rotate the camera to -90 (east
       // points screen-up; flutter_map rotation is clockwise-positive), and
-      // the marker's own rotation nets to 0 — the nose points up on screen.
+      // the marker draws the course in map-content space — with the
+      // camera riding the course, the nose nets to up on screen.
       expect(camera().rotation % 360, closeTo(270.0, 1.0));
       // The marker keeps a solid backdrop disc so it stays visible over
       // the live trace.
@@ -700,7 +701,7 @@ void main() {
         find.byKey(const ValueKey('recording-marker-disc')),
         findsOneWidget,
       );
-      expect(markerAngle(), closeTo(0.0, 0.05));
+      expect(markerAngle(), closeTo(math.pi / 2, 0.05));
 
       // A user pan releases the follow — and the rotation with it: the next
       // fix re-centers nothing and leaves the rotation where the pan put it.
@@ -727,9 +728,10 @@ void main() {
         reason: 'the pan released the follow',
       );
       // The released follow leaves the camera at -90 while the course
-      // turns to 180: the marker still shows the course on screen
-      // (180 + 270 = 90 mod 360), like north-up mode.
-      expect(markerAngle(), closeTo(math.pi / 2, 0.05));
+      // turns to 180: the marker draws the course itself in content
+      // space — the map's content rotation composes with the camera, so
+      // the nose still points along the course on screen.
+      expect(markerAngle(), closeTo(math.pi, 0.05));
     },
   );
 
@@ -1209,8 +1211,10 @@ void main() {
 
       await model.startRecording(source: source, permissionGate: false);
       // One fix on a 90° course, mid-glide after a few frames: the camera
-      // has eased only partway toward -90, so the marker must show the
-      // course on screen, not stay pinned up: angle = course + rotation.
+      // has eased only partway toward -90. The marker's angle is the course
+      // alone — the map's content rotation (flutter_map wraps MarkerLayer
+      // children in the camera rotation) supplies the camera term on
+      // screen, so adding it here would double-rotate the nose.
       fakeFix(source, 0, lat: 52.5201, heading: 90, speed: 5.0);
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(milliseconds: 50));
@@ -1220,13 +1224,13 @@ void main() {
       expect(rotation % 360, greaterThan(280.0));
       expect(
         markerAngle(),
-        closeTo((90 + rotation) * math.pi / 180, 0.05),
-        reason: 'mid-glide the marker still shows course + camera rotation',
+        closeTo(math.pi / 2, 0.05),
+        reason: 'the marker draws the course in content space',
       );
       // Settled: the camera converges on the course and the nose nets to up.
       await pumpGlide(tester);
       expect(camera().rotation % 360, closeTo(270.0, 1.0));
-      expect(markerAngle(), closeTo(0.0, 0.05));
+      expect(markerAngle(), closeTo(math.pi / 2, 0.05));
     },
   );
 
@@ -3359,8 +3363,9 @@ void main() {
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0, heading: 90);
       fakeFix(source, 1, lat: 52.5201, heading: 90);
-      // Mid-glide (a few frames, not converged): the marker still shows the
-      // course on screen — course + camera rotation, in the same frame.
+      // Mid-glide (a few frames, not converged): the marker draws the
+      // course in content space; the layer's camera rotation composes
+      // with it on screen, so the widget angle itself is the course.
       for (var i = 0; i < 3; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
@@ -3369,7 +3374,7 @@ void main() {
       expect(rotation, greaterThan(-80.0));
       expect(
         markerAngle(),
-        closeTo((90 + rotation) * math.pi / 180, 0.05),
+        closeTo(math.pi / 2, 0.05),
       );
     },
   );
