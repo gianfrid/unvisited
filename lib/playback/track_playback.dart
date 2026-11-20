@@ -123,6 +123,35 @@ class TrackPlayback {
     _status = PlaybackStatus.paused;
   }
 
+  /// Jumps the cursor to [position] on the timeline — the scrubber's
+  /// seek — clamped to [0, total]. Unlike [advance] this moves both
+  /// ways, so the cursor index is re-derived from scratch (a binary
+  /// search over the strictly increasing [offsetsMs]; the forward-only
+  /// walk in [_syncIndex] would leave a stale index after a rewind).
+  /// The play state is kept: a playing replay continues from the new
+  /// position, a paused one stays put. Seeking to the end lands on
+  /// [finished]; seeking away from it clears it.
+  void seekTo(Duration position) {
+    _progressMs = position.inMilliseconds.clamp(0, offsetsMs.last).toInt();
+    _index = _indexOfAtOrBefore(_progressMs);
+  }
+
+  /// The index of the last point at or before [progressMs] — binary
+  /// search over [offsetsMs] (strictly increasing, first element 0).
+  int _indexOfAtOrBefore(int progressMs) {
+    var lo = 0;
+    var hi = offsetsMs.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) >> 1;
+      if (offsetsMs[mid] <= progressMs) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return lo;
+  }
+
   /// Moves the cursor along the timeline by a wall-clock delta scaled
   /// with [speed], iff playing. Reaching the end clamps the cursor,
   /// pauses the playback and leaves the marker at the finish — a replay

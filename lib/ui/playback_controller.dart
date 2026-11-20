@@ -84,4 +84,13 @@ class PlaybackController {
     _playback?.cycleSpeed();
     playbackLive.notify();
   }
+
+  /// Moves the cursor to [position] on the timeline (the bar's scrubber);
+  /// the engine clamps it and keeps the play state. Fires the per-tick
+  /// channel, so the bar, marker and trace follow the seek exactly like
+  /// a tick — no structural change, nothing to remount.
+  void seekTo(Duration position) {
+    _playback?.seekTo(position);
+    playbackLive.notify();
+  }
 }

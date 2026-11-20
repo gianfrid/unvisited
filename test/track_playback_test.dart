@@ -173,6 +173,70 @@ void main() {
     expect(playback.playedIndex, 0);
   });
 
+  test('seekTo jumps forward and lands the cursor exactly', () {
+    final playback = TrackPlayback.tryBuild('test', _straightPoints())!;
+    final (_, p1, _, _) = _straightLine();
+    playback.seekTo(const Duration(seconds: 10));
+    expect(playback.elapsed, const Duration(seconds: 10));
+    expect(playback.playedIndex, 1);
+    expect(playback.position, p1);
+    expect(playback.progressFraction, 0.5);
+    // Still playing: the next advance moves on from the seek point.
+    playback.advance(const Duration(seconds: 1)); // 8 s at the default
+    expect(playback.elapsed, const Duration(seconds: 18));
+  });
+
+  test('seekTo rewinds: the index is re-derived, not left stale', () {
+    final playback = TrackPlayback.tryBuild('test', _straightPoints())!;
+    final (p0, p1, _, _) = _straightLine();
+    playback.advance(const Duration(hours: 1)); // to the end
+    expect(playback.playedIndex, 2);
+    playback.seekTo(const Duration(seconds: 5)); // back between p0 and p1
+    expect(playback.playedIndex, 0);
+    expect(playback.position.latitude, closeTo(p0.latitude, 1e-12));
+    expect(
+      playback.position.longitude,
+      closeTo((p0.longitude + p1.longitude) / 2, 1e-9),
+    );
+    expect(playback.course, closeTo(90, 0.5));
+    expect(playback.finished, false);
+  });
+
+  test('seekTo clamps to the timeline ends', () {
+    final playback = TrackPlayback.tryBuild('test', _straightPoints())!;
+    final (_, _, p2, _) = _straightLine();
+    playback.seekTo(const Duration(days: 1));
+    expect(playback.elapsed, playback.total);
+    expect(playback.finished, true);
+    expect(playback.position, p2);
+    // The end is reached by seek, not by advance: still "playing" until
+    // a tick clamps — but finished already reads true.
+    expect(playback.status, PlaybackStatus.playing);
+    playback.seekTo(const Duration(milliseconds: -1));
+    expect(playback.elapsed, Duration.zero);
+    expect(playback.finished, false);
+    expect(playback.playedIndex, 0);
+  });
+
+  test('seekTo keeps the paused state', () {
+    final playback = TrackPlayback.tryBuild('test', _straightPoints())!;
+    playback.pause();
+    playback.seekTo(const Duration(seconds: 12));
+    expect(playback.elapsed, const Duration(seconds: 12));
+    expect(playback.status, PlaybackStatus.paused);
+    playback.advance(const Duration(seconds: 10));
+    expect(playback.elapsed, const Duration(seconds: 12));
+  });
+
+  test('play after a seek to the end restarts from the beginning', () {
+    final playback = TrackPlayback.tryBuild('test', _straightPoints())!;
+    playback.seekTo(playback.total);
+    expect(playback.finished, true);
+    playback.play();
+    expect(playback.status, PlaybackStatus.playing);
+    expect(playback.elapsed, Duration.zero);
+  });
+
   test('a GPS pause interpolates as a slow crawl, never a teleport', () {
     final t0 = DateTime.utc(2026, 1, 1, 10);
     const west = LatLng(45.0, 9.0);

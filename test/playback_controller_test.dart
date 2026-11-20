@@ -110,6 +110,29 @@ void main() {
     expect(model.tracks, isEmpty);
   });
 
+  test('seekTo moves the cursor and fires the per-tick channel only', () {
+    final model = AppModel(TrackStore(createRoot()));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    model.startPlayback(model.tracks.single);
+    var modelNotifications = 0;
+    model.addListener(() => modelNotifications++);
+    var liveNotifications = 0;
+    model.player.playbackLive.addListener(() => liveNotifications++);
+
+    final playback = model.playback!;
+    model.player.seekTo(const Duration(seconds: 30));
+    expect(playback.elapsed, const Duration(seconds: 30));
+    // A seek is a per-tick concern like play/pause: no structural notify.
+    expect(modelNotifications, 0);
+    expect(liveNotifications, 1);
+    // The play state survives the seek.
+    expect(playback.status, PlaybackStatus.playing);
+    // Seeking past the end lands on finished.
+    model.player.seekTo(const Duration(days: 1));
+    expect(playback.finished, isTrue);
+    expect(playback.elapsed, playback.total);
+  });
+
   test('reaching the end of a replay pauses by itself', () {
     final model = AppModel(TrackStore(createRoot()));
     model.store.importBytes(fixture('morning_walk.gpx'));
