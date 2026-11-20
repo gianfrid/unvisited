@@ -161,6 +161,26 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                 },
               ),
               const SizedBox(width: 4),
+              // The position scrubber: a drag jumps the cursor to any
+              // point of the timeline (the engine clamps and keeps the
+              // play state), and the seek's playbackLive notification
+              // moves the marker and trace along while scrubbing. A
+              // slider drag is not a map gesture, so it never releases
+              // the follow-camera — the camera glides to each scrubbed
+              // position through the same per-tick feed.
+              Expanded(
+                child: Slider(
+                  key: const ValueKey('playback-scrubber'),
+                  value: playback.progressFraction,
+                  onChanged: (fraction) => widget.model.player.seekTo(
+                    Duration(
+                      milliseconds: (playback.total.inMilliseconds * fraction)
+                          .round(),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
               Flexible(
                 child: Text(
                   playback.name,

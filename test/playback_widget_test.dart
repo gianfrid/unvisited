@@ -305,6 +305,100 @@ void main() {
     expect(camera().zoom, greaterThanOrEqualTo(17.0));
   });
 
+  testWidgets('the scrubber seeks the timeline; the readout follows', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    // 4 points, 10 s apart: a 30 s timeline.
+    model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 4)));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    model.startPlayback(model.tracks.single);
+    await tester.pump(const Duration(milliseconds: 300));
+    // Pause so the replay timer's own advances can't race the scrub.
+    await tester.tap(find.byKey(const ValueKey('playback-play')));
+    await tester.pump();
+    expect(model.playback!.status, PlaybackStatus.paused);
+
+    final slider = find.byKey(const ValueKey('playback-scrubber'));
+    expect(slider, findsOneWidget);
+
+    // Scrub to the middle: the cursor jumps, the bar's readout follows.
+    tester
+        .widget<Slider>(slider)
+        .onChanged!(0.5);
+    await tester.pump();
+    expect(model.playback!.elapsed, const Duration(seconds: 15));
+    expect(find.text('00:15 / 00:30'), findsOneWidget);
+    expect(tester.widget<Slider>(slider).value, 0.5);
+
+    // And backwards: the rewind-capable seek lands before the start
+    // clamp on the low end too.
+    tester.widget<Slider>(slider).onChanged!(0.1);
+    await tester.pump();
+    expect(model.playback!.elapsed, const Duration(seconds: 3));
+    expect(find.text('00:03 / 00:30'), findsOneWidget);
+
+    tester.widget<Slider>(slider).onChanged!(2.0); // clamped to the end
+    await tester.pump();
+    expect(model.playback!.elapsed, const Duration(seconds: 30));
+    expect(model.playback!.finished, isTrue);
+    // The seek kept the paused state: no tick moved it on.
+    expect(model.playback!.status, PlaybackStatus.paused);
+  });
+
+  testWidgets('a scrub keeps the follow-camera armed on the marker', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 20)));
+    await model.setMapRotation('course');
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    MapCamera camera() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+    model.startPlayback(model.tracks.single);
+    for (var i = 0; i < 80; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(camera().rotation % 360, closeTo(270.0, 1.0));
+
+    // Scrub to the middle of the timeline: the marker jumps, and the
+    // follow — not released by the scrub — glides the camera to it.
+    tester
+        .widget<Slider>(find.byKey(const ValueKey('playback-scrubber')))
+        .onChanged!(0.5);
+    for (var i = 0; i < 80; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final point = model.playback!.position;
+    expect(camera().rotation % 360, closeTo(270.0, 1.0));
+    expect(
+      (camera().center.latitude - point.latitude).abs(),
+      lessThan(1e-3),
+      reason: 'the follow stayed armed and rode the scrubbed marker',
+    );
+    expect(
+      (camera().center.longitude - point.longitude).abs(),
+      lessThan(1e-3),
+    );
+  });
+
   testWidgets('a gesture releases the replay follow, play re-arms it', (
     tester,
   ) async {
