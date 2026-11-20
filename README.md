@@ -76,7 +76,7 @@ flutter pub get
 flutter run -d linux
 ```
 
-The import pipeline, track store and map render identically to Android, so this is the supported way to quick-test without a smartphone.
+The import pipeline, track store and map render identically to Android, so this is the supported way to quick-test without a smartphone. The rolling GitHub release also carries a ready-made Linux x86_64 AppImage (`unvisited-rolling-x86_64.AppImage`) alongside the Android APK.
 
 Import tracks with the **Import** button: it offers **Track files** (the file picker, supports multiple files) and **A folder** (imports recursively, e.g. a `GARMIN/Activity/` folder). Tracks and the catalog are stored under `$XDG_DATA_HOME/unvisited` (default `~/.local/share/unvisited`) and survive restarts. Deleting that directory resets the app state.
 

@@ -1,7 +1,8 @@
-# Rolling release APK: builds a signed release APK on every push to `slop`
-# (or manual dispatch) and attaches it to the moving `rolling` GitHub
-# release, where Obtanium picks it up (repo gianfrid/unvisited, asset
-# unvisited-rolling-arm64.apk). Each publish also stamps the release's
+# Rolling release: builds a signed release APK and a Linux x86_64 AppImage
+# on every push to `slop` (or manual dispatch) and attaches both to the
+# moving `rolling` GitHub release, where Obtanium picks up the APK
+# (repo gianfrid/unvisited, assets unvisited-rolling-arm64.apk and
+# unvisited-rolling-x86_64.AppImage). Each publish also stamps the release's
 # name and body with the build's date, build number and the commit
 # messages since the previous published build — GitHub keeps a moving
 # release's original publish date, so the date rides in the title
@@ -100,6 +101,12 @@ jobs:
             --build-name "1.0.0-rolling" --build-number "${{ github.run_number }}"
           cp build/app/outputs/flutter-apk/app-arm64-*-release.apk unvisited-rolling-arm64.apk
 
+      - name: Linux desktop build deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev
+
+      - name: Build AppImage (rolling)
+        run: tool/build_appimage.sh --build-name "1.0.0-rolling" --build-number "${{ github.run_number }}"
+
       - name: Publish to the moving rolling release
         uses: softprops/action-gh-release@v3
         with:
@@ -113,4 +120,6 @@ jobs:
 
             Commit: ${{ github.sha }}
           make_latest: true
-          files: unvisited-rolling-arm64.apk
+          files: |
+            unvisited-rolling-arm64.apk
+            unvisited-rolling-x86_64.AppImage

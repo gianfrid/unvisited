@@ -4,6 +4,7 @@ Name=UnVisited
 Comment=Fog-of-war exploration overlay for GPS tracks, on OpenStreetMap
 Exec=unvisited
 Icon=unvisited
+Categories=Utility;
 Terminal=false
 # The session resolves the running window's icon by matching this entry's
 # name against the application id / WM_CLASS (gianfrid.unvisited).
