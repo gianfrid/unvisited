@@ -260,4 +260,40 @@ void main() {
       closeTo((west.longitude + east.longitude) / 2, 1e-3),
     );
   });
+
+  test('instantSpeed reads the pace of the segment under the cursor', () {
+    final t0 = DateTime.utc(2026, 1, 1, 10);
+    // A slow crawl then a fast sprint: the same ~106 m gap crossed in
+    // 100 s, then in 10 s — so a bracket error cannot hide.
+    final playback = TrackPlayback.tryBuild(
+      'test',
+      [
+        _p(45.0, 9.0, t0),
+        _p(45.0, 9.00135, t0.add(const Duration(seconds: 100))),
+        _p(45.0, 9.0027, t0.add(const Duration(seconds: 110))),
+      ],
+    )!;
+    expect(playback.instantSpeed, closeTo(1.0615, 0.001));
+    playback.seekTo(const Duration(seconds: 105)); // into the sprint
+    expect(playback.instantSpeed, closeTo(10.6146, 0.001));
+  });
+
+  test('instantSpeed at the finish reads the last segment', () {
+    final playback = TrackPlayback.tryBuild('test', _straightPoints())!;
+    playback.advance(const Duration(hours: 1));
+    expect(playback.finished, isTrue);
+    expect(playback.instantSpeed, closeTo(10.6146, 0.001));
+  });
+
+  test('instantSpeed reads zero across a standstill', () {
+    final t0 = DateTime.utc(2026, 1, 1, 10);
+    final playback = TrackPlayback.tryBuild(
+      'test',
+      [
+        _p(45.0, 9.0, t0),
+        _p(45.0, 9.0, t0.add(const Duration(seconds: 10))),
+      ],
+    )!;
+    expect(playback.instantSpeed, 0.0);
+  });
 }

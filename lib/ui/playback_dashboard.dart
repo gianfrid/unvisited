@@ -10,7 +10,8 @@ import 'recording_dashboard.dart'
     show rotationModeIcon, rotationModeName;
 
 /// The playback dashboard: the replay bar (play/pause/replay, track
-/// name, elapsed/total, the speed chip, the rotation mode and close)
+/// name, elapsed/total, the instant speed, the speed chip, the
+/// rotation mode and close)
 /// and the follow-camera wiring that rides the replay — [FollowCamera]
 /// itself is shared with the recording dashboard (see `follow_camera.dart`),
 /// so a replay moves the camera *exactly* like a session does: same
@@ -195,13 +196,37 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
               // Secondary metadata: muted and smaller than the title,
               // tabular figures so the ticking seconds don't jitter the
               // row's width.
-              Text(
-                '${formatDuration(playback.elapsed)} / '
-                '${formatDuration(playback.total)}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${formatDuration(playback.elapsed)} / '
+                    '${formatDuration(playback.total)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                  ),
+                  // The instant speed: the timeline's own pace at the
+                  // cursor (the bracket segment's displacement speed,
+                  // not the ladder's multiplier), live only while the
+                  // replay plays — a dash once it stands still, the
+                  // recording speed segment's dash convention. Its
+                  // 'km/h' and dash are hard-coded too, that segment's
+                  // precedent: plain values, no sentence to localize.
+                  Text(
+                    playing
+                        ? '${(playback.instantSpeed * 3.6).toStringAsFixed(1)}'
+                            ' km/h'
+                        : '—',
+                    key: const ValueKey('playback-instant-speed'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                  ),
+                ],
               ),
               const SizedBox(width: 4),
               TextButton(

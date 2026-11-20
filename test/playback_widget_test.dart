@@ -354,6 +354,44 @@ void main() {
     expect(model.playback!.status, PlaybackStatus.paused);
   });
 
+  testWidgets('the bar reads the timeline pace while playing, a dash paused', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    // 4 points 10 s apart, ~15.7 m of longitude apart: a constant
+    // ~1.57 m/s — 5.7 km/h at every cursor, so the readout asserts a
+    // value, whatever the pumped ticks advanced to.
+    model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 4)));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    model.startPlayback(model.tracks.single);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final readout = find.byKey(const ValueKey('playback-instant-speed'));
+    expect(readout, findsOneWidget);
+    expect(tester.widget<Text>(readout).data, '5.7 km/h');
+
+    // Paused: the recording speed segment's dash convention — a
+    // standing replay reads nothing.
+    await tester.tap(find.byKey(const ValueKey('playback-play')));
+    await tester.pump();
+    expect(model.playback!.status, PlaybackStatus.paused);
+    expect(tester.widget<Text>(readout).data, '—');
+
+    // Playing again: the pace comes back live.
+    await tester.tap(find.byKey(const ValueKey('playback-play')));
+    await tester.pump();
+    expect(model.playback!.status, PlaybackStatus.playing);
+    expect(tester.widget<Text>(readout).data, '5.7 km/h');
+  });
+
   testWidgets('a scrub keeps the follow-camera armed on the marker', (
     tester,
   ) async {

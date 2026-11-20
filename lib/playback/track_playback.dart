@@ -16,7 +16,7 @@
 /// want.
 library;
 
-import '../geo.dart' show initialBearingDeg;
+import '../geo.dart' show haversineMeters, initialBearingDeg;
 import '../models/track.dart' show TrackPoint;
 import 'package:latlong2/latlong.dart';
 
@@ -209,17 +209,48 @@ class TrackPlayback {
 
   /// The course of travel at the cursor in degrees clockwise from true
   /// north (the same [initialBearingDeg] the recording engine's bridged
-  /// bearings use): the direction across the bridged gap, or into the
-  /// rest of the track at the very ends. The seek has no stale-heading
-  /// problem a live fix has — a timeline's direction is always known.
+  /// bearings use): the direction across the motion bracket, or into
+  /// the rest of the track at the very ends. The seek has no stale-heading
+  /// problem a live fix has — a timeline's direction is always known,
+  /// except across a standstill's coincident bracket, which reads null.
   double? get course {
     if (positions.length < 2) return null;
+    final (a, b) = _motionBracket();
+    final from = positions[a];
+    final to = positions[b];
+    if (from.latitude == to.latitude && from.longitude == to.longitude) {
+      return null;
+    }
+    return initialBearingDeg(
+        from.latitude, from.longitude, to.latitude, to.longitude);
+  }
+
+  /// The instant speed at the cursor in meters per second: the
+  /// timeline's own pace there — the haversine distance across the
+  /// motion bracket over the time between its points (the same
+  /// [haversineMeters] the catalog and the recording engine measure
+  /// with). Never null on a timeline this engine agreed to walk — a
+  /// standstill's coincident bracket reads 0, not a dash. The ladder's
+  /// [speed] stays out of it: a replay walks the recorded pace at
+  /// whatever wall-clock rate.
+  double get instantSpeed {
+    final (a, b) = _motionBracket();
+    final from = positions[a];
+    final to = positions[b];
+    final meters = haversineMeters(
+        from.latitude, from.longitude, to.latitude, to.longitude);
+    return 1000 * meters / (offsetsMs[b] - offsetsMs[a]);
+  }
+
+  /// The cursor's motion bracket — the indices of the two points its
+  /// motion is measured across, one ahead of the other: the points
+  /// straddling the cursor, or the last segment's pair at the finish
+  /// (nothing moves past the last point to be measured against).
+  /// [course] and [instantSpeed] share it; only their metric across
+  /// it differs.
+  (int, int) _motionBracket() {
     _syncIndex();
-    final a = (_index == positions.length - 1 || finished)
-        ? positions[_index - 1]
-        : positions[_index];
-    final b = finished ? positions[positions.length - 1] : positions[_index + 1];
-    if (a.latitude == b.latitude && a.longitude == b.longitude) return null;
-    return initialBearingDeg(a.latitude, a.longitude, b.latitude, b.longitude);
+    final b = finished ? positions.length - 1 : _index + 1;
+    return (b - 1, b);
   }
 }
