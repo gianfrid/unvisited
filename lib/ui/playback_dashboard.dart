@@ -186,13 +186,22 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                   playback.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
               ),
               const SizedBox(width: 8),
+              // Secondary metadata: muted and smaller than the title,
+              // tabular figures so the ticking seconds don't jitter the
+              // row's width.
               Text(
                 '${formatDuration(playback.elapsed)} / '
                 '${formatDuration(playback.total)}',
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
               ),
               const SizedBox(width: 4),
               TextButton(
