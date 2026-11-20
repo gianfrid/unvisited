@@ -49,3 +49,7 @@ app.*.map.json
 
 # Agent-local skills (not part of the project yet)
 .agents/
+
+# Rolling release artifacts built at the repo root (CI attaches them to
+# the moving rolling release; they are never committed)
+/unvisited-rolling-x86_64.AppImage
