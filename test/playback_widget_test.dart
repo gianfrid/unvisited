@@ -1,6 +1,8 @@
 import 'dart:convert' show utf8;
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -492,5 +494,125 @@ void main() {
       lessThan(1e-3),
       reason: 'the re-armed follow centers the marker again',
     );
+  });
+
+  testWidgets('the bar fits the narrowest surface: scrubber keeps width', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 740));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 4)));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    model.startPlayback(model.tracks.single);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // Two rows inside one card: no overflow, a scrubber wide enough to
+    // grab, the name present (elided, not zero-width).
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('playback-scrubber'))).width,
+      greaterThan(100),
+    );
+    expect(find.text('Morning walk'), findsOneWidget);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('playback-instant-speed')))
+          .width,
+      greaterThan(0),
+    );
+  });
+
+  testWidgets('the lateral zoom slider holds its zoom during a replay', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 20)));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    model.startPlayback(model.tracks.single);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    MapCamera camera() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera;
+    expect(camera().zoom, greaterThanOrEqualTo(17.0)); // the floor
+
+    // Drag the slider rail to the world floor: a zoom-only programmatic
+    // move, the slider's signature. The armed follow adopts it instead
+    // of walking the camera back to the floor on the next ticks.
+    await tester.drag(
+      find.byKey(const ValueKey('zoom-track')),
+      const Offset(0, 400),
+    );
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(camera().zoom, closeTo(3.0, 0.5));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the scroll wheel releases the replay follow, zoom holds', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 20)));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    model.startPlayback(model.tracks.single);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    MapCamera camera() =>
+        MapController.of(tester.element(find.byType(TileLayer))).camera;
+    final before = camera().zoom;
+    expect(before, greaterThanOrEqualTo(17.0));
+
+    // Ten wheel notches out (flutter_map: newZoom = zoom - dy * 0.005):
+    // the wheel is a camera-moving hand, so it releases the follow and
+    // the zoom stays where the hand put it.
+    final center = tester.getCenter(find.byType(FlutterMap));
+    for (var i = 0; i < 10; i++) {
+      await tester.sendEventToBinding(
+        PointerScrollEvent(
+          kind: PointerDeviceKind.mouse,
+          position: center,
+          scrollDelta: const Offset(0, 200),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final after = camera().zoom;
+    expect(
+      after,
+      lessThan(before - 5),
+      reason: 'the wheel zoomed out and the released follow did not walk it back',
+    );
+    expect(tester.takeException(), isNull);
   });
 }

@@ -124,8 +124,12 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
     );
   }
 
-  /// The replay bar: one compact Card row. The values (times, speed) are
-  /// plain formats; the tooltips are the only localizable text.
+  /// The replay bar: one compact Card with two rows — transport (play,
+  /// scrubber, close) over identity (name, times, instant speed, the
+  /// speed chip, rotation) — so the scrubber keeps a real width on a
+  /// phone-sized screen where one row overflowed. The values (times,
+  /// speed) are plain formats; the tooltips are the only localizable
+  /// text.
   Widget _bar(TrackPlayback playback) {
     final strings = AppStrings.ofContext(context);
     final playing = playback.status == PlaybackStatus.playing;
@@ -140,127 +144,142 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
       child: Card(
         key: const ValueKey('playback-bar'),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Row(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                key: const ValueKey('playback-play'),
-                tooltip: tooltip,
-                icon: Icon(icon),
-                iconSize: 20,
-                visualDensity: VisualDensity.compact,
-                onPressed: () {
-                  if (playing) {
-                    widget.model.player.pause();
-                  } else {
-                    widget.model.player.play();
-                    // The play (re)arms the follow-camera — the
-                    // replay button's behavior after the finish.
-                    _armAndFeed();
-                  }
-                },
-              ),
-              const SizedBox(width: 4),
-              // The position scrubber: a drag jumps the cursor to any
-              // point of the timeline (the engine clamps and keeps the
-              // play state), and the seek's playbackLive notification
-              // moves the marker and trace along while scrubbing. A
-              // slider drag is not a map gesture, so it never releases
-              // the follow-camera — the camera glides to each scrubbed
-              // position through the same per-tick feed.
-              Expanded(
-                child: Slider(
-                  key: const ValueKey('playback-scrubber'),
-                  value: playback.progressFraction,
-                  onChanged: (fraction) => widget.model.player.seekTo(
-                    Duration(
-                      milliseconds: (playback.total.inMilliseconds * fraction)
-                          .round(),
+              Row(
+                children: [
+                  IconButton(
+                    key: const ValueKey('playback-play'),
+                    tooltip: tooltip,
+                    icon: Icon(icon),
+                    iconSize: 20,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      if (playing) {
+                        widget.model.player.pause();
+                      } else {
+                        widget.model.player.play();
+                        // The play (re)arms the follow-camera — the
+                        // replay button's behavior after the finish.
+                        _armAndFeed();
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 4),
+                  // The position scrubber: a drag jumps the cursor to any
+                  // point of the timeline (the engine clamps and keeps the
+                  // play state), and the seek's playbackLive notification
+                  // moves the marker and trace along while scrubbing. A
+                  // slider drag is not a map gesture, so it never releases
+                  // the follow-camera — the camera glides to each scrubbed
+                  // position through the same per-tick feed.
+                  Expanded(
+                    child: Slider(
+                      key: const ValueKey('playback-scrubber'),
+                      value: playback.progressFraction,
+                      onChanged: (fraction) => widget.model.player.seekTo(
+                        Duration(
+                          milliseconds:
+                              (playback.total.inMilliseconds * fraction)
+                                  .round(),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  playback.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Secondary metadata: muted and smaller than the title,
-              // tabular figures so the ticking seconds don't jitter the
-              // row's width.
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${formatDuration(playback.elapsed)} / '
-                    '${formatDuration(playback.total)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                  ),
-                  // The instant speed: the timeline's own pace at the
-                  // cursor (the bracket segment's displacement speed,
-                  // not the ladder's multiplier), live only while the
-                  // replay plays — a dash once it stands still, the
-                  // recording speed segment's dash convention. Its
-                  // 'km/h' and dash are hard-coded too, that segment's
-                  // precedent: plain values, no sentence to localize.
-                  Text(
-                    playing
-                        ? '${(playback.instantSpeed * 3.6).toStringAsFixed(1)}'
-                            ' km/h'
-                        : '—',
-                    key: const ValueKey('playback-instant-speed'),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    key: const ValueKey('playback-close'),
+                    tooltip: strings.playbackClose,
+                    icon: const Icon(Icons.close),
+                    iconSize: 20,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => widget.model.stopPlayback(),
                   ),
                 ],
               ),
-              const SizedBox(width: 4),
-              TextButton(
-                key: const ValueKey('playback-speed'),
-                onPressed: () => widget.model.player.cycleSpeed(),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                ),
-                child: Text('${playback.speed.toStringAsFixed(0)}×'),
-              ),
-              // The rotation-mode button, the recording chip's twin:
-              // cycles the shared setting, the follow-camera reads it.
-              IconButton(
-                key: const ValueKey('playback-rotation-mode'),
-                tooltip: rotationModeName(strings, widget.model.mapRotation),
-                icon: Icon(rotationModeIcon(widget.model.mapRotation)),
-                iconSize: 18,
-                visualDensity: VisualDensity.compact,
-                onPressed: () {
-                  final modes = AppModel.rotationModes;
-                  final next = modes[(modes.indexOf(widget.model.mapRotation) +
-                          1) %
-                      modes.length];
-                  widget.model.setMapRotation(next);
-                },
-              ),
-              IconButton(
-                key: const ValueKey('playback-close'),
-                tooltip: strings.playbackClose,
-                icon: const Icon(Icons.close),
-                iconSize: 20,
-                visualDensity: VisualDensity.compact,
-                onPressed: () => widget.model.stopPlayback(),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      playback.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Secondary metadata: muted and smaller than the title,
+                  // tabular figures so the ticking seconds don't jitter the
+                  // row's width.
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${formatDuration(playback.elapsed)} / '
+                        '${formatDuration(playback.total)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                      ),
+                      // The instant speed: the timeline's own pace at the
+                      // cursor (the bracket segment's displacement speed,
+                      // not the ladder's multiplier), live only while the
+                      // replay plays — a dash once it stands still, the
+                      // recording speed segment's dash convention. Its
+                      // 'km/h' and dash are hard-coded too, that segment's
+                      // precedent: plain values, no sentence to localize.
+                      Text(
+                        playing
+                            ? '${(playback.instantSpeed * 3.6).toStringAsFixed(1)}'
+                                ' km/h'
+                            : '—',
+                        key: const ValueKey('playback-instant-speed'),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                            ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  const SizedBox(width: 4),
+                  TextButton(
+                    key: const ValueKey('playback-speed'),
+                    onPressed: () => widget.model.player.cycleSpeed(),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    child: Text('${playback.speed.toStringAsFixed(0)}×'),
+                  ),
+                  // The rotation-mode button, the recording chip's twin:
+                  // cycles the shared setting, the follow-camera reads it.
+                  IconButton(
+                    key: const ValueKey('playback-rotation-mode'),
+                    tooltip: rotationModeName(strings, widget.model.mapRotation),
+                    icon: Icon(rotationModeIcon(widget.model.mapRotation)),
+                    iconSize: 18,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      final modes = AppModel.rotationModes;
+                      final next = modes[
+                          (modes.indexOf(widget.model.mapRotation) + 1) %
+                              modes.length];
+                      widget.model.setMapRotation(next);
+                    },
+                  ),
+                ],
               ),
             ],
           ),

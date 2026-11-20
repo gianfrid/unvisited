@@ -41,13 +41,31 @@ class FollowCamera {
     this.onFollowChanged,
   }) : _createTicker = tickerFactory {
     // The follow-camera releases on a gesture that moves the map — drags,
-    // multi-finger gestures, and the fling/double-tap-zoom animations that
-    // report through their own sources after the gesture ends. Plain taps
-    // don't release it. Only a re-arm ([arm]/[rearm]) or a fresh session
-    // or playback arms it again.
+    // multi-finger gestures, the fling/double-tap-zoom animations that
+    // report through their own sources after the gesture ends, and the
+    // desktop scroll wheel (a zoom hand, not a pan, but it moves the
+    // camera just the same). Plain taps don't release it. Only a re-arm
+    // ([arm]/[rearm]) or a fresh session or playback arms it again.
     _mapEvents = mapController.mapEventStream.listen((event) {
-      if (!follow || !_moveGestures.contains(event.source)) return;
-      release(event.source);
+      if (!follow) return;
+      if (_moveGestures.contains(event.source)) {
+        release(event.source);
+        return;
+      }
+      // A zoom-only move issued through the host controller is the
+      // lateral zoom slider's hand (it passes the camera's center
+      // through unchanged): the ride adopts that zoom as its own
+      // instead of re-flooring to [followZoomFloor] on the next tick.
+      // The glide's own frames move the center while converging, so a
+      // center-static frame can only come from outside the glide — and
+      // even if a settled glide frame slips through, its zoom is within
+      // an epsilon of the glide's own target, which adopting is a no-op.
+      if (event is MapEventWithMove &&
+          event.source == MapEventSource.mapController &&
+          event.oldCamera.center == event.camera.center &&
+          event.oldCamera.zoom != event.camera.zoom) {
+        _rideZoom = event.camera.zoom;
+      }
     });
   }
 
@@ -162,6 +180,7 @@ class FollowCamera {
     MapEventSource.multiFingerEnd,
     MapEventSource.flingAnimationController,
     MapEventSource.doubleTapZoomAnimationController,
+    MapEventSource.scrollWheel,
   };
 
   /// Arms the follow without moving the camera: used when the camera is
@@ -192,10 +211,19 @@ class FollowCamera {
   void reset({required bool armed}) {
     stopGlide();
     clearHeadingWindow();
+    _rideZoom = null; // a new followed thing starts under the floor policy
     if (_follow == armed) return;
     _follow = armed;
     onFollowChanged?.call();
   }
+
+  /// The zoom the user's hand set through the lateral slider while the
+  /// ride is armed (null until then): the follow targets this instead of
+  /// [followZoomFloor], so a zoom-out below the floor is held, not walked
+  /// back. Cleared on a followed-thing boundary ([reset]); kept across a
+  /// plain release/re-arm, so the hand's zoom survives a pan away and
+  /// back.
+  double? _rideZoom;
 
   /// Forgets the smoothed headings — call when the followed thing
   /// changes (a session boundary, a playback start): stale headings must
@@ -218,12 +246,15 @@ class FollowCamera {
   /// Feeds one target into the camera: the point to ride ([heading] is
   /// the course to rotate to in course-up mode, or null to glide the
   /// position and hold the current rotation — a stale or compass-less
-  /// target). The zoom is the camera's own, never below
+  /// target). The zoom is the ride's own ([_rideZoom] once the user's
+  /// slider set one), else the camera's own never below
   /// [followZoomFloor]; the center is the framed one (see
   /// [_framedCenter]). Call this per fix (the session) or per tick
   /// (playback) — the glide smooths whatever cadence arrives.
   void update(LatLng point, double? heading) {
-    final zoom = math.max(mapController.camera.zoom, followZoomFloor);
+    // The ride's zoom: the user's slider zoom once one was set, else
+    // never below the floor.
+    final zoom = _rideZoom ?? math.max(mapController.camera.zoom, followZoomFloor);
     final center = _framedCenter(point, zoom);
     double targetRotation = mapController.camera.rotation;
     if (heading != null) {
