@@ -1175,7 +1175,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // The chip offers the rotation-mode button; the default is north-up.
+      // The control pill offers the rotation-mode button; north-up default.
       final button = find.byKey(const ValueKey('rotation-mode-button'));
       expect(button, findsOneWidget);
       expect(model.mapRotation, 'north');
@@ -1432,14 +1432,15 @@ void main() {
   });
 
   testWidgets(
-    'locate and record live in the bottom-left stack, not the top bar',
+    'locate lives in the edge pill; record mirrors to the opposite edge',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
       final model = await createModel(root);
       final source = FakePositionSource();
 
-      // GPS off at startup: no fix, so no Record — the stack is Locate only.
+      // GPS off at startup: no fix, so no Record — the pill is rotation,
+      // zoom and locate only.
       mockGeolocator(tester, permission: 3, serviceEnabled: false);
 
       await pumpMapPage(
@@ -1456,21 +1457,20 @@ void main() {
       expect(find.text('Record'), findsNothing);
       final locate = rectOf('Center on current position');
       expect(
-        locate.top,
-        greaterThan(mapRect.height * 0.5),
-        reason: 'locate sits in the bottom half of the map',
+        locate.left,
+        greaterThan(mapRect.width * 0.5),
+        reason: 'the pill hugs the right edge (the configured side)',
       );
-      expect(locate.left, closeTo(12.0, 1.0));
       expect(
         mapRect.bottom - locate.bottom,
-        closeTo(16.0, 1.0),
-        reason: 'locate clears the bottom safe-area inset',
+        greaterThan(100),
+        reason: 'locate sits mid-edge, not in the bottom column',
       );
       // The top bar is untouched: Import stays up there.
       expect(tester.getRect(find.text('Import')).top, lessThan(100));
 
       // A fix arrives through the locate tap: the Record button appears in
-      // the slot directly above Locate.
+      // the cluster on the opposite (left) edge, vertically centered.
       mockGeolocator(
         tester,
         permission: 3,
@@ -1479,16 +1479,20 @@ void main() {
       await tester.tap(find.byTooltip('Center on current position'));
       await pumpGlide(tester);
       final record = rectOf('Record');
-      final locateAfter = rectOf('Center on current position');
       expect(
-        record.bottom,
-        closeTo(locateAfter.top, 1.0),
-        reason: 'record sits directly above locate',
+        record.right,
+        lessThan(mapRect.width * 0.5),
+        reason: 'record mirrors to the left edge, opposite the pill',
       );
-      expect(record.center.dx, closeTo(locateAfter.center.dx, 1.0));
+      expect(record.left, closeTo(12.0, 1.0));
+      expect(
+        (record.center.dy - mapRect.center.dy).abs(),
+        lessThan(mapRect.height * 0.2),
+        reason: 'the record cluster is vertically centered',
+      );
 
-      // While recording the slot holds Pause, still in the bottom-left
-      // stack; the header keeps Tracks and Settings only.
+      // While recording the slot holds Pause, still on the left edge; the
+      // header keeps Tracks and Settings only.
       await model.startRecording(source: source, permissionGate: false);
       fakeFix(source, 0);
       await pumpGlide(tester);
@@ -1499,36 +1503,32 @@ void main() {
         reason: 'stop is visible the whole session, running or paused',
       );
       final pause = rectOf('Pause');
-      final locateRec = rectOf('Center on current position');
-      expect(
-        pause.bottom,
-        closeTo(locateRec.top, 1.0),
-        reason: 'pause occupies the record slot directly above locate',
-      );
-
-      // Paused: the slot reads Resume and Stop appears before it in the
-      // stack, all still bottom-left.
-      await tester.tap(find.byTooltip('Pause'));
-      await tester.pump();
       final stop = rectOf('Stop');
-      final resume = rectOf('Resume');
-      final locatePaused = rectOf('Center on current position');
       expect(
-        stop.top,
-        greaterThan(mapRect.height * 0.4),
-        reason: 'stop stays in the bottom-left stack, clear of the top bar',
-      );
-      expect(
-        resume.bottom,
-        closeTo(locatePaused.top, 1.0),
-        reason: 'resume occupies the record slot directly above locate',
+        pause.right,
+        lessThan(mapRect.width * 0.5),
+        reason: 'pause occupies the record slot on the left edge',
       );
       expect(
         stop.bottom,
-        closeTo(resume.top, 1.0),
-        reason: 'stop sits before the resume button in the stack',
+        closeTo(pause.top, 1.0),
+        reason: 'stop sits directly above pause in the cluster',
       );
-      expect(stop.center.dx, closeTo(resume.center.dx, 1.0));
+      expect(stop.center.dx, closeTo(pause.center.dx, 1.0));
+
+      // Paused: the slot reads Resume and Stop stays before it in the
+      // cluster, all still on the left edge.
+      await tester.tap(find.byTooltip('Pause'));
+      await tester.pump();
+      final resume = rectOf('Resume');
+      final stopPaused = rectOf('Stop');
+      expect(resume.right, lessThan(mapRect.width * 0.5));
+      expect(
+        stopPaused.bottom,
+        closeTo(resume.top, 1.0),
+        reason: 'stop sits before the resume button in the cluster',
+      );
+      expect(stopPaused.center.dx, closeTo(resume.center.dx, 1.0));
       expect(find.text('Import'), findsNothing);
       expect(tester.getRect(find.text('Tracks')).top, lessThan(100));
       // End the session without the dialog (its import never settles in
@@ -3038,7 +3038,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('lateral zoom slider steps and drags the camera zoom', (
+  testWidgets('the edge pill steps the camera zoom with the +/− buttons', (
     tester,
   ) async {
     final root = createRoot();
@@ -3068,24 +3068,24 @@ void main() {
     await tester.pump();
     expect(cameraZoom(), 13.0);
 
-    // Full upward rail drag tops out at the OSM zoom limit, downward at
-    // the world floor; the clamps also apply to the header's old buttons.
-    await tester.drag(
-      find.byKey(const ValueKey('zoom-track')),
-      const Offset(0, -400),
-    );
-    await tester.pump();
+    // Repeated steps clamp at the OSM zoom limit and the world floor,
+    // like the gestures do.
+    for (var i = 0; i < 10; i++) {
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pump();
+    }
     expect(cameraZoom(), 19.0);
 
-    await tester.drag(
-      find.byKey(const ValueKey('zoom-track')),
-      const Offset(0, 400),
-    );
-    await tester.pump();
+    for (var i = 0; i < 20; i++) {
+      await tester.tap(find.byTooltip('Zoom out'));
+      await tester.pump();
+    }
     expect(cameraZoom(), 3.0);
   });
 
-  testWidgets('zoom slider hugs the configured screen edge', (tester) async {
+  testWidgets('the control pill hugs the configured screen edge', (
+    tester,
+  ) async {
     final root = createRoot();
     final cache = createCache();
     await TrackStore(root).saveZoomSliderSide('left');
@@ -3100,20 +3100,20 @@ void main() {
     );
     await tester.pump();
 
-    Positioned sliderOf() => tester.widget<Positioned>(
+    Positioned pillOf() => tester.widget<Positioned>(
       find.ancestor(
-        of: find.byKey(const ValueKey('zoom-track')),
+        of: find.byKey(const ValueKey('control-pill')),
         matching: find.byType(Positioned),
       ),
     );
 
-    expect(sliderOf().left, 12, reason: 'setting says left edge');
-    expect(sliderOf().right, isNull);
+    expect(pillOf().left, 12, reason: 'setting says left edge');
+    expect(pillOf().right, isNull);
 
     await model.setZoomSliderSide('right');
     await tester.pump();
-    expect(sliderOf().left, isNull);
-    expect(sliderOf().right, 12, reason: 'setting says right edge');
+    expect(pillOf().left, isNull);
+    expect(pillOf().right, 12, reason: 'setting says right edge');
   });
 
   testWidgets('settings sheet picks the track color and slider side', (

@@ -6,12 +6,10 @@ import '../playback/track_playback.dart';
 import 'app_model.dart';
 import 'follow_camera.dart';
 import 'format.dart';
-import 'recording_dashboard.dart'
-    show rotationModeIcon, rotationModeName;
 
 /// The playback dashboard: the replay bar (play/pause/replay, track
-/// name, elapsed/total, the instant speed, the speed chip, the
-/// rotation mode and close)
+/// name, elapsed/total, the instant speed, the speed chip and close; the
+/// rotation-mode toggle lives in the map's control pill — `map_controls.dart`)
 /// and the follow-camera wiring that rides the replay — [FollowCamera]
 /// itself is shared with the recording dashboard (see `follow_camera.dart`),
 /// so a replay moves the camera *exactly* like a session does: same
@@ -262,22 +260,6 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                     ),
                     child: Text('${playback.speed.toStringAsFixed(0)}×'),
-                  ),
-                  // The rotation-mode button, the recording chip's twin:
-                  // cycles the shared setting, the follow-camera reads it.
-                  IconButton(
-                    key: const ValueKey('playback-rotation-mode'),
-                    tooltip: rotationModeName(strings, widget.model.mapRotation),
-                    icon: Icon(rotationModeIcon(widget.model.mapRotation)),
-                    iconSize: 18,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      final modes = AppModel.rotationModes;
-                      final next = modes[
-                          (modes.indexOf(widget.model.mapRotation) + 1) %
-                              modes.length];
-                      widget.model.setMapRotation(next);
-                    },
                   ),
                 ],
               ),

@@ -20,20 +20,9 @@ import 'stats_panel.dart';
 // (including the tests) keep resolving it unchanged.
 export 'follow_camera.dart' show nearestEquivalentRotation;
 
-/// The display name of a rotation mode, for the chip button's tooltip and
-/// the Settings segments.
-String rotationModeName(AppStrings strings, String mode) => switch (mode) {
-      'course' => strings.rotationModeCourse,
-      _ => strings.rotationModeNorth,
-    };
-
-/// The chip button's icon for a rotation mode: a compass rose while the
-/// map is locked north-up, the travel arrow (the position marker's glyph)
-/// while the camera rides the course.
-IconData rotationModeIcon(String mode) => switch (mode) {
-      'course' => Icons.navigation,
-      _ => Icons.explore,
-    };
+// The rotation-mode display helpers (rotationModeName/rotationModeIcon)
+// live in `map_controls.dart` now: the toggle is the map pill's button,
+// not a chip button.
 
 /// The recording dashboard: everything a running session shows. Extracted
 /// from `map_page.dart`'s state (which keeps the map, the fog overlay, the
@@ -408,23 +397,6 @@ class RecordingDashboardState extends State<RecordingDashboard>
                       ),
                     ],
                     const SizedBox(width: 10),
-                    IconButton(
-                      key: const ValueKey('rotation-mode-button'),
-                      tooltip: rotationModeName(
-                        strings,
-                        widget.model.mapRotation,
-                      ),
-                      icon: Icon(rotationModeIcon(widget.model.mapRotation)),
-                      iconSize: 18,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        final modes = AppModel.rotationModes;
-                        final next = modes[(modes.indexOf(widget.model.mapRotation) +
-                                1) %
-                            modes.length];
-                        widget.model.setMapRotation(next);
-                      },
-                    ),
                     Icon(
                       _panelOpen ? Icons.expand_less : Icons.expand_more,
                       size: 18,

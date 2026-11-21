@@ -553,13 +553,14 @@ void main() {
         MapController.of(tester.element(find.byType(TileLayer))).camera;
     expect(camera().zoom, greaterThanOrEqualTo(17.0)); // the floor
 
-    // Drag the slider rail to the world floor: a zoom-only programmatic
-    // move, the slider's signature. The armed follow adopts it instead
-    // of walking the camera back to the floor on the next ticks.
-    await tester.drag(
-      find.byKey(const ValueKey('zoom-track')),
-      const Offset(0, 400),
-    );
+    // Step out to the world floor with the pill's zoom-out button: a
+    // zoom-only programmatic move, the pill's signature. The armed follow
+    // adopts it instead of walking the camera back to the floor on the
+    // next ticks.
+    for (var i = 0; i < 20; i++) {
+      await tester.tap(find.byTooltip('Zoom out'));
+      await tester.pump();
+    }
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
