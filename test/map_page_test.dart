@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind, PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_compass/flutter_compass.dart';
@@ -760,6 +761,69 @@ void main() {
         zoom(),
         closeTo(tapped, 1e-9),
         reason: 'the ride holds the zoom the hand set',
+      );
+    },
+  );
+
+  testWidgets(
+    'a wheel zoom-out survives the follow re-arm (Locate) — the hand s zoom holds',
+    (tester) async {
+      // TODO.md #1 regression: the wheel is a camera-moving hand, so it
+      // released the follow but never adopted its zoom (only the pill's
+      // center-static move was adopted) — on the Locate re-arm the next
+      // fix re-floored the ride to 17 and walked the hand's zoom back up.
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0);
+      await pumpGlide(tester);
+      expect(camera().zoom, greaterThanOrEqualTo(17.0));
+
+      // Ten wheel notches out (flutter_map: newZoom = zoom - dy * 0.005)
+      // — the hand releases the follow at a much lower zoom.
+      final center = tester.getCenter(find.byType(FlutterMap));
+      for (var i = 0; i < 10; i++) {
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            kind: PointerDeviceKind.mouse,
+            position: center,
+            scrollDelta: const Offset(0, 200),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final handZoom = camera().zoom;
+      expect(
+        handZoom,
+        lessThan(12.0),
+        reason: 'the wheel zoomed far out and released the follow',
+      );
+
+      // Locate is the way back while recording: re-arm on the session's
+      // fix at the user's zoom; the next fix must keep the hand's zoom,
+      // not re-floor to 17.
+      await tester.tap(find.byTooltip('Center on current position'));
+      await tester.pump();
+      fakeFix(source, 1);
+      await pumpGlide(tester);
+      expect(
+        camera().zoom,
+        closeTo(handZoom, 0.05),
+        reason: 'the re-armed follow rides the hand s zoom, not the floor',
       );
     },
   );

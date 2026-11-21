@@ -47,6 +47,19 @@ class FollowCamera {
     // camera just the same). Plain taps don't release it. Only a re-arm
     // ([arm]/[rearm]) or a fresh session or playback arms it again.
     _mapEvents = mapController.mapEventStream.listen((event) {
+      // A gesture that changed the zoom adopts it as the ride's zoom —
+      // even on the very event that releases the follow (the releasing
+      // event is the first the hand emits, and its camera is the zoom the
+      // hand actually left, not an intermediate one), and even while the
+      // follow is already off: after the release the listener below would
+      // return early and the gesture's final zoom would never be seen.
+      // A pure pan changes no zoom and adopts nothing. A glide frame is
+      // never a gesture source, so no [_isGlideWrite] guard is needed here.
+      if (event is MapEventWithMove &&
+          _moveGestures.contains(event.source) &&
+          event.oldCamera.zoom != event.camera.zoom) {
+        _adoptRideZoom(event.camera.zoom);
+      }
       if (!follow) return;
       if (_moveGestures.contains(event.source)) {
         release(event.source);
@@ -66,26 +79,27 @@ class FollowCamera {
           event.oldCamera.center == event.camera.center &&
           event.oldCamera.zoom != event.camera.zoom &&
           !_isGlideWrite(event.camera)) {
-        _rideZoom = event.camera.zoom;
-        // The hand wins *now*, not on the next fix: re-target the glide
-        // in flight onto the zoom the hand just set. Otherwise the
-        // still-running ticker keeps easing back toward its stale zoom
-        // target — the tap is undone for up to a fix interval (~1 s),
-        // then springs back the other way once the fix adopts it, which
-        // reads as the zoom bouncing under the user's taps. The center
-        // and rotation targets stay: only the zoom the hand changed is
-        // re-targeted (it equals the camera's zoom now, so the glide
-        // stops changing it and keeps easing the framing).
-        final target = _glideTarget;
-        if (target != null) {
-          _glideTarget = (
-            center: target.center,
-            zoom: event.camera.zoom,
-            rotation: target.rotation,
-          );
-        }
+        _adoptRideZoom(event.camera.zoom);
       }
     });
+  }
+
+  /// Adopts [zoom] as the ride's zoom (the user's hand set it): the next
+  /// target rides it instead of re-flooring to [followZoomFloor], and a
+  /// glide still in flight is re-targeted onto it *now* — the hand wins
+  /// in the same frame, not on the next fix. Otherwise the running ticker
+  /// keeps easing back toward its stale zoom target: the tap is undone
+  /// for up to a fix interval (~1 s), then springs the other way once the
+  /// next fix adopts it, which reads as the zoom bouncing under the
+  /// user's taps. The center and rotation targets stay: only the zoom the
+  /// hand changed is re-targeted (it equals the camera's zoom now, so the
+  /// glide stops changing it and keeps easing the framing).
+  void _adoptRideZoom(double zoom) {
+    _rideZoom = zoom;
+    final target = _glideTarget;
+    if (target != null) {
+      _glideTarget = (center: target.center, zoom: zoom, rotation: target.rotation);
+    }
   }
 
   /// The camera this FollowCamera moves. The host hands over the same
@@ -256,12 +270,14 @@ class FollowCamera {
     onFollowChanged?.call();
   }
 
-  /// The zoom the user's hand set through the lateral slider while the
-  /// ride is armed (null until then): the follow targets this instead of
-  /// [followZoomFloor], so a zoom-out below the floor is held, not walked
-  /// back. Cleared on a followed-thing boundary ([reset]); kept across a
-  /// plain release/re-arm, so the hand's zoom survives a pan away and
-  /// back.
+  /// The zoom the user's hand set while the ride is armed — the pill's +/−
+/// buttons (a center-static programmatic move) or a gesture that changed
+/// the zoom (pinch, scroll wheel, double-tap/fling) — null until then:
+/// the follow targets this instead of [followZoomFloor], so a zoom-out
+/// below the floor is held, not walked back. Cleared on a followed-thing
+/// boundary ([reset]); kept across a plain release/re-arm, so the hand's
+/// zoom survives a pan away and back (e.g. a pinch zoom-out followed by a
+/// Locate re-arm).
   double? _rideZoom;
 
   /// Forgets the smoothed headings — call when the followed thing
