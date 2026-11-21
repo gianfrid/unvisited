@@ -782,9 +782,9 @@ class ItalianStrings extends AppStrings {
   String get mapRotationSubtitle =>
       'Fotocamera di inseguimento orientata al corso; disattivata la mappa resta a nord';
   @override
-  String get rotationModeNorth => 'Nord in alto';
+  String get rotationModeNorth => 'Nord su';
   @override
-  String get rotationModeCourse => 'Corso in alto';
+  String get rotationModeCourse => 'Corso su';
   @override
   String get language => 'Lingua';
   @override
