@@ -219,6 +219,48 @@ void main() {
     );
   });
 
+  testWidgets('a replay hides the fog-of-war overlay, which returns on close', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 4)));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    // One visible track, no selection: the only circle layer is the fog.
+    final circles = tester
+        .widget<CircleLayer>(find.byType(CircleLayer))
+        .circles;
+    expect(circles, isNotEmpty);
+
+    model.startPlayback(model.tracks.single);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.playback, isNotNull);
+    // The replay rides the bare map: the fog circles are unmounted for
+    // the replay's duration (the bar and marker mount as usual).
+    expect(find.byType(CircleLayer), findsNothing);
+    expect(find.byKey(const ValueKey('playback-bar')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('playback-marker-disc')),
+      findsOneWidget,
+    );
+
+    // Closing the replay mounts the fog back, from the cached centers.
+    await tester.tap(find.byKey(const ValueKey('playback-close')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.playback, isNull);
+    expect(
+      tester.widget<CircleLayer>(find.byType(CircleLayer)).circles,
+      isNotEmpty,
+    );
+  });
+
   testWidgets('a session owns the map: starting it stops a running replay', (
     tester,
   ) async {

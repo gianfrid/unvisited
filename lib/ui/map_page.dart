@@ -255,10 +255,11 @@ class _MapPageState extends State<MapPage> {
   /// The replay's layers, in the recording layers' twin pattern:
   /// mounted with the playback's model notification (the page build
   /// itself), rebuilt per tick via the live channel only — a moving
-  /// marker never repaints the fog. The trace is the played prefix with
+  /// marker never repaints the fog (which this gate unmounts while the
+  /// replay runs anyway). The trace is the played prefix with
   /// the interpolated position at its head (the recording live trace's
-  /// look by design: an in-progress line over the fog, legible even
-  /// where a hidden track has no circles), the marker the course-up
+  /// look by design: an in-progress line, legible over the bare map),
+  /// the marker the course-up
   /// disc the recording marker is, in the trace color — its child's
   /// angle is the course in map-content space, same rule as the
   /// recording marker (flutter_map renders layer children inside the
@@ -1009,7 +1010,15 @@ class _MapPageState extends State<MapPage> {
               // below the fog: undiscovered roads are background hints,
               // and everything discovered paints over them.
               if (unvisited.isNotEmpty) PolylineLayer(polylines: unvisited),
-              CircleLayer(circles: _buildFogCircles(mapTracks)),
+              // The fog-of-war circles, absent while a replay runs (and
+              // back on close): a replay rides the bare map — the
+              // circles are noise around the trace it draws. Starting or
+              // stopping a replay is a model-wide rebuild, so the layer
+              // mounts and unmounts there; per-tick updates never touch
+              // it. The corridors below are unrelated to the fog's
+              // absence — the played track's corridors stay.
+              if (widget.model.playback == null)
+                CircleLayer(circles: _buildFogCircles(mapTracks)),
               // Unlocked road corridors (fog-of-war for streets), above
               // the circles so the corridor reads on top of the blobs.
               if (corridors.isNotEmpty) PolylineLayer(polylines: corridors),
@@ -1054,9 +1063,11 @@ class _MapPageState extends State<MapPage> {
               // The recording marker (course-up) rides above the locate
               // one so a session's fixes read on top of a startup fix.
               ..._recordingMarkers(),
-              // The replay's trace and marker, above everything so the
-              // replay reads on top of the fog (it rides it — the
-              // follow-camera belongs to the playback dashboard below).
+              // The replay's trace and marker, above everything — while
+              // a replay runs the fog circles are unmounted (the layers'
+              // gate above), so the trace rides the bare map plus the
+              // corridors; the follow-camera belongs to the playback
+              // dashboard below.
               if (widget.model.playback != null) ..._playbackLayers(),
               RichAttributionWidget(
                 // The default flutter_map logo badge is redundant next to
