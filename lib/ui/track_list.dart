@@ -228,11 +228,6 @@ class _TrackTile extends StatelessWidget {
       // leaves the tile in place and nothing deleted.
       confirmDismiss: (_) => _confirmDelete(context, strings),
       onDismissed: (_) => model.delete(track),
-      // The whole tile — name and the row below — taps the camera to
-      // the track's own points. The checkbox (and the ⋮ menu) keep their
-      // own hit targets — a child handler wins the gesture arena — so
-      // they stay the tile's only selecting/hiding elements: a tap
-      // never selects and never toggles visibility.
       // A plain ListTile, not a CheckboxListTile: that one wires the
       // whole tile to the checkbox's toggler, so no tap could ever mean
       // anything else. Here the tile's tap — name or the row below —
