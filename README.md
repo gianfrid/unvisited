@@ -1,5 +1,7 @@
 # Unvisited
 
+[![Get it on Obtanium](https://raw.githubusercontent.com/ImranR98/Obtanium/main/assets/get-it-on-obtanium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2520%2522gianfrid.unvisited%2522%252C%2520%2522url%2522%253A%2520%2522https%253A%252F%252Fgithub.com%252Fgianfrid%252Funvisited%2522%252C%2520%2522author%2522%253A%2520%2522gianfrid%2522%252C%2520%2522name%2522%253A%2520%2522Unvisited%2522%252C%2520%2522additionalSettings%2522%253A%2520%2522%257B%255C%2522useLatestAssetDateAsReleaseDate%255C%2522%253A%2520true%252C%255C%2522releaseDateAsVersion%255C%2522%253A%2520true%257D%2522%257D)
+
 A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog. The map stays north-up by default (dynamic rotation is backlog; Settings can opt into course-up while recording). Any stored track with timestamps can also be replayed from the track list's ⋮ menu: Playback animates a marker along the track's timeline at a controllable speed (1×–64×), riding the same follow-camera as an active recording.
 
 Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
@@ -102,10 +104,6 @@ Build an APK:
 ```bash
 flutter build apk --debug     # build/app/outputs/flutter-apk/app-debug.apk
 ```
-
-The rolling GitHub release carries the Android APK, so you can also add the app to Obtanium with one tap — it will track the release's APK automatically:
-
-[![Get it on Obtanium](https://raw.githubusercontent.com/ImranR98/Obtanium/main/assets/get-it-on-obtanium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2520%2522gianfrid.unvisited%2522%252C%2520%2522url%2522%253A%2520%2522https%253A%252F%252Fgithub.com%252Fgianfrid%252Funvisited%2522%252C%2520%2522author%2522%253A%2520%2522gianfrid%2522%252C%2520%2522name%2522%253A%2520%2522Unvisited%2522%252C%2520%2522additionalSettings%2522%253A%2520%2522%257B%255C%2522useLatestAssetDateAsReleaseDate%255C%2522%253A%2520true%252C%255C%2522releaseDateAsVersion%255C%2522%253A%2520true%257D%2522%257D)
 
 ## Road data files (optional)
 
