@@ -59,13 +59,16 @@ void main() {
     expect(model.playback!.name, model.tracks.last.name);
   });
 
-  test('stop clears the replay', () {
+  test('stop clears the replay and resets rotation to north', () async {
     final model = AppModel(TrackStore(createRoot()));
     model.store.importBytes(fixture('morning_walk.gpx'));
     model.startPlayback(model.tracks.single);
     expect(model.playback, isNotNull);
-    model.stopPlayback();
+    await model.setMapRotation('course');
+    await model.stopPlayback();
     expect(model.playback, isNull);
+    expect(model.mapRotation, 'north',
+        reason: 'course-up has no function with nothing moving');
   });
 
   test('playbackLive fires on the per-tick concerns only', () {

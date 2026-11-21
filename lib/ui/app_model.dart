@@ -413,8 +413,13 @@ class AppModel extends ChangeNotifier {
   /// replay started.
   bool startPlayback(StoredTrack track) => player.start(track);
 
-  /// Stops the replay (the playback bar's close button).
-  void stopPlayback() => player.stop();
+  /// Stops the replay (the playback bar's close button). Also resets the
+  /// map rotation to north-up: with nothing moving anymore the course
+  /// arrow would linger selected for no function.
+  Future<void> stopPlayback() async {
+    player.stop();
+    await setMapRotation('north');
+  }
 
   // --- Catalog -------------------------------------------------------------
 

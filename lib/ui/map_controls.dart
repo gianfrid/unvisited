@@ -29,12 +29,16 @@ String rotationModeName(AppStrings strings, String mode) => switch (mode) {
       _ => strings.rotationModeNorth,
     };
 
-/// The pill button's icon for a rotation mode: a compass rose while the
-/// map is locked north-up, the travel arrow (the position marker's glyph)
-/// while the camera rides the course.
-IconData rotationModeIcon(String mode) => switch (mode) {
-      'course' => Icons.navigation,
-      _ => Icons.explore,
+/// The pill button's glyph for a rotation mode: the travel arrow (the
+/// position marker's glyph) while the camera rides the course, and a
+/// bold letter **N** while the map is locked north-up — the label makes
+/// the north state unmistakable at a glance.
+Widget rotationModeGlyph(String mode) => switch (mode) {
+      'course' => const Icon(Icons.navigation, size: 24),
+      _ => const Text(
+          'N',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
     };
 
 /// The edge control pill pinned to the map's configured edge: the
@@ -159,7 +163,7 @@ class MapControlPill extends StatelessWidget {
                   }
                 },
                 child: Center(
-                  child: Icon(rotationModeIcon(model.mapRotation), size: 24),
+                  child: rotationModeGlyph(model.mapRotation),
                 ),
               ),
             ),

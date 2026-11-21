@@ -20,7 +20,7 @@ import 'stats_panel.dart';
 // (including the tests) keep resolving it unchanged.
 export 'follow_camera.dart' show nearestEquivalentRotation;
 
-// The rotation-mode display helpers (rotationModeName/rotationModeIcon)
+// The rotation-mode display helpers (rotationModeName/rotationModeGlyph)
 // live in `map_controls.dart` now: the toggle is the map pill's button,
 // not a chip button.
 
