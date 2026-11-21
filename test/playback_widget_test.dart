@@ -635,12 +635,17 @@ void main() {
       }
       final panned = camera().center;
 
-      // Starting from course-up: the tap goes to north — a pure mode
-      // change, no re-arm, so the released camera stays where the pan put
-      // it.
+      // Starting from course-up: the tap goes to north — the map snaps
+      // north on the spot, while the released camera stays where the pan
+      // put it.
       await tester.tap(rotationButton);
       await tester.pump();
       expect(model.mapRotation, 'north');
+      expect(
+        camera().rotation % 360,
+        lessThan(1.0),
+        reason: 'north snaps the map north even with the follow released',
+      );
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
@@ -648,7 +653,12 @@ void main() {
         (camera().center.latitude - panned.latitude).abs() < 1e-6 &&
             (camera().center.longitude - panned.longitude).abs() < 1e-6,
         isTrue,
-        reason: 'north is a mode change only: the follow stays released',
+        reason: 'north does not re-arm: the center stays where the pan left it',
+      );
+      expect(
+        camera().rotation % 360,
+        lessThan(1.0),
+        reason: 'the released follow leaves the north snap alone',
       );
 
       // Course: the same tap re-arms the follow and brings the camera back

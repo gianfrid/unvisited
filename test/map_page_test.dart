@@ -1466,10 +1466,16 @@ void main() {
       await pumpGlide(tester);
       final panned = camera().center;
 
-      // North first: a pure mode change, the released follow holds.
+      // North first: the map snaps north on the spot while the released
+      // follow holds its panned center.
       await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
       await tester.pump();
       expect(model.mapRotation, 'north');
+      expect(
+        camera().rotation % 360,
+        lessThan(1.0),
+        reason: 'north snaps the map north even with the follow released',
+      );
       fakeFix(source, 3, lat: 52.5203, speed: 5.0, heading: 90);
       await pumpGlide(tester);
       expect(
@@ -1477,6 +1483,11 @@ void main() {
             (camera().center.longitude - panned.longitude).abs() < 1e-6,
         isTrue,
         reason: 'north does not re-arm a released follow',
+      );
+      expect(
+        camera().rotation % 360,
+        lessThan(1.0),
+        reason: 'the released follow leaves the north snap alone',
       );
 
       // Course: the tap re-arms the follow and re-centers on the session
