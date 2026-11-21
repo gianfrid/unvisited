@@ -588,7 +588,7 @@ class AppModel extends ChangeNotifier {
       .whereType<DateTime>()
       .fold<DateTime?>(null, (min, t) => min == null || t.isBefore(min) ? t : min);
 
-  /// Which screen edge the zoom slider hugs: 'left' or 'right'.
+  /// Which screen edge the control pill hugs: 'left' or 'right'.
   String get zoomSliderSide => store.zoomSliderSide;
 
   /// Theme mode: 'system', 'light', or 'dark'.
@@ -602,7 +602,7 @@ class AppModel extends ChangeNotifier {
   /// low-speed gate the compass takes over the rotation).
   String get mapRotation => store.mapRotation;
 
-  /// The rotation modes in the order the recording chip's button cycles
+  /// The rotation modes in the order the control pill's button cycles
   /// through them.
   static const rotationModes = <String>['north', 'course'];
 

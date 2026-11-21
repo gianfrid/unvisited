@@ -2422,7 +2422,7 @@ void main() {
     await tester.tap(find.text('Impostazioni'));
     await tester.pumpAndSettle();
     expect(find.text('Colore della traccia'), findsOneWidget);
-    expect(find.text('Cursore dello zoom'), findsOneWidget);
+    expect(find.text('Lato dei controlli'), findsOneWidget);
     expect(find.text('Sinistra'), findsOneWidget);
     expect(find.text('Elimina tutte le tracce'), findsOneWidget);
     expect(find.text('Nessuna traccia archiviata'), findsOneWidget);
@@ -3116,7 +3116,7 @@ void main() {
     expect(pillOf().right, 12, reason: 'setting says right edge');
   });
 
-  testWidgets('settings sheet picks the track color and slider side', (
+  testWidgets('settings sheet picks the track color and control side', (
     tester,
   ) async {
     final root = createRoot();
@@ -3139,7 +3139,7 @@ void main() {
     // now — the fog aggregates color by palette) is present alongside its
     // sibling appearance control.
     expect(find.text('Trace color'), findsOneWidget);
-    expect(find.text('Zoom slider'), findsOneWidget);
+    expect(find.text('Control side'), findsOneWidget);
     expect(find.text('Left'), findsOneWidget);
     expect(find.text('Right'), findsOneWidget);
 
@@ -3151,7 +3151,7 @@ void main() {
     await reloaded.load();
     expect(reloaded.recordingTint, 'blue');
 
-    // So does a slider edge switch (scrolled into view first — the sheet
+    // So does a control-side switch (scrolled into view first — the sheet
     // grew past one screen when it gained the appearance controls).
     await tester.ensureVisible(find.text('Left'));
     await tester.pump();

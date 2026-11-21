@@ -110,8 +110,8 @@ class SettingsSheet extends StatelessWidget {
                   ),
                   ListTile(
                     dense: true,
-                    title: Text(strings.zoomSlider),
-                    subtitle: Text(strings.zoomSliderSubtitle),
+                    title: Text(strings.controlSide),
+                    subtitle: Text(strings.controlSideSubtitle),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 0,
