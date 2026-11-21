@@ -355,7 +355,8 @@ class _MapPageState extends State<MapPage> {
   }
 
   /// The fit-request epoch MapPage handled last (see the import epoch):
-  /// a track-tile tap asks for a fit to its aggregate.
+  /// a track-tile tap asks for a fit to the tapped track (falling back
+  /// to its aggregate when no per-track fit is pending).
   int _seenFitRequestEpoch = 0;
 
   /// Cached unlock centers keyed to the current overlay inputs (visible
@@ -401,16 +402,30 @@ class _MapPageState extends State<MapPage> {
         );
       }
     }
-    // A track-tile tap selects its aggregate and asks for a fit to it
-    // (the plain select path — a map tap — never sets the epoch).
+    // A track-tile tap asks for a fit to the tapped track's own points
+    // (fitTrackId, consumed here); the fallback — a bare epoch bump —
+    // fits the selected aggregate (the plain select path — a map tap —
+    // never sets the epoch).
     final fitEpoch = widget.model.fitRequestEpoch;
     if (fitEpoch != _seenFitRequestEpoch) {
       _seenFitRequestEpoch = fitEpoch;
-      final selected = widget.model.selectedAggregate;
-      if (selected != null && selected.points.isNotEmpty) {
+      List<LatLng>? points;
+      final fitTrackId = widget.model.fitTrackId;
+      widget.model.fitTrackId = null;
+      if (fitTrackId != null) {
+        for (final t in widget.model.visibleTracks) {
+          if (t.meta.id == fitTrackId) {
+            points = t.points;
+            break;
+          }
+        }
+      } else {
+        points = widget.model.selectedAggregate?.points;
+      }
+      if (points != null && points.isNotEmpty) {
         _fitWhenSized(
           CameraFit.coordinates(
-            coordinates: selected.points,
+            coordinates: points,
             padding: _fitPadding,
           ),
         );

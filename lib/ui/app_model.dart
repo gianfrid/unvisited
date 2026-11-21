@@ -913,18 +913,27 @@ class AppModel extends ChangeNotifier {
     return defaultTintKey;
   }
 
-  /// Bumped whenever a fit-to-aggregate request fires; MapPage compares
-  /// against the value it last handled (the importEpoch pattern).
+  /// Bumped whenever a fit request fires; MapPage compares against the
+  /// value it last handled (the importEpoch pattern).
   int fitRequestEpoch = 0;
 
-  /// Selects the aggregate the track belongs to and requests a camera fit
-  /// to its points (the selection bar appears with it). No-op with no
-  /// aggregate (a hidden track has none until it is re-shown).
-  void selectAndFitAggregate(StoredTrack t) {
+  /// The track a pending fit targets: the tapped track's own points, not
+  /// its whole aggregate's. MapPage consumes it with the bumped
+  /// [fitRequestEpoch] and clears it; null falls back to the aggregate
+  /// fit (nothing else sets per-track fits today).
+  String? fitTrackId;
+
+  /// The track list's name tap: selects the aggregate the track belongs
+  /// to (the selection bar appears with it) and asks the camera to jump
+  /// to that track's own points — every tap, no two-step. No-op with no
+  /// aggregate (a hidden track has none until it is re-shown); visibility
+  /// is the checkbox's business, never a tap's.
+  void selectAndFitTrack(StoredTrack t) {
     if (!t.visible) return;
     for (final a in aggregates) {
       if (a.trackIds.contains(t.id)) {
         selectedAnchor = a.anchorId;
+        fitTrackId = t.id;
         fitRequestEpoch++;
         notifyListeners();
         return;

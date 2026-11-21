@@ -293,6 +293,25 @@ void main() {
     expect(model.busy, isFalse);
   });
 
+  test('tap fits the tapped track and never touches visibility', () {
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    final track = model.tracks.single;
+    final epoch0 = model.fitRequestEpoch;
+
+    model.selectAndFitTrack(track);
+    expect(model.selectedAnchor, isNotNull);
+    expect(model.fitTrackId, track.id);
+    expect(model.fitRequestEpoch, greaterThan(epoch0));
+    expect(track.visible, isTrue);
+
+    // A hidden track has no aggregate: the tap is a no-op, and nothing
+    // about a tap toggles visibility — that is the checkbox's job.
+    model.toggleVisible(track);
+    model.selectAndFitTrack(track);
+    expect(model.fitRequestEpoch, epoch0 + 1);
+    expect(track.visible, isFalse);
+  });
+
   test(
     'language choice persists, survives deleteAll and falls back safely',
     () async {
