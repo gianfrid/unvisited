@@ -111,11 +111,22 @@ class MapControlPill extends StatelessWidget {
               height: kToolbarHeight,
               child: InkWell(
                 onTap: () {
-                  final modes = AppModel.rotationModes;
-                  final next =
-                      modes[(modes.indexOf(model.mapRotation) + 1) %
-                          modes.length];
-                  model.setMapRotation(next);
+                  if (model.isRecording || model.playback != null) {
+                    // A follow-camera is riding: toggle north/course.
+                    final modes = AppModel.rotationModes;
+                    final next =
+                        modes[(modes.indexOf(model.mapRotation) + 1) %
+                            modes.length];
+                    model.setMapRotation(next);
+                  } else {
+                    // Idle: the tap just sets north — and snaps the camera
+                    // to rotation 0, so the button visibly orients the map
+                    // even after a manual two-finger rotate (course-up has
+                    // no meaning with nothing moving).
+                    model.setMapRotation('north');
+                    final camera = controller.camera;
+                    controller.moveAndRotate(camera.center, camera.zoom, 0.0);
+                  }
                 },
                 child: Center(
                   child: Icon(rotationModeIcon(model.mapRotation), size: 24),

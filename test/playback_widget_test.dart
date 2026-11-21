@@ -559,6 +559,48 @@ void main() {
     },
   );
 
+  testWidgets(
+    'switching to north mid-replay rotates the camera back to 0',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 20)));
+      await model.setMapRotation('course');
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      model.startPlayback(model.tracks.single);
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      // Course-up on an eastward track: rotation -90 == 270.
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
+
+      // The pill's rotation button toggles to north while a replay runs;
+      // the follow then glides the rotation back to 0 on the next ticks.
+      await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
+      await tester.pump();
+      expect(model.mapRotation, 'north');
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final r = camera().rotation % 360;
+      expect(
+        r < 1.0 || r > 359.0,
+        isTrue,
+        reason: 'north mode rotates the camera back to 0, got $r',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('the bar fits the narrowest surface: scrubber keeps width', (
     tester,
   ) async {

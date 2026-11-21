@@ -1191,6 +1191,42 @@ void main() {
   );
 
   testWidgets(
+    'idle, the rotation button just sets north and snaps the camera',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+
+      // A course mode persisted from an earlier session reads course...
+      await model.setMapRotation('course');
+      await tester.pump();
+      expect(model.mapRotation, 'course');
+
+      // ...and a manual rotate leaves the map off north.
+      final controller = MapController.of(
+        tester.element(find.byType(TileLayer)),
+      );
+      controller.rotate(90);
+      await tester.pump();
+      expect(controller.camera.rotation, closeTo(90.0, 1e-6));
+
+      // One idle tap: north — and the camera actually snaps to rotation 0,
+      // not a toggle that would flip the mode back to course.
+      await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
+      await tester.pump();
+      expect(model.mapRotation, 'north');
+      expect(controller.camera.rotation, closeTo(0.0, 1e-6));
+    },
+  );
+
+  testWidgets(
     'by default the map stays north-up while recording; the follow still '
     'centers and the marker still points along the course',
     (tester) async {

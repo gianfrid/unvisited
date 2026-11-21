@@ -55,6 +55,11 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
   /// re-arms the follow exactly like a session boundary does.
   TrackPlayback? _served;
 
+  /// The rotation mode last seen, so a mode change clears the follow's
+  /// smoothed-heading window (a north-bound 0.0 must not blend with the
+  /// previous course's headings, nor vice versa).
+  String? _lastRotationMode;
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +90,11 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
   /// [FollowCamera.reset] — the session dashboard's boundary pair).
   void _onModelChanged() {
     if (!mounted) return;
+    final mode = widget.model.mapRotation;
+    if (_lastRotationMode != null && _lastRotationMode != mode) {
+      _follow.clearHeadingWindow();
+    }
+    _lastRotationMode = mode;
     final playback = widget.model.playback;
     if (!identical(playback, _served)) {
       _served = playback;
@@ -101,7 +111,10 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
     if (!mounted) return;
     final playback = widget.model.playback;
     if (playback == null || !_follow.follow) return;
-    final heading = widget.model.mapRotation == 'course' ? playback.course : null;
+    // North mode feeds 0.0, not null: null means "hold the current
+    // rotation" (stale course), while north-up must actively glide the
+    // rotation back to 0.
+    final heading = widget.model.mapRotation == 'course' ? playback.course : 0.0;
     _follow.update(playback.position, heading);
   }
 
