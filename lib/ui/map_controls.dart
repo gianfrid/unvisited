@@ -29,16 +29,13 @@ String rotationModeName(AppStrings strings, String mode) => switch (mode) {
       _ => strings.rotationModeNorth,
     };
 
-/// The pill button's glyph for a rotation mode: the travel arrow (the
-/// position marker's glyph) while the camera rides the course, and a
-/// bold letter **N** while the map is locked north-up — the label makes
-/// the north state unmistakable at a glance.
-Widget rotationModeGlyph(String mode) => switch (mode) {
-      'course' => const Icon(Icons.navigation, size: 24),
-      _ => const Text(
-          'N',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-        ),
+/// The pill button's icon for a rotation mode: a compass rose while the
+/// map is locked north-up, the travel arrow (the position marker's glyph)
+/// while the camera rides the course. The mode's name rides as the
+/// button's caption (see [rotationModeName]).
+IconData rotationModeIcon(String mode) => switch (mode) {
+      'course' => Icons.navigation,
+      _ => Icons.explore,
     };
 
 /// The edge control pill pinned to the map's configured edge: the
@@ -122,51 +119,47 @@ class MapControlPill extends StatelessWidget {
         children: [
           // The rotation-mode toggle: one global control for the shared
           // setting — the follow-camera (recording and playback alike)
-          // reads it. Icon-only: the mode's name would not fit a caption.
-          Tooltip(
-            message: rotationModeName(strings, model.mapRotation),
-            child: SizedBox(
-              key: const ValueKey('rotation-mode-button'),
-              width: 56,
-              height: kToolbarHeight,
-              child: InkWell(
-                onTap: () {
-                  void snapNorth() {
-                    // A programmatic move: it never releases an armed follow.
-                    final camera = controller.camera;
-                    controller.moveAndRotate(camera.center, camera.zoom, 0.0);
-                  }
+          // reads it. Labelled like the zoom buttons: the mode's name as
+          // the caption ("North up" / "Course up").
+          HeaderAction(
+            key: const ValueKey('rotation-mode-button'),
+            icon: Icon(rotationModeIcon(model.mapRotation)),
+            label: rotationModeName(strings, model.mapRotation),
+            tooltip: rotationModeName(strings, model.mapRotation),
+            width: 56,
+            iconSize: 24,
+            onTap: () {
+              void snapNorth() {
+                // A programmatic move: it never releases an armed follow.
+                final camera = controller.camera;
+                controller.moveAndRotate(camera.center, camera.zoom, 0.0);
+              }
 
-                  if (model.isRecording || model.playback != null) {
-                    // A follow-camera exists: toggle north/course, and make
-                    // the tap do something visible either way — course
-                    // re-arms a released follow so the camera comes along,
-                    // north snaps the map north on the spot, since a
-                    // released follow would never turn it back on its own.
-                    final modes = AppModel.rotationModes;
-                    final next =
-                        modes[(modes.indexOf(model.mapRotation) + 1) %
-                            modes.length];
-                    model.setMapRotation(next);
-                    if (next == 'course') {
-                      onRearmFollow();
-                    } else {
-                      snapNorth();
-                    }
-                  } else {
-                    // Idle: the tap just sets north — and snaps the camera
-                    // to rotation 0, so the button visibly orients the map
-                    // even after a manual two-finger rotate (course-up has
-                    // no meaning with nothing moving).
-                    model.setMapRotation('north');
-                    snapNorth();
-                  }
-                },
-                child: Center(
-                  child: rotationModeGlyph(model.mapRotation),
-                ),
-              ),
-            ),
+              if (model.isRecording || model.playback != null) {
+                // A follow-camera exists: toggle north/course, and make
+                // the tap do something visible either way — course
+                // re-arms a released follow so the camera comes along,
+                // north snaps the map north on the spot, since a
+                // released follow would never turn it back on its own.
+                final modes = AppModel.rotationModes;
+                final next =
+                    modes[(modes.indexOf(model.mapRotation) + 1) %
+                        modes.length];
+                model.setMapRotation(next);
+                if (next == 'course') {
+                  onRearmFollow();
+                } else {
+                  snapNorth();
+                }
+              } else {
+                // Idle: the tap just sets north — and snaps the camera
+                // to rotation 0, so the button visibly orients the map
+                // even after a manual two-finger rotate (course-up has
+                // no meaning with nothing moving).
+                model.setMapRotation('north');
+                snapNorth();
+              }
+            },
           ),
           HeaderAction(
             key: const ValueKey('zoom-in-button'),
