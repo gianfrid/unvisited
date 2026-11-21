@@ -1484,7 +1484,7 @@ void main() {
         lessThan(mapRect.width * 0.5),
         reason: 'record mirrors to the left edge, opposite the pill',
       );
-      expect(record.left, closeTo(12.0, 1.0));
+      expect(record.left, closeTo(16.0, 1.0)); // 12 edge inset + 4 pill padding
       expect(
         (record.center.dy - mapRect.center.dy).abs(),
         lessThan(mapRect.height * 0.2),

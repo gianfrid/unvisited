@@ -39,11 +39,13 @@ IconData rotationModeIcon(String mode) => switch (mode) {
 
 /// The edge control pill pinned to the map's configured edge: the
 /// north/course rotation toggle on top, then the zoom-in and zoom-out
-/// step buttons, then locate at the bottom (only where the platform has a
-/// location plugin — [showLocate]). Every camera move (pinch, wheel,
-/// keyboard R/F, double-tap) is still possible; the buttons only add
-/// steps. The zoom steps read the live camera, so they clamp at
-/// [mapMinZoom]/[mapMaxZoom] exactly like the gestures.
+/// step buttons, then the last slot at the bottom: locate where the
+/// platform has a location plugin ([showLocate]), or — on a plugin-less
+/// platform while a replay runs — a follow button that re-arms the
+/// follow-camera on the replay cursor (the way back after a pan). Every
+/// camera move (pinch, wheel, keyboard R/F, double-tap) is still possible;
+/// the buttons only add steps. The zoom steps read the live camera, so
+/// they clamp at [mapMinZoom]/[mapMaxZoom] exactly like the gestures.
 class MapControlPill extends StatelessWidget {
   const MapControlPill({
     super.key,
@@ -58,7 +60,8 @@ class MapControlPill extends StatelessWidget {
   final AppModel model;
 
   /// False on platforms without a location plugin (desktop Linux): the
-  /// locate action could only ever fail there.
+  /// locate action could only ever fail there — but while a replay runs,
+  /// the last slot still shows and becomes the follow-replay button.
   final bool showLocate;
 
   /// True while a locate attempt is in flight: the button shows a
@@ -77,9 +80,16 @@ class MapControlPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
     final scheme = Theme.of(context).colorScheme;
+    // The last slot: GPS locate where the platform has a location plugin;
+    // on a plugin-less platform (desktop) a follow button while a replay
+    // runs — the way back to the moving cursor after a pan released the
+    // follow.
+    final followReplay = !showLocate && model.playback != null;
+    final showLastSlot = showLocate || model.playback != null;
     return Container(
       key: const ValueKey('control-pill'),
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      // Horizontal padding keeps the captions clear of the rounded border.
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(24),
@@ -97,7 +107,7 @@ class MapControlPill extends StatelessWidget {
             message: rotationModeName(strings, model.mapRotation),
             child: SizedBox(
               key: const ValueKey('rotation-mode-button'),
-              width: 48,
+              width: 56,
               height: kToolbarHeight,
               child: InkWell(
                 onTap: () {
@@ -108,7 +118,7 @@ class MapControlPill extends StatelessWidget {
                   model.setMapRotation(next);
                 },
                 child: Center(
-                  child: Icon(rotationModeIcon(model.mapRotation), size: 20),
+                  child: Icon(rotationModeIcon(model.mapRotation), size: 24),
                 ),
               ),
             ),
@@ -119,6 +129,8 @@ class MapControlPill extends StatelessWidget {
             label: strings.zoomIn,
             tooltip: strings.zoomIn,
             onTap: () => _moveTo(controller.camera.zoom + 1),
+            width: 56,
+            iconSize: 24,
           ),
           HeaderAction(
             key: const ValueKey('zoom-out-button'),
@@ -126,20 +138,30 @@ class MapControlPill extends StatelessWidget {
             label: strings.zoomOut,
             tooltip: strings.zoomOut,
             onTap: () => _moveTo(controller.camera.zoom - 1),
+            width: 56,
+            iconSize: 24,
           ),
-          if (showLocate)
+          if (showLastSlot)
             HeaderAction(
               key: const ValueKey('locate-button'),
-              icon: locating
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.my_location),
-              label: locating ? strings.locating : strings.locateLabel,
-              tooltip: strings.locateTooltip,
-              onTap: locating ? null : onLocate,
+              icon: followReplay
+                  ? const Icon(Icons.center_focus_strong)
+                  : locating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location),
+              label: followReplay
+                  ? strings.followReplayLabel
+                  : (locating ? strings.locating : strings.locateLabel),
+              tooltip: followReplay
+                  ? strings.followReplayTooltip
+                  : strings.locateTooltip,
+              onTap: (locating && !followReplay) ? null : onLocate,
+              width: 56,
+              iconSize: 24,
             ),
         ],
       ),
@@ -279,34 +301,42 @@ class RecordClusterState extends State<RecordCluster> {
       elevation: 2,
       borderRadius: BorderRadius.circular(24),
       color: Theme.of(context).colorScheme.surface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (recording)
-            HeaderAction(
-              icon: const Icon(Icons.stop),
-              label: strings.stopLabel,
-              tooltip: strings.stopLabel,
-              onTap: _stopRecording,
-            ),
-          if (widget.gpsWorking || recording)
-            HeaderAction(
-              icon: Icon(
-                recording
-                    ? (paused ? Icons.play_arrow : Icons.pause)
-                    : Icons.fiber_manual_record,
+      // Horizontal padding keeps the captions clear of the rounded border.
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (recording)
+              HeaderAction(
+                icon: const Icon(Icons.stop),
+                label: strings.stopLabel,
+                tooltip: strings.stopLabel,
+                onTap: _stopRecording,
+                width: 56,
+                iconSize: 24,
               ),
-              label: recording
-                  ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                  : strings.recordLabel,
-              tooltip: recording
-                  ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                  : strings.recordLabel,
-              onTap: recording
-                  ? (paused ? model.resumeRecording : model.pauseRecording)
-                  : _startRecording,
-            ),
-        ],
+            if (widget.gpsWorking || recording)
+              HeaderAction(
+                icon: Icon(
+                  recording
+                      ? (paused ? Icons.play_arrow : Icons.pause)
+                      : Icons.fiber_manual_record,
+                ),
+                label: recording
+                    ? (paused ? strings.resumeLabel : strings.pauseLabel)
+                    : strings.recordLabel,
+                tooltip: recording
+                    ? (paused ? strings.resumeLabel : strings.pauseLabel)
+                    : strings.recordLabel,
+                onTap: recording
+                    ? (paused ? model.resumeRecording : model.pauseRecording)
+                    : _startRecording,
+                width: 56,
+                iconSize: 24,
+              ),
+          ],
+        ),
       ),
     );
   }

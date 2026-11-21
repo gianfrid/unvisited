@@ -190,6 +190,11 @@ class _MapPageState extends State<MapPage> {
   /// key — the locate button's shortcut re-arms the follow.
   final _dashboardKey = GlobalKey<RecordingDashboardState>();
 
+  /// The playback dashboard's state, reached the same way: on platforms
+  /// without a location plugin the pill's follow button re-arms the
+  /// replay's follow-camera through this key (see [_locate]).
+  final _playbackKey = GlobalKey<PlaybackDashboardState>();
+
   /// The engine whose start the page last handled: a non-identical
   /// instance on a model change is a new replay (the controller
   /// replaces the engine), which fits the track once. See
@@ -627,6 +632,14 @@ class _MapPageState extends State<MapPage> {
       }
       // No session fix yet: a real attempt is the only way to answer
       // "where am I"; its success arms the follow below.
+    }
+    // On a platform without a location plugin (desktop Linux) there is no
+    // GPS locate — but while a replay runs, the pill's last slot is a
+    // follow button instead: re-arm the follow on the replay's cursor,
+    // re-centering on the moving marker after a pan released it.
+    if (!widget.locationSupported && widget.model.playback != null) {
+      _playbackKey.currentState?.rearmFollow();
+      return;
     }
     final strings = AppStrings.ofContext(context);
     setState(() => _locating = true);
@@ -1192,6 +1205,7 @@ class _MapPageState extends State<MapPage> {
                   // model stops a replay when a session starts, the
                   // menu gates starting one during a session).
                   PlaybackDashboard(
+                    key: _playbackKey,
                     model: widget.model,
                     mapController: _mapController,
                     bottomOverlap: bottomOverlap,

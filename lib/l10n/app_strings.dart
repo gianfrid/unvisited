@@ -39,6 +39,8 @@ abstract class AppStrings {
   String get fitTooltip;
   String get locateLabel;
   String get locateTooltip;
+  String get followReplayLabel;
+  String get followReplayTooltip;
 
   /// The toolbar's recording action; hidden where the platform has no
   /// location support (the session could never start there).
@@ -325,6 +327,10 @@ class EnglishStrings extends AppStrings {
   String get catalogImportFailed => 'Import failed — not an Unvisited export';
   @override
   String get locateLabel => 'Locate';
+  @override
+  String get followReplayLabel => 'Follow';
+  @override
+  String get followReplayTooltip => 'Center on the replay cursor';
   @override
   String get locateTooltip => 'Center on current position';
   @override
@@ -645,6 +651,10 @@ class ItalianStrings extends AppStrings {
       'Importazione non riuscita — non è un’esportazione di Unvisited';
   @override
   String get locateLabel => 'Posizione';
+  @override
+  String get followReplayLabel => 'Segui';
+  @override
+  String get followReplayTooltip => 'Centra sul cursore della riproduzione';
   @override
   String get locateTooltip => 'Centra sulla posizione attuale';
   @override

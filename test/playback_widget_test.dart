@@ -496,6 +496,69 @@ void main() {
     );
   });
 
+  testWidgets(
+    'on a plugin-less platform the pill follow button re-arms the replay '
+    'after a pan',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 30)));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      model.startPlayback(model.tracks.single);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      // No GPS locate on desktop — but while a replay runs the pill's last
+      // slot is the follow button instead.
+      expect(find.byTooltip('Center on current position'), findsNothing);
+      final follow = find.byTooltip('Center on the replay cursor');
+      expect(follow, findsOneWidget);
+
+      // A pan releases the follow: the camera stays where the pan put it.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 120),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+      final panned = camera().center;
+      expect(
+        (camera().center.latitude - panned.latitude).abs() < 1e-6 &&
+            (camera().center.longitude - panned.longitude).abs() < 1e-6,
+        isTrue,
+        reason: 'the released follow leaves the camera where the pan put it',
+      );
+
+      // The follow button re-arms and re-centers on the replay cursor.
+      await tester.tap(follow);
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final point = model.playback!.position;
+      expect(
+        (camera().center.latitude - point.latitude).abs(),
+        lessThan(1e-3),
+        reason: 'the follow button centers the replay marker again',
+      );
+      expect(
+        (camera().center.longitude - point.longitude).abs(),
+        lessThan(1e-3),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('the bar fits the narrowest surface: scrubber keeps width', (
     tester,
   ) async {

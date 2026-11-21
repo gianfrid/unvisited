@@ -86,6 +86,8 @@ class HeaderAction extends StatelessWidget {
     required this.label,
     required this.tooltip,
     this.onTap,
+    this.width = 48,
+    this.iconSize = 20,
   });
 
   final Widget icon;
@@ -95,6 +97,13 @@ class HeaderAction extends StatelessWidget {
   /// Null disables the action (see the Fit button on an empty map).
   final VoidCallback? onTap;
 
+  /// Cell width; the edge clusters pass a wider one so the caption clears
+  /// the pill's rounded border (the toolbar keeps the compact 48).
+  final double width;
+
+  /// Icon size; the edge clusters pass a bigger one for handlebar taps.
+  final double iconSize;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -103,7 +112,7 @@ class HeaderAction extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: SizedBox(
-        width: 48,
+        width: width,
         height: kToolbarHeight,
         child: InkWell(
           onTap: onTap,
@@ -111,7 +120,7 @@ class HeaderAction extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconTheme.merge(
-                data: IconThemeData(size: 20, color: color),
+                data: IconThemeData(size: iconSize, color: color),
                 child: icon,
               ),
               const SizedBox(height: 2),

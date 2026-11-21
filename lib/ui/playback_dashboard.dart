@@ -41,10 +41,10 @@ class PlaybackDashboard extends StatefulWidget {
   final double Function() bottomOverlap;
 
   @override
-  State<PlaybackDashboard> createState() => _PlaybackDashboardState();
+  State<PlaybackDashboard> createState() => PlaybackDashboardState();
 }
 
-class _PlaybackDashboardState extends State<PlaybackDashboard>
+class PlaybackDashboardState extends State<PlaybackDashboard>
     with TickerProviderStateMixin {
   /// The shared follow-camera, fed per tick with the engine's
   /// interpolated position and course.
@@ -113,6 +113,18 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
     _onPlaybackTick();
   }
 
+  /// The pill's follow button (on platforms without a location plugin,
+  /// where no locate exists): re-arms the follow on the replay's current
+  /// cursor and re-centers on it at the user's zoom — the way back to the
+  /// moving marker after a pan released the follow. Mirrors the recording
+  /// dashboard's `rearmFollow`, reached through the page's key.
+  void rearmFollow() {
+    final playback = widget.model.playback;
+    if (playback == null) return;
+    _follow.rearm(playback.position);
+    _onPlaybackTick();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.model.playback == null) return const SizedBox.shrink();
@@ -142,7 +154,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
       child: Card(
         key: const ValueKey('playback-bar'),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -152,8 +164,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                     key: const ValueKey('playback-play'),
                     tooltip: tooltip,
                     icon: Icon(icon),
-                    iconSize: 20,
-                    visualDensity: VisualDensity.compact,
+                    iconSize: 24,
                     onPressed: () {
                       if (playing) {
                         widget.model.player.pause();
@@ -165,7 +176,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                       }
                     },
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   // The position scrubber: a drag jumps the cursor to any
                   // point of the timeline (the engine clamps and keeps the
                   // play state), and the seek's playbackLive notification
@@ -186,13 +197,12 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   IconButton(
                     key: const ValueKey('playback-close'),
                     tooltip: strings.playbackClose,
                     icon: const Icon(Icons.close),
-                    iconSize: 20,
-                    visualDensity: VisualDensity.compact,
+                    iconSize: 24,
                     onPressed: () => widget.model.stopPlayback(),
                   ),
                 ],
@@ -210,7 +220,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                           ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   // Secondary metadata: muted and smaller than the title,
                   // tabular figures so the ticking seconds don't jitter the
                   // row's width.
@@ -257,7 +267,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                     onPressed: () => widget.model.player.cycleSpeed(),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                     ),
                     child: Text('${playback.speed.toStringAsFixed(0)}×'),
                   ),

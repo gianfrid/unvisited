@@ -11,6 +11,8 @@ Map<String, String> allStrings(AppStrings s) => {
       'fitTooltip': s.fitTooltip,
       'locateLabel': s.locateLabel,
       'locateTooltip': s.locateTooltip,
+      'followReplayLabel': s.followReplayLabel,
+      'followReplayTooltip': s.followReplayTooltip,
       'locating': s.locating,
       'recordLabel': s.recordLabel,
       'stopLabel': s.stopLabel,
