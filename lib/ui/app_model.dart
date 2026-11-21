@@ -913,19 +913,42 @@ class AppModel extends ChangeNotifier {
     return defaultTintKey;
   }
 
-  /// Bumped whenever a fit-to-aggregate request fires; MapPage compares
-  /// against the value it last handled (the importEpoch pattern).
+  /// Bumped whenever a fit request fires; MapPage compares against the
+  /// value it last handled (the importEpoch pattern).
   int fitRequestEpoch = 0;
 
-  /// Selects the aggregate the track belongs to and requests a camera fit
-  /// to its points (the selection bar appears with it). No-op with no
-  /// aggregate (a hidden track has none until it is re-shown).
-  void selectAndFitAggregate(StoredTrack t) {
+  /// The track a pending fit targets — set by [tapTrack] when the tapped
+  /// track is already selected, consumed and cleared by MapPage whenever
+  /// it handles the bumped [fitRequestEpoch]. Null means the fit (same
+  /// epoch bump) goes to the selected aggregate's points instead.
+  String? fitTrackId;
+
+  /// Whether the selected aggregate contains this track — the track
+  /// list's tap policy reads it to tell a select-tap from a fit-tap.
+  /// Hidden tracks are never selected: they have no aggregate.
+  bool isTrackSelected(StoredTrack t) {
+    final selected = selectedAggregate;
+    if (selected == null) return false;
+    return selected.trackIds.contains(t.id);
+  }
+
+  /// The track list's whole tap policy on a track's name: the first tap
+  /// selects the aggregate the track belongs to (the selection bar
+  /// appears, the camera stays put); a tap on an already-selected track
+  /// fits the camera to that track's own points — not the whole
+  /// aggregate's — and leaves the drawer open. No-op with no aggregate
+  /// (a hidden track has none until it is re-shown).
+  void tapTrack(StoredTrack t) {
     if (!t.visible) return;
+    if (isTrackSelected(t)) {
+      fitTrackId = t.id;
+      fitRequestEpoch++;
+      notifyListeners();
+      return;
+    }
     for (final a in aggregates) {
       if (a.trackIds.contains(t.id)) {
         selectedAnchor = a.anchorId;
-        fitRequestEpoch++;
         notifyListeners();
         return;
       }

@@ -401,18 +401,33 @@ class _MapPageState extends State<MapPage> {
         );
       }
     }
-    // A track-tile tap selects its aggregate and asks for a fit to it
-    // (the plain select path — a map tap — never sets the epoch).
+    // A track-tile tap asks for a fit through the epoch: to the single
+    // tapped track when the model set one (the second tap on an
+    // already-selected track — a track's own points, not its whole
+    // aggregate's), otherwise to the selected aggregate's points (the
+    // plain select path — a map tap — never sets the epoch).
     final fitEpoch = widget.model.fitRequestEpoch;
     if (fitEpoch != _seenFitRequestEpoch) {
       _seenFitRequestEpoch = fitEpoch;
-      final selected = widget.model.selectedAggregate;
-      if (selected != null && selected.points.isNotEmpty) {
+      final fitTrackId = widget.model.fitTrackId;
+      widget.model.fitTrackId = null;
+      final List<LatLng>? points;
+      if (fitTrackId != null) {
+        MapTrack? fit;
+        for (final t in widget.model.visibleTracks) {
+          if (t.meta.id == fitTrackId) {
+            fit = t;
+            break;
+          }
+        }
+        points = fit?.points;
+      } else {
+        final selected = widget.model.selectedAggregate;
+        points = selected?.points;
+      }
+      if (points != null && points.isNotEmpty) {
         _fitWhenSized(
-          CameraFit.coordinates(
-            coordinates: selected.points,
-            padding: _fitPadding,
-          ),
+          CameraFit.coordinates(coordinates: points, padding: _fitPadding),
         );
       }
     }
