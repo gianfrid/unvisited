@@ -293,32 +293,6 @@ void main() {
     expect(model.busy, isFalse);
   });
 
-  test('tapTrack selects on the first tap, fits the track on the second', () {
-    model.store.importBytes(fixture('morning_walk.gpx'));
-    final track = model.tracks.single;
-    final epoch0 = model.fitRequestEpoch;
-    expect(model.isTrackSelected(track), isFalse);
-
-    // First tap: select the aggregate, never move the camera epoch.
-    model.tapTrack(track);
-    expect(model.isTrackSelected(track), isTrue);
-    expect(model.selectedAnchor, isNotNull);
-    expect(model.fitRequestEpoch, epoch0);
-
-    // Second tap on the already-selected track: a per-track fit request.
-    model.tapTrack(track);
-    final epochAfterFit = model.fitRequestEpoch;
-    expect(model.fitTrackId, track.id);
-    expect(epochAfterFit, greaterThan(epoch0));
-
-    // A hidden track has no aggregate: the tap is a no-op either way.
-    model.toggleVisible(track);
-    expect(model.isTrackSelected(track), isFalse);
-    model.tapTrack(track);
-    expect(model.fitRequestEpoch, epochAfterFit,
-        reason: 'the hidden tap bumps no fit epoch');
-  });
-
   test(
     'language choice persists, survives deleteAll and falls back safely',
     () async {

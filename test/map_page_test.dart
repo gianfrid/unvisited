@@ -2291,7 +2291,7 @@ void main() {
     expect(dotColor(ids[2]), exploredAreaColor('blue').withValues(alpha: 1));
   });
 
-  testWidgets('a track tile tap selects, the second tap fits the track', (
+  testWidgets('tapping a track tile selects and fits its aggregate', (
     tester,
   ) async {
     final root = createRoot();
@@ -2314,8 +2314,8 @@ void main() {
 
     double zoom() => MapCamera.of(tester.element(find.byType(TileLayer))).zoom;
 
-    // The first tap only selects: the bar appears, the camera stays on
-    // the startup Europe-wide fit.
+    // The startup camera fits both distant aggregates; tapping one tile
+    // fits just that aggregate — a tighter zoom — and selects it.
     final before = zoom();
     await tester.tap(find.text('Morning walk'));
     await tester.pump();
@@ -2330,24 +2330,9 @@ void main() {
     expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
     expect(
       zoom(),
-      closeTo(before, 1e-6),
-      reason: 'the select-tap never moves the camera',
-    );
-
-    // The second tap on the already-selected track fits the camera on
-    // the track's own points — a tighter zoom — and the drawer stays
-    // open (nothing closed it between the taps).
-    await tester.tap(find.text('Morning walk'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(
-      zoom(),
       greaterThan(before),
-      reason: 'the fit-tap zooms in over the Europe-wide fit',
+      reason: 'fitting one aggregate zooms in over the Europe-wide fit',
     );
-    expect(find.text('Morning walk'), findsOneWidget);
-    expect(model.fitTrackId, isNull, reason: 'MapPage consumed the request');
   });
 
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {

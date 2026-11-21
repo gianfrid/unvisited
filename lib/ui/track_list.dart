@@ -227,11 +227,9 @@ class _TrackTile extends StatelessWidget {
         value: track.visible,
         onChanged: (_) => model.toggleVisible(track),
         title: GestureDetector(
-          // The whole row minus the checkbox and the ⋮ menu taps the
-          // track: the first tap selects its aggregate (the bar
-          // appears), a tap on the already-selected track fits the
-          // camera on its own points — the drawer stays open either way.
-          onTap: () => model.tapTrack(track),
+          // The whole row minus the checkbox and the ⋮ menu taps fit the
+          // track's aggregate (and select it — the bar appears with it).
+          onTap: () => model.selectAndFitAggregate(track),
           child: Row(
             children: [
               // The aggregate color the map draws for this track's cluster
