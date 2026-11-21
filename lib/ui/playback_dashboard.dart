@@ -135,11 +135,12 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
   }
 
   /// The replay bar: one compact Card with two rows — transport (play,
-  /// scrubber, close) over identity (name, times, instant speed, the
-  /// speed chip, rotation) — so the scrubber keeps a real width on a
-  /// phone-sized screen where one row overflowed. The values (times,
-  /// speed) are plain formats; the tooltips are the only localizable
-  /// text.
+  /// scrubber, close) over identity — so the scrubber keeps a real width
+  /// on a phone-sized screen where one row overflowed. The identity row
+  /// divides its two labels onto one baseline: track name and duration on
+  /// the left, instant speed next to the speed chip on the right. The
+  /// values (times, speed) are plain formats; the tooltips are the only
+  /// localizable text.
   Widget _bar(TrackPlayback playback) {
     final strings = AppStrings.ofContext(context);
     final playing = playback.status == PlaybackStatus.playing;
@@ -154,7 +155,7 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
       child: Card(
         key: const ValueKey('playback-bar'),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -221,46 +222,41 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Secondary metadata: muted and smaller than the title,
-                  // tabular figures so the ticking seconds don't jitter the
-                  // row's width.
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '${formatDuration(playback.elapsed)} / '
-                        '${formatDuration(playback.total)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                      ),
-                      // The instant speed: the timeline's own pace at the
-                      // cursor (the bracket segment's displacement speed,
-                      // not the ladder's multiplier), live only while the
-                      // replay plays — a dash once it stands still, the
-                      // recording speed segment's dash convention. Its
-                      // 'km/h' and dash are hard-coded too, that segment's
-                      // precedent: plain values, no sentence to localize.
-                      Text(
-                        playing
-                            ? '${(playback.instantSpeed * 3.6).toStringAsFixed(1)}'
-                                ' km/h'
-                            : '—',
-                        key: const ValueKey('playback-instant-speed'),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                      ),
-                    ],
+                  // The duration next to the name: muted and smaller than
+                  // the title, tabular figures so the ticking seconds don't
+                  // jitter the row's width.
+                  Text(
+                    '${formatDuration(playback.elapsed)} / '
+                    '${formatDuration(playback.total)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                   ),
                   const Spacer(),
+                  // The instant speed, divided from the duration label and
+                  // sitting with the speed chip: the timeline's own pace at
+                  // the cursor (the bracket segment's displacement speed,
+                  // not the ladder's multiplier), live only while the
+                  // replay plays — a dash once it stands still, the
+                  // recording speed segment's dash convention. Its
+                  // 'km/h' and dash are hard-coded too, that segment's
+                  // precedent: plain values, no sentence to localize.
+                  Text(
+                    playing
+                        ? '${(playback.instantSpeed * 3.6).toStringAsFixed(1)}'
+                              ' km/h'
+                        : '—',
+                    key: const ValueKey('playback-instant-speed'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                  ),
                   const SizedBox(width: 4),
                   TextButton(
                     key: const ValueKey('playback-speed'),
