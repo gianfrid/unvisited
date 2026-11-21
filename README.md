@@ -103,6 +103,10 @@ Build an APK:
 flutter build apk --debug     # build/app/outputs/flutter-apk/app-debug.apk
 ```
 
+The rolling GitHub release carries the Android APK, so you can also add the app to Obtanium with one tap — it will track the release's APK automatically:
+
+[![Get it on Obtanium](https://raw.githubusercontent.com/ImranR98/Obtanium/main/assets/get-it-on-obtanium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2520%2522gianfrid.unvisited%2522%252C%2520%2522url%2522%253A%2520%2522https%253A%252F%252Fgithub.com%252Fgianfrid%252Funvisited%2522%252C%2520%2522author%2522%253A%2520%2522gianfrid%2522%252C%2520%2522name%2522%253A%2520%2522Unvisited%2522%252C%2520%2522additionalSettings%2522%253A%2520%2522%257B%255C%2522useLatestAssetDateAsReleaseDate%255C%2522%253A%2520true%252C%255C%2522releaseDateAsVersion%255C%2522%253A%2520true%257D%2522%257D)
+
 ## Road data files (optional)
 
 Road matching works on one side-loaded region file; nothing road-related is bundled with the app or fetched at runtime. Build one from any Geofabrik extract on the desktop:
