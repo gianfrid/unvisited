@@ -2291,7 +2291,7 @@ void main() {
     expect(dotColor(ids[2]), exploredAreaColor('blue').withValues(alpha: 1));
   });
 
-  testWidgets('tapping a track tile selects and fits its aggregate', (
+  testWidgets('tapping a track tile fits the track and nothing else', (
     tester,
   ) async {
     final root = createRoot();
@@ -2314,25 +2314,39 @@ void main() {
 
     double zoom() => MapCamera.of(tester.element(find.byType(TileLayer))).zoom;
 
-    // The startup camera fits both distant aggregates; tapping one tile
-    // fits just that aggregate — a tighter zoom — and selects it.
+    // The startup camera fits both distant aggregates; tapping a tile —
+    // the name or the row below it — jumps the camera to that track's
+    // own points. Nothing else: no aggregate selection (the selection
+    // bar stays hidden), no visibility change — the checkbox is the
+    // tile's only toggling element.
     final before = zoom();
     await tester.tap(find.text('Morning walk'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(model.selectedAnchor, isNotNull);
-    expect(
-      model.selectedAggregate!.trackIds,
-      contains(model.tracks.singleWhere((t) => t.name == 'Morning walk').id),
-    );
-    expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+    expect(model.selectedAnchor, isNull);
+    expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
     expect(
       zoom(),
       greaterThan(before),
-      reason: 'fitting one aggregate zooms in over the Europe-wide fit',
+      reason: 'fitting one track zooms in over the Europe-wide fit',
     );
+    expect(
+      model.tracks
+          .firstWhere((t) => t.name == 'Morning walk')
+          .visible,
+      isTrue,
+    );
+
+    // The row below (the subtitle line) taps the same way.
+    final afterName = zoom();
+    await tester.tap(find.textContaining('GPX'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(zoom(), closeTo(afterName, 0.01));
+    expect(model.selectedAnchor, isNull);
   });
 
   testWidgets('a drawer swipe deletes only after confirmation', (tester) async {

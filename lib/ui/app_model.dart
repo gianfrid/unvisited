@@ -923,22 +923,16 @@ class AppModel extends ChangeNotifier {
   /// fit (nothing else sets per-track fits today).
   String? fitTrackId;
 
-  /// The track list's name tap: selects the aggregate the track belongs
-  /// to (the selection bar appears with it) and asks the camera to jump
-  /// to that track's own points — every tap, no two-step. No-op with no
-  /// aggregate (a hidden track has none until it is re-shown); visibility
-  /// is the checkbox's business, never a tap's.
-  void selectAndFitTrack(StoredTrack t) {
+  /// The track list's tile tap (name or the row below): asks the camera
+  /// to jump to that track's own points — nothing else. It never selects
+  /// an aggregate and never toggles visibility; the checkbox is the
+  /// tile's only selecting/hiding element. No-op for a hidden track
+  /// (it has no points on the map to fit to until it is re-shown).
+  void fitTrack(StoredTrack t) {
     if (!t.visible) return;
-    for (final a in aggregates) {
-      if (a.trackIds.contains(t.id)) {
-        selectedAnchor = a.anchorId;
-        fitTrackId = t.id;
-        fitRequestEpoch++;
-        notifyListeners();
-        return;
-      }
-    }
+    fitTrackId = t.id;
+    fitRequestEpoch++;
+    notifyListeners();
   }
 
   @override
