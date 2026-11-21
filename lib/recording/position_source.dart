@@ -25,7 +25,10 @@ class PositionFix {
   final double lon;
 
   /// Elevation in meters when the source reports it (GPS always does);
-  /// null on sources without altitude.
+  /// null on sources without altitude. Datum note: on Android the value
+  /// is MSL where the device provides it (see `AndroidPositionSource`'s
+  /// `useMSLAltitude`), otherwise raw WGS84 ellipsoidal height — the
+  /// engine and the stored GPX take it as-is (see README).
   final double? ele;
 
   /// Horizontal accuracy in meters; null when the source does not say.

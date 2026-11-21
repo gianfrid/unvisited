@@ -33,6 +33,13 @@ class AndroidPositionSource implements PositionSource {
         locationSettings: AndroidSettings(
           accuracy: LocationAccuracy.bestForNavigation,
           intervalDuration: const Duration(seconds: 1),
+          // MSL (EGM2008, from NMEA) instead of raw WGS84 ellipsoidal
+          // height wherever the device provides it (Android N+ with NMEA
+          // $GPGGA); elsewhere the plugin falls back to geoidal height.
+          // The engine and the stored GPX take the value as-is — the
+          // datum note lives in README/ARCHITECTURE (see the 2026-11-21
+          // elevation plan).
+          useMSLAltitude: true,
           foregroundNotificationConfig: ForegroundNotificationConfig(
             // The notification strings ride with the service's config (in
             // Android's locale, set before Dart lives); OpenTracks keeps
