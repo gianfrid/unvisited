@@ -601,6 +601,79 @@ void main() {
     },
   );
 
+  testWidgets(
+    'course-up activation re-arms a released follow; north does not',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 30)));
+      await model.setMapRotation('course');
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      model.startPlayback(model.tracks.single);
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      final rotationButton = find.byKey(const ValueKey('rotation-mode-button'));
+
+      // A pan releases the follow (north mode by default).
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 120),
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final panned = camera().center;
+
+      // Starting from course-up: the tap goes to north — a pure mode
+      // change, no re-arm, so the released camera stays where the pan put
+      // it.
+      await tester.tap(rotationButton);
+      await tester.pump();
+      expect(model.mapRotation, 'north');
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        (camera().center.latitude - panned.latitude).abs() < 1e-6 &&
+            (camera().center.longitude - panned.longitude).abs() < 1e-6,
+        isTrue,
+        reason: 'north is a mode change only: the follow stays released',
+      );
+
+      // Course: the same tap re-arms the follow and brings the camera back
+      // to the replay cursor.
+      await tester.tap(rotationButton);
+      await tester.pump();
+      expect(model.mapRotation, 'course');
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final point = model.playback!.position;
+      expect(
+        (camera().center.latitude - point.latitude).abs(),
+        lessThan(1e-3),
+        reason: 'course activation re-centers on the replay cursor',
+      );
+      expect(
+        (camera().center.longitude - point.longitude).abs(),
+        lessThan(1e-3),
+      );
+      expect(camera().rotation % 360, closeTo(270.0, 2.0));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('the bar fits the narrowest surface: scrubber keeps width', (
     tester,
   ) async {

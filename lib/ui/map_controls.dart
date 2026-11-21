@@ -51,6 +51,7 @@ class MapControlPill extends StatelessWidget {
     super.key,
     required this.controller,
     required this.model,
+    required this.onRearmFollow,
     this.showLocate = true,
     this.locating = false,
     this.onLocate,
@@ -58,6 +59,14 @@ class MapControlPill extends StatelessWidget {
 
   final MapController controller;
   final AppModel model;
+
+  /// Re-arms the active follow-camera (a recording's or a replay's) and
+  /// re-centers on its fix/cursor. Required — the page always supplies
+  /// it, dispatching to whichever dashboard is following — and called
+  /// only when the rotation button switches *to* course: course-up on a
+  /// released camera would otherwise just change a setting while the map
+  /// stayed where the pan left it.
+  final VoidCallback onRearmFollow;
 
   /// False on platforms without a location plugin (desktop Linux): the
   /// locate action could only ever fail there — but while a replay runs,
@@ -112,12 +121,16 @@ class MapControlPill extends StatelessWidget {
               child: InkWell(
                 onTap: () {
                   if (model.isRecording || model.playback != null) {
-                    // A follow-camera is riding: toggle north/course.
+                    // A follow-camera is riding: toggle north/course. Going
+                    // to course also re-arms a released follow, so the mode
+                    // change takes the camera along instead of setting a
+                    // mode the panned-away view never shows.
                     final modes = AppModel.rotationModes;
                     final next =
                         modes[(modes.indexOf(model.mapRotation) + 1) %
                             modes.length];
                     model.setMapRotation(next);
+                    if (next == 'course') onRearmFollow();
                   } else {
                     // Idle: the tap just sets north — and snaps the camera
                     // to rotation 0, so the button visibly orients the map

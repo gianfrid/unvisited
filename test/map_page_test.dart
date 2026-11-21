@@ -1428,6 +1428,86 @@ void main() {
     expect(camera().zoom, closeTo(zoom, 1e-6));
   });
 
+  testWidgets(
+    'while recording, activating course-up re-arms a released follow',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+      // Start from course-up so the first tap goes *to* north (the mode
+      // change that must not re-arm), the second back to course.
+      await model.setMapRotation('course');
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, speed: 5.0, heading: 90);
+      fakeFix(source, 1, lat: 52.5201, speed: 5.0, heading: 90);
+      await pumpGlide(tester);
+
+      // Pan: the follow releases and the camera stays where the hand left
+      // it; the next fix must not pull it back.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      fakeFix(source, 2, lat: 52.5202, speed: 5.0, heading: 90);
+      await pumpGlide(tester);
+      final panned = camera().center;
+
+      // North first: a pure mode change, the released follow holds.
+      await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
+      await tester.pump();
+      expect(model.mapRotation, 'north');
+      fakeFix(source, 3, lat: 52.5203, speed: 5.0, heading: 90);
+      await pumpGlide(tester);
+      expect(
+        (camera().center.latitude - panned.latitude).abs() < 1e-6 &&
+            (camera().center.longitude - panned.longitude).abs() < 1e-6,
+        isTrue,
+        reason: 'north does not re-arm a released follow',
+      );
+
+      // Course: the tap re-arms the follow and re-centers on the session
+      // fix, and the next fix rides the camera in course-up.
+      await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
+      await tester.pump();
+      expect(model.mapRotation, 'course');
+      expect(
+        camera().center.latitude,
+        closeTo(52.5203, 1e-6),
+        reason: 'course activation returned the camera to the session fix',
+      );
+      fakeFix(source, 4, lat: 52.5204, speed: 5.0, heading: 90);
+      await pumpGlide(tester);
+      // The follow rides the new fix (course-up at heading 90, so the
+      // framing lead is along the longitude axis, not the latitude one).
+      expect(
+        camera().center.latitude,
+        closeTo(52.5204, 1e-3),
+        reason: 'the re-armed follow rides the session fix again',
+      );
+      expect(
+        (camera().rotation % 360 - 270.0).abs() < 2.0,
+        isTrue,
+        reason: 'course-up rotates the camera to the heading',
+      );
+      model.stopRecording();
+      await tester.pump();
+    },
+  );
+
   testWidgets('while recording with no session fix, locate runs the attempt', (
     tester,
   ) async {

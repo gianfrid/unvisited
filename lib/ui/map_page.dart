@@ -583,6 +583,18 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
+  /// Re-arms whichever follow-camera is active and re-centers on its
+  /// fix/cursor — the pill's course-up activation takes the camera along
+  /// (a released follow would otherwise leave the panned-away view while
+  /// only the setting changed). Mirrors [_locate]'s dispatch.
+  void _rearmActiveFollow() {
+    if (widget.model.isRecording) {
+      _dashboardKey.currentState?.rearmFollow();
+    } else if (widget.model.playback != null) {
+      _playbackKey.currentState?.rearmFollow();
+    }
+  }
+
   /// Centers the map on the last saved position while waiting for a live
   /// fix (and moves onto the fix once it arrives). Never asks for
   /// permission; when none is granted or the platform has no location
@@ -1085,6 +1097,7 @@ class _MapPageState extends State<MapPage> {
                   showLocate: widget.locationSupported,
                   locating: _locating,
                   onLocate: _locate,
+                  onRearmFollow: _rearmActiveFollow,
                 ),
               ),
             ),
