@@ -30,6 +30,7 @@ class PlaybackDashboard extends StatefulWidget {
     required this.model,
     required this.mapController,
     required this.bottomOverlap,
+    this.onFollowChanged,
   });
 
   final AppModel model;
@@ -39,6 +40,10 @@ class PlaybackDashboard extends StatefulWidget {
   /// bottom right now (see `MapPage.bottomOverlap`): the follow-camera
   /// keeps the marker above it, so it never hides under this bar.
   final double Function() bottomOverlap;
+
+  /// Fired whenever the follow-camera flips (armed or released) — the
+  /// page's way to rebuild controls that depend on the armed state.
+  final void Function()? onFollowChanged;
 
   @override
   State<PlaybackDashboard> createState() => PlaybackDashboardState();
@@ -71,6 +76,10 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
         return view.physicalSize.height / view.devicePixelRatio;
       },
       tickerFactory: createTicker,
+      onFollowChanged: () {
+        if (mounted) setState(() {});
+        widget.onFollowChanged?.call();
+      },
     );
     widget.model.addListener(_onModelChanged);
     widget.model.player.playbackLive.addListener(_onPlaybackTick);
@@ -125,6 +134,9 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
     _follow.arm();
     _onPlaybackTick();
   }
+
+  /// True while this dashboard's follow-camera is armed.
+  bool get followArmed => _follow.follow;
 
   /// The pill's follow button (on platforms without a location plugin,
   /// where no locate exists): re-arms the follow on the replay's current

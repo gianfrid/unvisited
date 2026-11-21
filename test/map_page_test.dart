@@ -197,12 +197,14 @@ void main() {
     await tester.pump();
 
     // Recording: Import and Fit are hidden (they fight the dashboard for
-    // space and attention) while Locate stays — its tap is the way back to
-    // the follow after panning away. The slot reads Pause, with Stop above
-    // it the whole session. The live speed is the primary readout, big in
-    // the top bar's center, from the engine's fix speed.
+    // space and attention) and Locate takes a break too — the session's
+    // follow-camera is armed on the fresh fix, so the button would be
+    // redundant; it returns when a pan releases the follow. The slot reads
+    // Pause, with Stop above it the whole session. The live speed is the
+    // primary readout, big in the top bar's center, from the engine's fix
+    // speed.
     expect(find.text('Import'), findsNothing);
-    expect(find.text('Locate'), findsOneWidget);
+    expect(find.text('Locate'), findsNothing);
     expect(find.text('Stop'), findsOneWidget);
     expect(find.text('Pause'), findsOneWidget);
     final speedCard = find.byKey(const ValueKey('recording-speed'));
@@ -1981,16 +1983,22 @@ void main() {
         find.byKey(const ValueKey('recording-chip')),
       );
       final speed = tester.getRect(find.byKey(const ValueKey('recording-speed')));
-      final locate = tester.getRect(
+      // The pill's locate slot is retired while the session's follow is
+      // armed; the pill body itself (rotation + zoom steps) remains and
+      // must still not be overlapped.
+      expect(
         find.byTooltip('Center on current position'),
+        findsNothing,
+        reason: 'the armed follow retires the locate slot',
       );
+      final pill = tester.getRect(find.byKey(const ValueKey('control-pill')));
       // All bars sit below the toolbar (at the bottom of the map), stacked
       // in the column without overlap, with the bars ending at the bottom
       // edge below the action stack.
       for (final r in [selection, chip]) {
         expect(r.top, greaterThan(toolbar.bottom));
       }
-      expect(selection.top, greaterThanOrEqualTo(locate.bottom));
+      expect(selection.top, greaterThanOrEqualTo(pill.bottom));
       expect(chip.top, greaterThanOrEqualTo(selection.bottom));
       // The headline speed lives in the top bar's center while recording
       // (out of the bottom column), riding inside the pill — which just

@@ -560,13 +560,14 @@ void main() {
       MapCamera camera() =>
           MapController.of(tester.element(find.byType(TileLayer))).camera;
 
-      // No GPS locate on desktop — but while a replay runs the pill's last
-      // slot is the follow button instead.
+      // No GPS locate on desktop — and while a replay runs the follow
+      // camera is armed on the cursor, so the pill's last slot takes a
+      // break entirely: nothing to re-center, the camera is already there.
       expect(find.byTooltip('Center on current position'), findsNothing);
-      final follow = find.byTooltip('Center on the replay cursor');
-      expect(follow, findsOneWidget);
+      expect(find.byTooltip('Center on the replay cursor'), findsNothing);
 
-      // A pan releases the follow: the camera stays where the pan put it.
+      // A pan releases the follow: the camera stays where the pan put it,
+      // and the pill's slot returns — the way back to the replay cursor.
       final size = tester.getSize(find.byType(FlutterMap));
       await tester.dragFrom(
         Offset(size.width / 2, size.height * 0.4),
@@ -581,6 +582,8 @@ void main() {
         isTrue,
         reason: 'the released follow leaves the camera where the pan put it',
       );
+      final follow = find.byTooltip('Center on the replay cursor');
+      expect(follow, findsOneWidget);
 
       // The follow button re-arms and re-centers on the replay cursor.
       await tester.tap(follow);
@@ -597,6 +600,8 @@ void main() {
         (camera().center.longitude - point.longitude).abs(),
         lessThan(1e-3),
       );
+      // Re-armed, the slot retires again.
+      expect(find.byTooltip('Center on the replay cursor'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

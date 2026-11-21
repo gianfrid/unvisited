@@ -588,6 +588,13 @@ class _MapPageState extends State<MapPage> {
   /// fix/cursor — the pill's course-up activation takes the camera along
   /// (a released follow would otherwise leave the panned-away view while
   /// only the setting changed). Mirrors [_locate]'s dispatch.
+  /// True while either follow-camera (the session's or the replay's) is
+  /// armed on its point — the pill's locate slot then takes a break, since
+  /// the camera is already locked on what the button would re-center on.
+  bool get _followArmed =>
+      (_dashboardKey.currentState?.followArmed ?? false) ||
+      (_playbackKey.currentState?.followArmed ?? false);
+
   void _rearmActiveFollow() {
     if (widget.model.isRecording) {
       _dashboardKey.currentState?.rearmFollow();
@@ -650,7 +657,7 @@ class _MapPageState extends State<MapPage> {
     // GPS locate — but while a replay runs, the pill's last slot is a
     // follow button instead: re-arm the follow on the replay's cursor,
     // re-centering on the moving marker after a pan released it.
-    if (!widget.locationSupported && widget.model.playback != null) {
+    if (widget.model.playback != null) {
       _playbackKey.currentState?.rearmFollow();
       return;
     }
@@ -1105,10 +1112,11 @@ class _MapPageState extends State<MapPage> {
                 child: MapControlPill(
                   controller: _mapController,
                   model: widget.model,
-                  showLocate: widget.locationSupported,
+                  showLocate: widget.locationSupported && !_followArmed,
                   locating: _locating,
                   onLocate: _locate,
                   onRearmFollow: _rearmActiveFollow,
+                  followArmed: _followArmed,
                 ),
               ),
             ),
@@ -1120,7 +1128,7 @@ class _MapPageState extends State<MapPage> {
           // has a location plugin: a record button on a GPS-less platform
           // would be a dead button (its slot also stays hidden until a real
           // fix arrived, see `RecordCluster`).
-          if (widget.locationSupported)
+          if (widget.locationSupported && widget.model.playback == null)
             Positioned(
               top: 0,
               bottom: 0,
@@ -1221,6 +1229,7 @@ class _MapPageState extends State<MapPage> {
                     model: widget.model,
                     mapController: _mapController,
                     bottomOverlap: bottomOverlap,
+                    onFollowChanged: () => setState(() {}),
                   ),
                   // The playback bar ends the column: like the recording
                   // chip it is measured into [bottomOverlap], so the
@@ -1233,6 +1242,7 @@ class _MapPageState extends State<MapPage> {
                     model: widget.model,
                     mapController: _mapController,
                     bottomOverlap: bottomOverlap,
+                    onFollowChanged: () => setState(() {}),
                   ),
                 ],
               ),

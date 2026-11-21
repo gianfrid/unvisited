@@ -53,6 +53,7 @@ class MapControlPill extends StatelessWidget {
     required this.model,
     required this.onRearmFollow,
     this.showLocate = true,
+    this.followArmed = false,
     this.locating = false,
     this.onLocate,
   });
@@ -73,6 +74,12 @@ class MapControlPill extends StatelessWidget {
   /// the last slot still shows and becomes the follow-replay button.
   final bool showLocate;
 
+  /// True while a follow-camera (a recording's or a replay's) is armed on
+  /// the map: the last slot is then redundant — the camera is already
+  /// where the button would take it — so it goes away until a pan
+  /// releases the follow.
+  final bool followArmed;
+
   /// True while a locate attempt is in flight: the button shows a
   /// spinner and ignores further taps.
   final bool locating;
@@ -89,12 +96,12 @@ class MapControlPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
     final scheme = Theme.of(context).colorScheme;
-    // The last slot: GPS locate where the platform has a location plugin;
-    // on a plugin-less platform (desktop) a follow button while a replay
-    // runs — the way back to the moving cursor after a pan released the
-    // follow.
-    final followReplay = !showLocate && model.playback != null;
-    final showLastSlot = showLocate || model.playback != null;
+    // The last slot: GPS locate where the platform has a location plugin,
+    // a follow button while a replay runs on a plugin-less platform. It
+    // takes a break while a follow-camera is armed: the camera is then
+    // already locked on the thing the button would re-center on.
+    final followReplay = model.playback != null;
+    final showLastSlot = !followArmed && (showLocate || model.playback != null);
     return Container(
       key: const ValueKey('control-pill'),
       // Horizontal padding keeps the captions clear of the rounded border.

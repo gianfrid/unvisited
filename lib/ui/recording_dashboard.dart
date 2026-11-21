@@ -44,6 +44,7 @@ class RecordingDashboard extends StatefulWidget {
     required this.model,
     required this.mapController,
     required this.bottomOverlap,
+    this.onFollowChanged,
   });
 
   final AppModel model;
@@ -53,6 +54,10 @@ class RecordingDashboard extends StatefulWidget {
   /// bottom right now (see `MapPage.bottomOverlap`): the follow-camera
   /// keeps the fix above it, so the marker never hides under the HUD.
   final double Function() bottomOverlap;
+
+  /// Fired whenever the follow-camera flips (armed or released) — the
+  /// page's way to rebuild controls that depend on the armed state.
+  final void Function()? onFollowChanged;
 
   @override
   RecordingDashboardState createState() => RecordingDashboardState();
@@ -66,6 +71,11 @@ class RecordingDashboardState extends State<RecordingDashboard>
   /// hold, speed gates) — while the glide, the framing, the
   /// release-on-gesture and the rotation math are the module's.
   late final FollowCamera follow;
+
+  /// True while this dashboard's follow-camera is armed — the map page
+  /// reads it to retire the pill's locate slot while the camera is
+  /// already locked on the followed point.
+  bool get followArmed => follow.follow;
 
   /// When the last fix was applied; a longer gap than [gpsLossHold] means
   /// the heading is stale and the rotation is held.
@@ -133,6 +143,7 @@ class RecordingDashboardState extends State<RecordingDashboard>
       tickerFactory: createTicker,
       onFollowChanged: () {
         if (mounted) setState(() {});
+        widget.onFollowChanged?.call();
       },
     );
     _wasRecording = widget.model.isRecording;
