@@ -58,13 +58,32 @@ class FollowCamera {
       // instead of re-flooring to [followZoomFloor] on the next tick.
       // The glide's own frames move the center while converging, so a
       // center-static frame can only come from outside the glide — and
-      // even if a settled glide frame slips through, its zoom is within
-      // an epsilon of the glide's own target, which adopting is a no-op.
+      // an exact match against the camera the glide last wrote (see
+      // [_lastGlideCamera]) rules out the settled and barely-converged
+      // frames whose zoom is already the glide's own target.
       if (event is MapEventWithMove &&
           event.source == MapEventSource.mapController &&
           event.oldCamera.center == event.camera.center &&
-          event.oldCamera.zoom != event.camera.zoom) {
+          event.oldCamera.zoom != event.camera.zoom &&
+          !_isGlideWrite(event.camera)) {
         _rideZoom = event.camera.zoom;
+        // The hand wins *now*, not on the next fix: re-target the glide
+        // in flight onto the zoom the hand just set. Otherwise the
+        // still-running ticker keeps easing back toward its stale zoom
+        // target — the tap is undone for up to a fix interval (~1 s),
+        // then springs back the other way once the fix adopts it, which
+        // reads as the zoom bouncing under the user's taps. The center
+        // and rotation targets stay: only the zoom the hand changed is
+        // re-targeted (it equals the camera's zoom now, so the glide
+        // stops changing it and keeps easing the framing).
+        final target = _glideTarget;
+        if (target != null) {
+          _glideTarget = (
+            center: target.center,
+            zoom: event.camera.zoom,
+            rotation: target.rotation,
+          );
+        }
       }
     });
   }
@@ -105,6 +124,25 @@ class FollowCamera {
 
   /// The glide ticker, alive only while a target is pending or in flight.
   Ticker? _glideTicker;
+
+  /// The camera the glide last wrote, as flutter_map stored it (the
+  /// controller clamps zoom, so this is read back from the camera, never
+  /// the requested value): the map-event listener uses it to tell the
+  /// glide's own frames apart from the user's hand, which must adopt the
+  /// zoom. Kept across [stopGlide] — a glide frame's event can still be
+  /// delivered after the glide stopped, and adopting it would pin the
+  /// ride to a mid-glide zoom. Cleared on a followed-thing boundary
+  /// ([reset]), where no earlier glide frame can still be in flight.
+  ({LatLng center, double zoom})? _lastGlideCamera;
+
+  /// Whether [camera] is exactly the one the glide last wrote — its own
+  /// frame, never the user's hand.
+  bool _isGlideWrite(MapCamera camera) {
+    final last = _lastGlideCamera;
+    return last != null &&
+        last.center == camera.center &&
+        last.zoom == camera.zoom;
+  }
 
   /// Elapsed time at the previous glide frame, for the per-frame delta.
   Duration _prevGlideElapsed = Duration.zero;
@@ -211,6 +249,7 @@ class FollowCamera {
   void reset({required bool armed}) {
     stopGlide();
     clearHeadingWindow();
+    _lastGlideCamera = null; // no earlier glide frame can still be in flight
     _rideZoom = null; // a new followed thing starts under the floor policy
     if (_follow == armed) return;
     _follow = armed;
@@ -344,6 +383,7 @@ class FollowCamera {
       newZoom,
       newRotation,
     );
+    _recordGlideWrite();
     // Settle on the *remaining* distance, not the frame's step: stopping
     // on a small step would leave up to step/(1-k) of residual behind.
     final remainingRot =
@@ -361,8 +401,18 @@ class FollowCamera {
         target.zoom,
         target.rotation,
       );
+      _recordGlideWrite();
       stopGlide();
     }
+  }
+
+  /// Remembers the camera the glide just wrote — the post-move camera, so
+  /// the controller's own clamping is what was really set. The event this
+  /// move emits is delivered asynchronously; the listener compares against
+  /// this to recognize a glide frame rather than the user's hand.
+  void _recordGlideWrite() {
+    final camera = mapController.camera;
+    _lastGlideCamera = (center: camera.center, zoom: camera.zoom);
   }
 
   /// Stops the glide and forgets the target: the user's hand owns the

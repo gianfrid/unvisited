@@ -694,6 +694,76 @@ void main() {
     );
   });
 
+  testWidgets(
+    'a zoom button tapped mid-glide holds; the glide does not ease it back',
+    (tester) async {
+      // Regression (field report: "the zoom while recording is bouncing
+      // badly"): a zoom-only move through the controller was adopted as
+      // the ride's zoom, but the glide still in flight kept easing toward
+      // its stale target — the tap was undone for up to a fix interval,
+      // then sprang back the other way once the next fix adopted it, ~1.3
+      // zoom levels of visible bounce per tap.
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      double zoom() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera.zoom;
+
+      await model.startRecording(source: source, permissionGate: false);
+      // The opening ride: the first fix takes the camera from the start
+      // zoom (13) toward the follow floor (17), still gliding a second
+      // later — the window a rider's zoom tap lands in.
+      fakeFix(source, 0);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      final before = zoom();
+      expect(
+        before,
+        lessThan(17.0),
+        reason: 'the opening glide is still below the floor',
+      );
+
+      await tester.tap(find.byKey(const ValueKey('zoom-out-button')));
+      await tester.pump();
+      final tapped = zoom();
+      expect(tapped, closeTo(before - 1, 1e-9));
+
+      // The glide keeps running after the tap: it must stop changing the
+      // zoom, not ease back toward the stale target.
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(
+          zoom(),
+          closeTo(tapped, 1e-9),
+          reason: 'no glide frame may walk the hand s zoom back',
+        );
+      }
+
+      // The next fix adopts the hand's zoom too — no spring back to the
+      // floor once the ride re-targets.
+      fakeFix(source, 1);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        zoom(),
+        closeTo(tapped, 1e-9),
+        reason: 'the ride holds the zoom the hand set',
+      );
+    },
+  );
+
   test('nearestEquivalentRotation picks the nearest mod-360 equivalent', () {
     // Crossing the 0/360 boundary: 10 applied against 350, and 350
     // applied against 10, rotate through the short arc.
