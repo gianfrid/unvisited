@@ -6,12 +6,10 @@ import '../playback/track_playback.dart';
 import 'app_model.dart';
 import 'follow_camera.dart';
 import 'format.dart';
-import 'recording_dashboard.dart'
-    show rotationModeIcon, rotationModeName;
 
 /// The playback dashboard: the replay bar (play/pause/replay, track
-/// name, elapsed/total, the instant speed, the speed chip, the
-/// rotation mode and close)
+/// name, elapsed/total, the instant speed, the speed chip and close; the
+/// rotation-mode toggle lives in the map's control pill — `map_controls.dart`)
 /// and the follow-camera wiring that rides the replay — [FollowCamera]
 /// itself is shared with the recording dashboard (see `follow_camera.dart`),
 /// so a replay moves the camera *exactly* like a session does: same
@@ -43,10 +41,10 @@ class PlaybackDashboard extends StatefulWidget {
   final double Function() bottomOverlap;
 
   @override
-  State<PlaybackDashboard> createState() => _PlaybackDashboardState();
+  State<PlaybackDashboard> createState() => PlaybackDashboardState();
 }
 
-class _PlaybackDashboardState extends State<PlaybackDashboard>
+class PlaybackDashboardState extends State<PlaybackDashboard>
     with TickerProviderStateMixin {
   /// The shared follow-camera, fed per tick with the engine's
   /// interpolated position and course.
@@ -56,6 +54,11 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
   /// detector: a new [TrackPlayback] instance is a new replay, which
   /// re-arms the follow exactly like a session boundary does.
   TrackPlayback? _served;
+
+  /// The rotation mode last seen, so a mode change clears the follow's
+  /// smoothed-heading window (a north-bound 0.0 must not blend with the
+  /// previous course's headings, nor vice versa).
+  String? _lastRotationMode;
 
   @override
   void initState() {
@@ -87,6 +90,11 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
   /// [FollowCamera.reset] — the session dashboard's boundary pair).
   void _onModelChanged() {
     if (!mounted) return;
+    final mode = widget.model.mapRotation;
+    if (_lastRotationMode != null && _lastRotationMode != mode) {
+      _follow.clearHeadingWindow();
+    }
+    _lastRotationMode = mode;
     final playback = widget.model.playback;
     if (!identical(playback, _served)) {
       _served = playback;
@@ -103,7 +111,10 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
     if (!mounted) return;
     final playback = widget.model.playback;
     if (playback == null || !_follow.follow) return;
-    final heading = widget.model.mapRotation == 'course' ? playback.course : null;
+    // North mode feeds 0.0, not null: null means "hold the current
+    // rotation" (stale course), while north-up must actively glide the
+    // rotation back to 0.
+    final heading = widget.model.mapRotation == 'course' ? playback.course : 0.0;
     _follow.update(playback.position, heading);
   }
 
@@ -112,6 +123,18 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
   /// of a resumed replay: the timer's next tick follows right behind).
   void _armAndFeed() {
     _follow.arm();
+    _onPlaybackTick();
+  }
+
+  /// The pill's follow button (on platforms without a location plugin,
+  /// where no locate exists): re-arms the follow on the replay's current
+  /// cursor and re-centers on it at the user's zoom — the way back to the
+  /// moving marker after a pan released the follow. Mirrors the recording
+  /// dashboard's `rearmFollow`, reached through the page's key.
+  void rearmFollow() {
+    final playback = widget.model.playback;
+    if (playback == null) return;
+    _follow.rearm(playback.position);
     _onPlaybackTick();
   }
 
@@ -125,11 +148,12 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
   }
 
   /// The replay bar: one compact Card with two rows — transport (play,
-  /// scrubber, close) over identity (name, times, instant speed, the
-  /// speed chip, rotation) — so the scrubber keeps a real width on a
-  /// phone-sized screen where one row overflowed. The values (times,
-  /// speed) are plain formats; the tooltips are the only localizable
-  /// text.
+  /// scrubber, close) over identity — so the scrubber keeps a real width
+  /// on a phone-sized screen where one row overflowed. The identity row
+  /// divides its two labels onto one baseline: track name and duration on
+  /// the left, instant speed next to the speed chip on the right. The
+  /// values (times, speed) are plain formats; the tooltips are the only
+  /// localizable text.
   Widget _bar(TrackPlayback playback) {
     final strings = AppStrings.ofContext(context);
     final playing = playback.status == PlaybackStatus.playing;
@@ -144,7 +168,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
       child: Card(
         key: const ValueKey('playback-bar'),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -154,8 +178,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                     key: const ValueKey('playback-play'),
                     tooltip: tooltip,
                     icon: Icon(icon),
-                    iconSize: 20,
-                    visualDensity: VisualDensity.compact,
+                    iconSize: 24,
                     onPressed: () {
                       if (playing) {
                         widget.model.player.pause();
@@ -167,7 +190,7 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                       }
                     },
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   // The position scrubber: a drag jumps the cursor to any
                   // point of the timeline (the engine clamps and keeps the
                   // play state), and the seek's playbackLive notification
@@ -188,13 +211,12 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                       ),
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 8),
                   IconButton(
                     key: const ValueKey('playback-close'),
                     tooltip: strings.playbackClose,
                     icon: const Icon(Icons.close),
-                    iconSize: 20,
-                    visualDensity: VisualDensity.compact,
+                    iconSize: 24,
                     onPressed: () => widget.model.stopPlayback(),
                   ),
                 ],
@@ -212,72 +234,51 @@ class _PlaybackDashboardState extends State<PlaybackDashboard>
                           ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // Secondary metadata: muted and smaller than the title,
-                  // tabular figures so the ticking seconds don't jitter the
-                  // row's width.
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '${formatDuration(playback.elapsed)} / '
-                        '${formatDuration(playback.total)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                      ),
-                      // The instant speed: the timeline's own pace at the
-                      // cursor (the bracket segment's displacement speed,
-                      // not the ladder's multiplier), live only while the
-                      // replay plays — a dash once it stands still, the
-                      // recording speed segment's dash convention. Its
-                      // 'km/h' and dash are hard-coded too, that segment's
-                      // precedent: plain values, no sentence to localize.
-                      Text(
-                        playing
-                            ? '${(playback.instantSpeed * 3.6).toStringAsFixed(1)}'
-                                ' km/h'
-                            : '—',
-                        key: const ValueKey('playback-instant-speed'),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                            ),
-                      ),
-                    ],
+                  const SizedBox(width: 12),
+                  // The duration next to the name: muted and smaller than
+                  // the title, tabular figures so the ticking seconds don't
+                  // jitter the row's width.
+                  Text(
+                    '${formatDuration(playback.elapsed)} / '
+                    '${formatDuration(playback.total)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                   ),
                   const Spacer(),
+                  // The instant speed, divided from the duration label and
+                  // sitting with the speed chip: the timeline's own pace at
+                  // the cursor (the bracket segment's displacement speed,
+                  // not the ladder's multiplier), live only while the
+                  // replay plays — a dash once it stands still, the
+                  // recording speed segment's dash convention. Its
+                  // 'km/h' and dash are hard-coded too, that segment's
+                  // precedent: plain values, no sentence to localize.
+                  Text(
+                    playing
+                        ? '${(playback.instantSpeed * 3.6).toStringAsFixed(1)}'
+                              ' km/h'
+                        : '—',
+                    key: const ValueKey('playback-instant-speed'),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                  ),
                   const SizedBox(width: 4),
                   TextButton(
                     key: const ValueKey('playback-speed'),
                     onPressed: () => widget.model.player.cycleSpeed(),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                     ),
                     child: Text('${playback.speed.toStringAsFixed(0)}×'),
-                  ),
-                  // The rotation-mode button, the recording chip's twin:
-                  // cycles the shared setting, the follow-camera reads it.
-                  IconButton(
-                    key: const ValueKey('playback-rotation-mode'),
-                    tooltip: rotationModeName(strings, widget.model.mapRotation),
-                    icon: Icon(rotationModeIcon(widget.model.mapRotation)),
-                    iconSize: 18,
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      final modes = AppModel.rotationModes;
-                      final next = modes[
-                          (modes.indexOf(widget.model.mapRotation) + 1) %
-                              modes.length];
-                      widget.model.setMapRotation(next);
-                    },
                   ),
                 ],
               ),

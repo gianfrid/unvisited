@@ -202,7 +202,8 @@ class AppSettings {
   final String tint;
   final String recordingTint;
 
-  /// Which screen edge the zoom slider hugs: 'left' or 'right'.
+  /// Which screen edge the control pill hugs ('zoomSliderSide' is the
+  /// historical JSON key): 'left' or 'right'.
   final String zoomSliderSide;
 
   /// UI language: 'system' (follow the device) or a language code such as

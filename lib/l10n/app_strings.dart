@@ -39,6 +39,8 @@ abstract class AppStrings {
   String get fitTooltip;
   String get locateLabel;
   String get locateTooltip;
+  String get followReplayLabel;
+  String get followReplayTooltip;
 
   /// The toolbar's recording action; hidden where the platform has no
   /// location support (the session could never start there).
@@ -119,8 +121,8 @@ abstract class AppStrings {
   String buildDate(String date);
   String get trackColor;
   String get trackColorSubtitle;
-  String get zoomSlider;
-  String get zoomSliderSubtitle;
+  String get controlSide;
+  String get controlSideSubtitle;
 
   // Base tile style (standard OSM raster or CyclOSM cycle tiles).
   String get mapLayer;
@@ -132,7 +134,7 @@ abstract class AppStrings {
   String get mapRotation;
   String get mapRotationSubtitle;
 
-  // Rotation mode names (recording chip button tooltip, Settings segments).
+  // Rotation mode names (control pill button tooltip, Settings segments).
   String get rotationModeNorth;
   String get rotationModeCourse;
 
@@ -231,7 +233,7 @@ abstract class AppStrings {
 
   // Track playback (the ⋮ menu entry and the replay bar): the entry
   // starts the replay, the bar carries play/pause/replay, the speed
-  // chip, the rotation mode and the close. Pause reuses [pauseLabel].
+  // chip and close. Pause reuses [pauseLabel].
   String get trackMenuPlayback;
   String get playbackPlay;
   String get playbackReplay;
@@ -325,6 +327,10 @@ class EnglishStrings extends AppStrings {
   String get catalogImportFailed => 'Import failed — not an Unvisited export';
   @override
   String get locateLabel => 'Locate';
+  @override
+  String get followReplayLabel => 'Follow';
+  @override
+  String get followReplayTooltip => 'Center on the replay cursor';
   @override
   String get locateTooltip => 'Center on current position';
   @override
@@ -427,9 +433,10 @@ class EnglishStrings extends AppStrings {
   String get trackColorSubtitle =>
       'Color of the live recording trace on the map';
   @override
-  String get zoomSlider => 'Zoom slider';
+  String get controlSide => 'Control side';
   @override
-  String get zoomSliderSubtitle => 'Screen edge the zoom slider sits on';
+  String get controlSideSubtitle =>
+      'Screen edge the map control buttons sit on';
   @override
   String get mapLayer => 'Map type';
   @override
@@ -645,6 +652,10 @@ class ItalianStrings extends AppStrings {
   @override
   String get locateLabel => 'Posizione';
   @override
+  String get followReplayLabel => 'Segui';
+  @override
+  String get followReplayTooltip => 'Centra sul cursore della riproduzione';
+  @override
   String get locateTooltip => 'Centra sulla posizione attuale';
   @override
   String get locating => 'Localizzazione…';
@@ -753,9 +764,10 @@ class ItalianStrings extends AppStrings {
   String get trackColorSubtitle =>
       'Colore della traccia live in registrazione sulla mappa';
   @override
-  String get zoomSlider => 'Cursore dello zoom';
+  String get controlSide => 'Lato dei controlli';
   @override
-  String get zoomSliderSubtitle => 'Lato dello schermo su cui si trova';
+  String get controlSideSubtitle =>
+      'Lato dello schermo su cui si trovano i pulsanti di controllo';
   @override
   String get mapLayer => 'Tipo mappa';
   @override

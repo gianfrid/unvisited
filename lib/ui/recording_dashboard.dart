@@ -20,20 +20,9 @@ import 'stats_panel.dart';
 // (including the tests) keep resolving it unchanged.
 export 'follow_camera.dart' show nearestEquivalentRotation;
 
-/// The display name of a rotation mode, for the chip button's tooltip and
-/// the Settings segments.
-String rotationModeName(AppStrings strings, String mode) => switch (mode) {
-      'course' => strings.rotationModeCourse,
-      _ => strings.rotationModeNorth,
-    };
-
-/// The chip button's icon for a rotation mode: a compass rose while the
-/// map is locked north-up, the travel arrow (the position marker's glyph)
-/// while the camera rides the course.
-IconData rotationModeIcon(String mode) => switch (mode) {
-      'course' => Icons.navigation,
-      _ => Icons.explore,
-    };
+// The rotation-mode display helpers (rotationModeName/rotationModeIcon)
+// live in `map_controls.dart` now: the toggle is the map pill's button,
+// not a chip button.
 
 /// The recording dashboard: everything a running session shows. Extracted
 /// from `map_page.dart`'s state (which keeps the map, the fog overlay, the
@@ -201,8 +190,18 @@ class RecordingDashboardState extends State<RecordingDashboard>
   /// and any open panel are gone with it). Every model change also
   /// re-applies the screen latch, so the `keepScreenOn` setting takes
   /// effect immediately — even mid-session.
+  /// The rotation mode last seen, so a mode change clears the follow's
+  /// smoothed-heading window (a north-bound 0.0 must not blend with the
+  /// previous course's headings, nor vice versa).
+  String? _lastRotationMode;
+
   void _onModelChanged() {
     if (!mounted) return;
+    final mode = widget.model.mapRotation;
+    if (_lastRotationMode != null && _lastRotationMode != mode) {
+      follow.clearHeadingWindow();
+    }
+    _lastRotationMode = mode;
     final recording = widget.model.isRecording;
     if (recording != _wasRecording) {
       setState(() {
@@ -279,12 +278,18 @@ class RecordingDashboardState extends State<RecordingDashboard>
         'gpsHeading=${heading?.toStringAsFixed(1)} speed=${speed?.toStringAsFixed(1)}',
       );
     }
+    // North mode feeds 0.0, not null: null means "hold the current
+    // rotation" (a stale or compass-less course), while north-up must
+    // actively glide the rotation back to 0.
     follow.update(
       LatLng(lat, lon),
-      (effectiveHeading == null || stale || mode == 'north' ||
-              (compassDriven && _compassHeading == null))
-          ? null
-          : effectiveHeading,
+      mode == 'north'
+          ? 0.0
+          : (effectiveHeading == null ||
+                  stale ||
+                  (compassDriven && _compassHeading == null))
+              ? null
+              : effectiveHeading,
     );
   }
 
@@ -408,23 +413,6 @@ class RecordingDashboardState extends State<RecordingDashboard>
                       ),
                     ],
                     const SizedBox(width: 10),
-                    IconButton(
-                      key: const ValueKey('rotation-mode-button'),
-                      tooltip: rotationModeName(
-                        strings,
-                        widget.model.mapRotation,
-                      ),
-                      icon: Icon(rotationModeIcon(widget.model.mapRotation)),
-                      iconSize: 18,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () {
-                        final modes = AppModel.rotationModes;
-                        final next = modes[(modes.indexOf(widget.model.mapRotation) +
-                                1) %
-                            modes.length];
-                        widget.model.setMapRotation(next);
-                      },
-                    ),
                     Icon(
                       _panelOpen ? Icons.expand_less : Icons.expand_more,
                       size: 18,

@@ -1,15 +1,12 @@
 /// The map chrome widgets map_page.dart composes its overlays from: the
 /// empty-state hint, the floating toolbar and its labeled actions, the
-/// top toolbar / selection bar / bottom action stack pills, and the one
-/// shared map toast.
+/// top toolbar and selection-bar pills, and the one shared map toast. The
+/// edge clusters (control pill, record cluster) live in `map_controls.dart`.
 library;
-
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
-import '../recording/recording_session.dart';
 import 'app_model.dart';
 import 'track_colors.dart';
 
@@ -89,6 +86,8 @@ class HeaderAction extends StatelessWidget {
     required this.label,
     required this.tooltip,
     this.onTap,
+    this.width = 48,
+    this.iconSize = 20,
   });
 
   final Widget icon;
@@ -98,6 +97,13 @@ class HeaderAction extends StatelessWidget {
   /// Null disables the action (see the Fit button on an empty map).
   final VoidCallback? onTap;
 
+  /// Cell width; the edge clusters pass a wider one so the caption clears
+  /// the pill's rounded border (the toolbar keeps the compact 48).
+  final double width;
+
+  /// Icon size; the edge clusters pass a bigger one for handlebar taps.
+  final double iconSize;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -106,7 +112,7 @@ class HeaderAction extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: SizedBox(
-        width: 48,
+        width: width,
         height: kToolbarHeight,
         child: InkWell(
           onTap: onTap,
@@ -114,7 +120,7 @@ class HeaderAction extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconTheme.merge(
-                data: IconThemeData(size: 20, color: color),
+                data: IconThemeData(size: iconSize, color: color),
                 child: icon,
               ),
               const SizedBox(height: 2),
@@ -142,8 +148,8 @@ class HeaderAction extends StatelessWidget {
 /// `MapPage`; the selection bar and the recording chip live in the bottom
 /// column). While a session runs the header keeps Tracks, the session's
 /// speed segment and Settings — Import and the record-mode dashboard fight
-/// for space and attention (locate and record live in the bottom-left
-/// stack).
+/// for space and attention (locate and record live in the edge clusters —
+/// see `map_controls.dart`).
 class TopToolbar extends StatelessWidget {
   const TopToolbar({
     super.key,
@@ -332,197 +338,6 @@ class SelectionBar extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// The action stack pill: the locate button with the record slot directly
-/// above it (and Stop before that once paused). It is the last child of
-/// the page's bottom column (see `MapPage`), aligned to the map's
-/// bottom-left corner.
-///
-/// The record slot only shows once a session could actually start: the
-/// page passes [gpsWorking] (a real fix arrived via its silent poll or a
-/// locate) — a record button on a GPS-less platform would be a dead
-/// button. While a session runs the slot holds Pause; once paused it
-/// reads Resume and a Stop action appears before it, asking the track's
-/// name before it finalizes (discarding from the same dialog is
-/// two-step, confirmed). Locate stays usable during a session — its tap
-/// is the way back to the follow after panning away — so [onLocate] is
-/// the page's locate attempt, which knows about the session's session
-/// fix shortcut; [locating] turns the button into a spinner while an
-/// attempt is in flight.
-class BottomActionStack extends StatefulWidget {
-  const BottomActionStack({
-    super.key,
-    required this.model,
-    required this.locating,
-    required this.gpsWorking,
-    required this.onLocate,
-  });
-
-  final AppModel model;
-
-  /// True while the page's locate attempt is in flight.
-  final bool locating;
-
-  /// True once a real position fix has arrived on this device.
-  final bool gpsWorking;
-
-  final VoidCallback onLocate;
-
-  @override
-  BottomActionStackState createState() => BottomActionStackState();
-}
-
-class BottomActionStackState extends State<BottomActionStack> {
-  /// Record button: starts a session through the model and pulses the
-  /// chip; a declined permission says so instead of leaving a button that
-  /// silently did nothing. Alongside it, the one soft POST_NOTIFICATIONS
-  /// ask fires unawaited — a refusal leaves the session mute, and the
-  /// once-per-run guard keeps repeated taps from nagging.
-  bool _notificationsAsked = false;
-
-  Future<void> _startRecording() async {
-    final strings = AppStrings.ofContext(context);
-    if (!_notificationsAsked) {
-      _notificationsAsked = true;
-      unawaited(widget.model.requestPostNotifications());
-    }
-    final staged = await widget.model.startRecording();
-    if (!mounted || staged != null) return;
-    showMapToast(context, strings.recordDeclined);
-  }
-
-  /// Stop: asks what to call the track first (the dialog defaults to the
-  /// current date-time timestamp). Save finalizes and imports; Discard —
-  /// after a confirmation, it destroys the staged track irreversibly —
-  /// ends the session importing nothing; a cancelled dialog leaves the
-  /// session recording.
-  Future<void> _stopRecording() async {
-    final strings = AppStrings.ofContext(context);
-    final defaultName = widget.model.recordingName(DateTime.now());
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        final controller = TextEditingController(text: defaultName);
-        return AlertDialog(
-          title: Text(strings.stopRecordingTitle),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(labelText: strings.recordingNameLabel),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(strings.cancel),
-            ),
-            TextButton(
-              key: const ValueKey('stop-discard'),
-              // The empty string is the discard sentinel: it aliases the
-              // name field's "cleared" value, so it never collides with a
-              // name result.
-              onPressed: () => Navigator.of(context).pop(''),
-              style: TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-              ),
-              child: Text(strings.discardLabel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(
-                controller.text.trim().isEmpty
-                    ? defaultName
-                    : controller.text.trim(),
-              ),
-              child: Text(strings.saveLabel),
-            ),
-          ],
-        );
-      },
-    );
-    if (!mounted || name == null) return; // Cancelled: keep recording.
-    if (name.isEmpty) {
-      // Discard is two-step: it destroys the session's whole track —
-      // ask before doing it.
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text(strings.discardConfirmTitle),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(strings.cancel),
-            ),
-            FilledButton(
-              key: const ValueKey('stop-discard-confirm'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(strings.discardLabel),
-            ),
-          ],
-        ),
-      );
-      if (!context.mounted || confirmed != true) return;
-      await widget.model.discardRecording();
-      return;
-    }
-    await widget.model.stopRecording(name: name);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final strings = AppStrings.ofContext(context);
-    final model = widget.model;
-    final recording = model.isRecording;
-    final paused = model.recording?.state == RecordingState.paused;
-    return Material(
-      elevation: 2,
-      borderRadius: BorderRadius.circular(24),
-      color: Theme.of(context).colorScheme.surface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (recording)
-            HeaderAction(
-              icon: const Icon(Icons.stop),
-              label: strings.stopLabel,
-              tooltip: strings.stopLabel,
-              onTap: _stopRecording,
-            ),
-          if (widget.gpsWorking || recording)
-            HeaderAction(
-              icon: Icon(
-                recording
-                    ? (paused ? Icons.play_arrow : Icons.pause)
-                    : Icons.fiber_manual_record,
-              ),
-              label: recording
-                  ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                  : strings.recordLabel,
-              tooltip: recording
-                  ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                  : strings.recordLabel,
-              onTap: recording
-                  ? (paused ? model.resumeRecording : model.pauseRecording)
-                  : _startRecording,
-            ),
-          HeaderAction(
-            icon: widget.locating
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.my_location),
-            label: widget.locating ? strings.locating : strings.locateLabel,
-            tooltip: strings.locateTooltip,
-            onTap: widget.locating ? null : widget.onLocate,
-          ),
-        ],
       ),
     );
   }

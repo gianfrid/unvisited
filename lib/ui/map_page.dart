@@ -14,13 +14,13 @@ import '../tile_source.dart';
 import 'app_model.dart';
 import 'fog_of_war.dart';
 import 'map_actions.dart';
+import 'map_controls.dart';
 import 'playback_dashboard.dart';
 import 'recording_dashboard.dart';
 import 'road_coverage_chip.dart';
 import 'settings_sheet.dart';
 import 'track_colors.dart';
 import 'track_list.dart';
-import 'zoom_slider.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({
@@ -190,6 +190,11 @@ class _MapPageState extends State<MapPage> {
   /// key — the locate button's shortcut re-arms the follow.
   final _dashboardKey = GlobalKey<RecordingDashboardState>();
 
+  /// The playback dashboard's state, reached the same way: on platforms
+  /// without a location plugin the pill's follow button re-arms the
+  /// replay's follow-camera through this key (see [_locate]).
+  final _playbackKey = GlobalKey<PlaybackDashboardState>();
+
   /// The engine whose start the page last handled: a non-identical
   /// instance on a model change is a new replay (the controller
   /// replaces the engine), which fits the track once. See
@@ -331,10 +336,9 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
-  /// The bottom overlay column (action stack, selection bar, recording
-  /// chip and panel), measured so the follow-camera frames the fix above
-  /// it instead of under it — the column grows when the stats panel opens
-  /// and with the paused/recording action count.
+  /// The bottom overlay column (selection bar, recording chip and
+  /// panel), measured so the follow-camera frames the fix above
+  /// it instead of under it — the column grows when the stats panel opens.
   final _bottomColumnKey = GlobalKey();
 
   /// Pixels the bottom overlay column currently occupies, measured from
@@ -579,6 +583,18 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
+  /// Re-arms whichever follow-camera is active and re-centers on its
+  /// fix/cursor — the pill's course-up activation takes the camera along
+  /// (a released follow would otherwise leave the panned-away view while
+  /// only the setting changed). Mirrors [_locate]'s dispatch.
+  void _rearmActiveFollow() {
+    if (widget.model.isRecording) {
+      _dashboardKey.currentState?.rearmFollow();
+    } else if (widget.model.playback != null) {
+      _playbackKey.currentState?.rearmFollow();
+    }
+  }
+
   /// Centers the map on the last saved position while waiting for a live
   /// fix (and moves onto the fix once it arrives). Never asks for
   /// permission; when none is granted or the platform has no location
@@ -610,8 +626,8 @@ class _MapPageState extends State<MapPage> {
   /// spinner. Without a session fix yet (cold GPS) it falls through to the
   /// real attempt; its success arms the follow too while recording.
   ///
-  /// The whole attempt is bracketed by [_locating], so the toolbar button
-  /// turns into a spinner for as long as the fix takes. Re-entrant taps
+  /// The whole attempt is bracketed by [_locating], so the pill's locate
+  /// button turns into a spinner for as long as the fix takes. Re-entrant taps
   /// are ignored: a second GPS request would not answer any sooner.
   Future<void> _locate() async {
     if (_locating) return;
@@ -628,6 +644,14 @@ class _MapPageState extends State<MapPage> {
       }
       // No session fix yet: a real attempt is the only way to answer
       // "where am I"; its success arms the follow below.
+    }
+    // On a platform without a location plugin (desktop Linux) there is no
+    // GPS locate — but while a replay runs, the pill's last slot is a
+    // follow button instead: re-arm the follow on the replay's cursor,
+    // re-centering on the moving marker after a pan released it.
+    if (!widget.locationSupported && widget.model.playback != null) {
+      _playbackKey.currentState?.rearmFollow();
+      return;
     }
     final strings = AppStrings.ofContext(context);
     setState(() => _locating = true);
@@ -1047,12 +1071,13 @@ class _MapPageState extends State<MapPage> {
               ),
             ],
           ),
-          // Lateral zoom control on the configured edge (settings),
-          // vertically centered in the free band between the toolbar and
-          // the bottom. SafeArea keeps the band inset-aware; the right
-          // side still starts below the toolbar band, so the two never
-          // overlap on narrow screens (the toolbar is centered and can
-          // reach the edges) — the left side has no toolbar there.
+          // The edge control pill (rotation mode, zoom in/out, locate) on
+          // the configured edge (settings), vertically centered in the
+          // free band between the toolbar and the bottom. SafeArea keeps
+          // the band inset-aware; the right side still starts below the
+          // toolbar band, so the two never overlap on narrow screens (the
+          // toolbar is centered and can reach the edges) — the left side
+          // has no toolbar there.
           Positioned(
             top: 0,
             bottom: 0,
@@ -1065,9 +1090,46 @@ class _MapPageState extends State<MapPage> {
                     : kToolbarHeight + 24,
                 bottom: 16,
               ),
-              child: Center(child: ZoomSlider(controller: _mapController)),
+              child: Center(
+                child: MapControlPill(
+                  controller: _mapController,
+                  model: widget.model,
+                  showLocate: widget.locationSupported,
+                  locating: _locating,
+                  onLocate: _locate,
+                  onRearmFollow: _rearmActiveFollow,
+                ),
+              ),
             ),
           ),
+          // The record cluster (record / pause / resume, with Stop above
+          // once the session runs) on the edge *opposite* the pill,
+          // vertically centered — big labeled buttons away from the other
+          // controls, sized for a handlebar mount. Only where the platform
+          // has a location plugin: a record button on a GPS-less platform
+          // would be a dead button (its slot also stays hidden until a real
+          // fix arrived, see `RecordCluster`).
+          if (widget.locationSupported)
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: widget.model.zoomSliderSide == 'left' ? null : 12,
+              right: widget.model.zoomSliderSide == 'left' ? 12 : null,
+              child: SafeArea(
+                minimum: EdgeInsets.only(
+                  top: widget.model.zoomSliderSide == 'left'
+                      ? kToolbarHeight + 24
+                      : 16,
+                  bottom: 16,
+                ),
+                child: Center(
+                  child: RecordCluster(
+                    model: widget.model,
+                    gpsWorking: _gpsWorking,
+                  ),
+                ),
+              ),
+            ),
           // Compact floating toolbar at the top, centered across the
           // map's top edge instead of a full-width app bar — the only
           // overlay up there now; the selection bar and the recording
@@ -1092,11 +1154,12 @@ class _MapPageState extends State<MapPage> {
               ),
             ),
           ),
-          // One non-overlapping vertical column at the bottom: the action
-          // stack (locate / record / pause / stop) on top, then the selection
+          // One non-overlapping vertical column at the bottom: the selection
           // bar while an aggregate is selected, then the recording chip and
-          // headline speed while a session runs, ending at the bottom edge.
-          // One column, so none of them can overlap on narrow screens.
+          // stats while a session runs, then the playback bar, ending at
+          // the bottom edge. One column, so none of them can overlap on
+          // narrow screens. (Locate and record live in the edge clusters
+          // now — see the pill and record cluster above.)
           Positioned(
             left: 0,
             right: 0,
@@ -1118,26 +1181,6 @@ class _MapPageState extends State<MapPage> {
                       child: RoadCoverageChip(model: widget.model),
                     ),
                   ),
-                  // The action stack (locate / record / pause / stop) at the
-                  // top of the bottom column (see `BottomActionStack`; its
-                  // record slot only shows once a real fix has arrived), so
-                  // the bars below it end at the bottom edge of the map.
-                  if (widget.locationSupported)
-                    SizedBox(
-                      width: double.infinity,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 12),
-                          child: BottomActionStack(
-                            model: widget.model,
-                            locating: _locating,
-                            gpsWorking: _gpsWorking,
-                            onLocate: _locate,
-                          ),
-                        ),
-                      ),
-                    ),
                   // The aggregate selection's actions pill: hide, color,
                   // fit, dismiss — a temporary state at the bottom of the
                   // map, above the recording chip and the action stack.
@@ -1175,6 +1218,7 @@ class _MapPageState extends State<MapPage> {
                   // model stops a replay when a session starts, the
                   // menu gates starting one during a session).
                   PlaybackDashboard(
+                    key: _playbackKey,
                     model: widget.model,
                     mapController: _mapController,
                     bottomOverlap: bottomOverlap,

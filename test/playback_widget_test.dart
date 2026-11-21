@@ -496,6 +496,194 @@ void main() {
     );
   });
 
+  testWidgets(
+    'on a plugin-less platform the pill follow button re-arms the replay '
+    'after a pan',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 30)));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      model.startPlayback(model.tracks.single);
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      // No GPS locate on desktop — but while a replay runs the pill's last
+      // slot is the follow button instead.
+      expect(find.byTooltip('Center on current position'), findsNothing);
+      final follow = find.byTooltip('Center on the replay cursor');
+      expect(follow, findsOneWidget);
+
+      // A pan releases the follow: the camera stays where the pan put it.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 120),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 50));
+      final panned = camera().center;
+      expect(
+        (camera().center.latitude - panned.latitude).abs() < 1e-6 &&
+            (camera().center.longitude - panned.longitude).abs() < 1e-6,
+        isTrue,
+        reason: 'the released follow leaves the camera where the pan put it',
+      );
+
+      // The follow button re-arms and re-centers on the replay cursor.
+      await tester.tap(follow);
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final point = model.playback!.position;
+      expect(
+        (camera().center.latitude - point.latitude).abs(),
+        lessThan(1e-3),
+        reason: 'the follow button centers the replay marker again',
+      );
+      expect(
+        (camera().center.longitude - point.longitude).abs(),
+        lessThan(1e-3),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'switching to north mid-replay rotates the camera back to 0',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 20)));
+      await model.setMapRotation('course');
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      model.startPlayback(model.tracks.single);
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      // Course-up on an eastward track: rotation -90 == 270.
+      expect(camera().rotation % 360, closeTo(270.0, 1.0));
+
+      // The pill's rotation button toggles to north while a replay runs;
+      // the follow then glides the rotation back to 0 on the next ticks.
+      await tester.tap(find.byKey(const ValueKey('rotation-mode-button')));
+      await tester.pump();
+      expect(model.mapRotation, 'north');
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final r = camera().rotation % 360;
+      expect(
+        r < 1.0 || r > 359.0,
+        isTrue,
+        reason: 'north mode rotates the camera back to 0, got $r',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'course-up activation re-arms a released follow; north does not',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 30)));
+      await model.setMapRotation('course');
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      model.startPlayback(model.tracks.single);
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      final rotationButton = find.byKey(const ValueKey('rotation-mode-button'));
+
+      // A pan releases the follow (north mode by default).
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 120),
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final panned = camera().center;
+
+      // Starting from course-up: the tap goes to north — the map snaps
+      // north on the spot, while the released camera stays where the pan
+      // put it.
+      await tester.tap(rotationButton);
+      await tester.pump();
+      expect(model.mapRotation, 'north');
+      expect(
+        camera().rotation % 360,
+        lessThan(1.0),
+        reason: 'north snaps the map north even with the follow released',
+      );
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(
+        (camera().center.latitude - panned.latitude).abs() < 1e-6 &&
+            (camera().center.longitude - panned.longitude).abs() < 1e-6,
+        isTrue,
+        reason: 'north does not re-arm: the center stays where the pan left it',
+      );
+      expect(
+        camera().rotation % 360,
+        lessThan(1.0),
+        reason: 'the released follow leaves the north snap alone',
+      );
+
+      // Course: the same tap re-arms the follow and brings the camera back
+      // to the replay cursor.
+      await tester.tap(rotationButton);
+      await tester.pump();
+      expect(model.mapRotation, 'course');
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final point = model.playback!.position;
+      expect(
+        (camera().center.latitude - point.latitude).abs(),
+        lessThan(1e-3),
+        reason: 'course activation re-centers on the replay cursor',
+      );
+      expect(
+        (camera().center.longitude - point.longitude).abs(),
+        lessThan(1e-3),
+      );
+      expect(camera().rotation % 360, closeTo(270.0, 2.0));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('the bar fits the narrowest surface: scrubber keeps width', (
     tester,
   ) async {
@@ -553,13 +741,14 @@ void main() {
         MapController.of(tester.element(find.byType(TileLayer))).camera;
     expect(camera().zoom, greaterThanOrEqualTo(17.0)); // the floor
 
-    // Drag the slider rail to the world floor: a zoom-only programmatic
-    // move, the slider's signature. The armed follow adopts it instead
-    // of walking the camera back to the floor on the next ticks.
-    await tester.drag(
-      find.byKey(const ValueKey('zoom-track')),
-      const Offset(0, 400),
-    );
+    // Step out to the world floor with the pill's zoom-out button: a
+    // zoom-only programmatic move, the pill's signature. The armed follow
+    // adopts it instead of walking the camera back to the floor on the
+    // next ticks.
+    for (var i = 0; i < 20; i++) {
+      await tester.tap(find.byTooltip('Zoom out'));
+      await tester.pump();
+    }
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }

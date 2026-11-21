@@ -42,7 +42,7 @@ lib/
 └── ui/                      # app_model + its import_coordinator / recording_
                               # controller / playback_controller concerns,
                               # the shared follow_camera, map_page and the
-                              # modules it composes (map_actions, zoom_slider,
+                              # modules it composes (map_actions, map_controls,
                               # format, stats_panel, settings_sheet,
                               # track_list, recording_dashboard,
                               # playback_dashboard, fog_of_war, track_colors)
