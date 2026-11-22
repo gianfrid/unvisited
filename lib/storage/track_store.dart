@@ -26,6 +26,7 @@ class StoredTrack {
     required this.distanceMeters,
     this.startTimeUtc,
     this.durationSeconds,
+    this.movingSeconds,
     this.visible = true,
   });
 
@@ -47,6 +48,12 @@ class StoredTrack {
   /// [startTimeUtc], [loadPoints] heals it on the first open.
   double? durationSeconds;
 
+  /// Moving time of the track in seconds (gaps at or above the shared
+  /// moving-speed threshold, segment breaks excluded). Null for tracks
+  /// without usable timestamps; healed by [loadPoints] like
+  /// [durationSeconds].
+  double? movingSeconds;
+
   bool visible;
 
   /// Road unlock state: OSM way id → the matched corridor sub-polylines
@@ -65,6 +72,7 @@ class StoredTrack {
         'distanceMeters': distanceMeters,
         'startTimeUtc': startTimeUtc?.toIso8601String(),
         'durationSeconds': durationSeconds,
+        'movingSeconds': movingSeconds,
         'visible': visible,
         // Written only when non-empty: indexes from before road matching
         // (and tracks imported without road data) stay unchanged.
@@ -92,6 +100,9 @@ class StoredTrack {
         durationSeconds: m['durationSeconds'] == null
             ? null
             : (m['durationSeconds'] as num).toDouble(),
+        movingSeconds: m['movingSeconds'] == null
+            ? null
+            : (m['movingSeconds'] as num).toDouble(),
         visible: m['visible'] as bool? ?? true,
       )
         ..unlockedWays = _unlockedWaysFrom(m['unlockedWays']);
@@ -558,6 +569,7 @@ class TrackStore {
       distanceMeters: data.distanceMeters,
       startTimeUtc: data.startTime?.toUtc(),
       durationSeconds: data.durationSeconds,
+      movingSeconds: data.movingSeconds,
     );
     final target = File(_pathFor(stored));
     target.createSync(recursive: true);
@@ -719,6 +731,10 @@ class TrackStore {
     }
     if (track.durationSeconds == null && data.durationSeconds != null) {
       track.durationSeconds = data.durationSeconds;
+      healed = true;
+    }
+    if (track.movingSeconds == null && data.movingSeconds != null) {
+      track.movingSeconds = data.movingSeconds;
       healed = true;
     }
     if (healed) _saveIndex();

@@ -11,6 +11,18 @@ import 'dart:math' as math;
 
 const _earthRadius = 6371000.0;
 
+/// Displacement speed at or above which time between two fixes counts as
+/// moving, in m/s. Shared by the recording engine (its `movingSpeed` default)
+/// and the catalog's imported-track moving time, so both agree on what
+/// "moving" means.
+const double movingSpeedMps = 0.5;
+
+/// Gap between consecutive fixes/points that counts as a segment break
+/// (pause or fix loss): the time across it accrues nowhere — it is a jump,
+/// not recorded time. Shared by the recording engine's `segmentGap` default
+/// and the imported-track moving time.
+const Duration segmentBreakGap = Duration(seconds: 30);
+
 /// Great-circle distance in meters between two WGS84 points (spherical
 /// haversine with the same earth radius the catalog lengths have always
 /// used).

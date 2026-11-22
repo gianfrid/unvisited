@@ -59,6 +59,32 @@ class TrackData {
     return seconds < 0 ? null : seconds;
   }
 
+  /// Moving time in seconds: the sum of the gaps between consecutive
+  /// timestamped points whose implied displacement speed reaches
+  /// [movingSpeedMps]. A gap larger than [segmentBreakGap] is a segment
+  /// break (pause or fix loss) and counts nowhere — a jump is not time,
+  /// same rule as the distance's. A missing timestamp on either side
+  /// breaks the chain. Null when the track carries no usable timestamps,
+  /// like [durationSeconds].
+  double? get movingSeconds {
+    double total = 0;
+    var any = false;
+    for (var i = 1; i < points.length; i++) {
+      final a = points[i - 1];
+      final b = points[i];
+      if (a.time == null || b.time == null) continue;
+      final gap = b.time!.difference(a.time!);
+      if (gap.isNegative) continue;
+      any = true;
+      if (gap > segmentBreakGap) continue;
+      final gapSeconds = gap.inMilliseconds / 1000;
+      if (gapSeconds <= 0) continue;
+      final step = haversineMeters(a.lat, a.lon, b.lat, b.lon);
+      if (step / gapSeconds >= movingSpeedMps) total += gapSeconds;
+    }
+    return any ? total : null;
+  }
+
   /// Rough length in meters computed over consecutive points (haversine).
   double get distanceMeters {
     double total = 0;

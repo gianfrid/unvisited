@@ -246,6 +246,7 @@ abstract class AppStrings {
   String get infoPoints;
   String get infoDistance;
   String get infoDuration;
+  String get infoMovingTime;
   String get infoAvgSpeed;
 
   /// A track's start date/time, locale-formatted for the info dialog.
@@ -303,6 +304,8 @@ class EnglishStrings extends AppStrings {
   String get infoDistance => 'Distance';
   @override
   String get infoDuration => 'Duration';
+  @override
+  String get infoMovingTime => 'Moving time';
   @override
   String get infoAvgSpeed => 'Average speed';
   @override
@@ -626,6 +629,8 @@ class ItalianStrings extends AppStrings {
   String get infoDistance => 'Distanza';
   @override
   String get infoDuration => 'Durata';
+  @override
+  String get infoMovingTime => 'Tempo in movimento';
   @override
   String get infoAvgSpeed => 'Velocità media';
   @override

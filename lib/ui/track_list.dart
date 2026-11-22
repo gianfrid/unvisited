@@ -132,18 +132,22 @@ class _TrackTile extends StatelessWidget {
   bool get _replayable =>
       track.durationSeconds != null && track.durationSeconds! > 0;
 
-  /// The average speed as distance over duration in km/h, or null when
-  /// either side is unknown or zero (never a fabricated 0 or infinity).
+  /// The average speed in km/h: distance over moving time when the track
+  /// has one (same precedence as the recording dashboard), over the total
+  /// duration otherwise. Null when neither side is known or positive —
+  /// never a fabricated 0 or infinity.
   double? _avgSpeed() {
-    final seconds = track.durationSeconds;
+    final moving = track.movingSeconds;
+    final seconds =
+        (moving != null && moving > 0) ? moving : track.durationSeconds;
     if (seconds == null || seconds <= 0) return null;
     return track.distanceMeters / seconds * 3.6;
   }
 
   /// The info dialog: start date/time, format, point count, distance,
-  /// duration and the average speed over the measured duration — values
-  /// the catalog already carries, never recomputed from the file on disk
-  /// (that would re-read and re-parse just to draw a dialog). The close
+  /// duration, moving time and the average speed over the moving time —
+  /// values the catalog already carries, never recomputed from the file on
+  /// disk (that would re-read and re-parse just to draw a dialog). The close
   /// label reuses the existing Cancel string.
   void _showInfo(BuildContext context, AppStrings strings) {
     final duration = track.durationSeconds;
@@ -175,6 +179,13 @@ class _TrackTile extends StatelessWidget {
               duration == null
                   ? '—'
                   : formatDuration(Duration(seconds: duration.round())),
+            ),
+            _infoRow(
+              strings.infoMovingTime,
+              track.movingSeconds == null
+                  ? '—'
+                  : formatDuration(
+                      Duration(seconds: track.movingSeconds!.round())),
             ),
             _infoRow(strings.infoAvgSpeed, avg),
           ],

@@ -109,6 +109,7 @@ Map<String, String> allStrings(AppStrings s) => {
       'infoPoints': s.infoPoints,
       'infoDistance': s.infoDistance,
       'infoDuration': s.infoDuration,
+      'infoMovingTime': s.infoMovingTime,
       'infoAvgSpeed': s.infoAvgSpeed,
       'trackStart(noon)': s.trackStart(DateTime.utc(2026, 6, 1, 12, 30)),
       'roadData': s.roadData,
