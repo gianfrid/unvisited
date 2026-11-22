@@ -110,8 +110,8 @@ class SettingsSheet extends StatelessWidget {
                   ),
                   ListTile(
                     dense: true,
-                    title: Text(strings.fogStyle),
-                    subtitle: Text(strings.fogStyleSubtitle),
+                    title: Text(strings.traceStyle),
+                    subtitle: Text(strings.traceStyleSubtitle),
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 0,
@@ -123,15 +123,15 @@ class SettingsSheet extends StatelessWidget {
                       segments: [
                         ButtonSegment(
                           value: 'circles',
-                          label: Text(strings.fogStyleCircles),
+                          label: Text(strings.traceStyleCircles),
                         ),
                         ButtonSegment(
                           value: 'polyline',
-                          label: Text(strings.fogStylePolyline),
+                          label: Text(strings.traceStylePencil),
                         ),
                         ButtonSegment(
                           value: 'ink',
-                          label: Text(strings.fogStyleInk),
+                          label: Text(strings.traceStyleInk),
                         ),
                       ],
                       selected: {model.fogStyle},
@@ -188,33 +188,6 @@ class SettingsSheet extends StatelessWidget {
                       selected: {model.tileLayer},
                       onSelectionChanged: (selection) =>
                           model.setTileLayer(selection.first),
-                    ),
-                  ),
-                  ListTile(
-                    dense: true,
-                    title: Text(strings.mapRotation),
-                    subtitle: Text(strings.mapRotationSubtitle),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 0,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: SegmentedButton<String>(
-                      segments: [
-                        ButtonSegment(
-                          value: 'north',
-                          label: Text(strings.rotationModeNorth),
-                        ),
-                        ButtonSegment(
-                          value: 'course',
-                          label: Text(strings.rotationModeCourse),
-                        ),
-                      ],
-                      selected: {model.mapRotation},
-                      onSelectionChanged: (selection) =>
-                          model.setMapRotation(selection.first),
                     ),
                   ),
                   ListTile(

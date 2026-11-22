@@ -130,10 +130,6 @@ abstract class AppStrings {
   String get standardLayer;
   String get cycleLayer;
 
-  // Map rotation while recording (opt-in course-up follow-camera).
-  String get mapRotation;
-  String get mapRotationSubtitle;
-
   // Rotation mode names (control pill button tooltip, Settings segments).
   String get rotationModeNorth;
   String get rotationModeCourse;
@@ -153,11 +149,11 @@ abstract class AppStrings {
 
   // Theme.
   String get theme;
-  String get fogStyle;
-  String get fogStyleSubtitle;
-  String get fogStyleCircles;
-  String get fogStylePolyline;
-  String get fogStyleInk;
+  String get traceStyle;
+  String get traceStyleSubtitle;
+  String get traceStyleCircles;
+  String get traceStylePencil;
+  String get traceStyleInk;
   String get themeSubtitle;
   String get systemTheme;
   String get lightTheme;
@@ -454,11 +450,6 @@ class EnglishStrings extends AppStrings {
   @override
   String get cycleLayer => 'Cycle (CyclOSM)';
   @override
-  String get mapRotation => 'Rotate map while recording';
-  @override
-  String get mapRotationSubtitle =>
-      'Course-up follow-camera; off keeps the map north-up';
-  @override
   String get rotationModeNorth => 'North up';
   @override
   String get rotationModeCourse => 'Course up';
@@ -483,15 +474,15 @@ class EnglishStrings extends AppStrings {
   @override
   String get themeSubtitle => 'Appearance of the app';
   @override
-  String get fogStyle => 'Fog style';
+  String get traceStyle => 'Trace style';
   @override
-  String get fogStyleSubtitle => 'How explored areas are drawn';
+  String get traceStyleSubtitle => 'How explored areas are drawn';
   @override
-  String get fogStyleCircles => 'Circles';
+  String get traceStyleCircles => 'Circles';
   @override
-  String get fogStylePolyline => 'Lines';
+  String get traceStylePencil => 'Pencil';
   @override
-  String get fogStyleInk => 'Ink';
+  String get traceStyleInk => 'Ink';
   @override
   String get systemTheme => 'System';
   @override
@@ -797,14 +788,9 @@ class ItalianStrings extends AppStrings {
   @override
   String get cycleLayer => 'Ciclo (CyclOSM)';
   @override
-  String get mapRotation => 'Ruota la mappa durante la registrazione';
-  @override
-  String get mapRotationSubtitle =>
-      'Fotocamera di inseguimento orientata al corso; disattivata la mappa resta a nord';
-  @override
   String get rotationModeNorth => 'Nord su';
   @override
-  String get rotationModeCourse => 'Corso su';
+  String get rotationModeCourse => 'Percorso su';
   @override
   String get language => 'Lingua';
   @override
@@ -826,15 +812,15 @@ class ItalianStrings extends AppStrings {
   @override
   String get themeSubtitle => "Aspetto dell'app";
   @override
-  String get fogStyle => 'Stile della nebbia';
+  String get traceStyle => 'Stile della traccia';
   @override
-  String get fogStyleSubtitle => 'Come vengono disegnate le aree esplorate';
+  String get traceStyleSubtitle => 'Come vengono disegnate le aree esplorate';
   @override
-  String get fogStyleCircles => 'Cerchi';
+  String get traceStyleCircles => 'Cerchi';
   @override
-  String get fogStylePolyline => 'Linee';
+  String get traceStylePencil => 'Matita';
   @override
-  String get fogStyleInk => 'Inchiostro';
+  String get traceStyleInk => 'Inchiostro';
   @override
   String get systemTheme => 'Sistema';
   @override

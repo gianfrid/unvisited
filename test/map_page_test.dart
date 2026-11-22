@@ -2786,15 +2786,15 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
-    await tester.ensureVisible(find.text('Lines'));
+    await tester.ensureVisible(find.text('Pencil'));
     await tester.pump();
-    await tester.tap(find.text('Lines'));
+    await tester.tap(find.text('Pencil'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
     expect(model.fogStyle, 'polyline');
 
     // The sheet is still up; close it and the map repaints with lines.
-    Navigator.of(tester.element(find.text('Fog style'))).pop();
+    Navigator.of(tester.element(find.text('Trace style'))).pop();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(CircleLayer), findsNothing);
     final lines = tester
