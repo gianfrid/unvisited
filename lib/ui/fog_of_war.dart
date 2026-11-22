@@ -71,3 +71,59 @@ List<LatLng> unlockCenters(Iterable<LatLng> points,
   }
   return List.of(seen.values);
 }
+
+// --- Display styles -------------------------------------------------------
+
+/// The exploration overlay's display styles, as persisted in the settings.
+const fogStyles = <String>['circles', 'polyline', 'ink'];
+
+/// The fog display style a fresh install starts with.
+const defaultFogStyle = 'circles';
+
+/// The normalized fog display style: unknown stored values fall back to
+/// [defaultFogStyle], so a hand-edited index can never break rendering.
+String fogStyleOrDefault(String? style) =>
+    fogStyles.contains(style) ? style! : defaultFogStyle;
+
+/// Splits track points into drawable segments, breaking wherever two
+/// consecutive points are farther apart than [maxGapMeters] (a `<trkseg>`
+/// break, a paused recording's resume, a teleport) so no artificial line
+/// connects across the gap. Runs of two or more points become segments.
+List<List<LatLng>> splitTrackSegments(
+  Iterable<LatLng> points, {
+  double maxGapMeters = 100.0,
+}) {
+  final segs = <List<LatLng>>[];
+  List<LatLng>? current;
+  LatLng? prev;
+  final maxDeg = maxGapMeters / _metersPerDegree;
+  for (final p in points) {
+    if (current == null ||
+        prev == null ||
+        (p.latitude - prev.latitude).abs() > maxDeg ||
+        (p.longitude - prev.longitude).abs() / _lonReferenceCos > maxDeg) {
+      // Latitude-approx gap test with a cosine-widened longitude bound:
+      // cheap, and only ever splits a little late (rarely splits one
+      // segment too many) — never joins across a real gap.
+      current = [p];
+      segs.add(current);
+    } else {
+      current.add(p);
+    }
+    prev = p;
+  }
+  return [for (final s in segs) if (s.length > 1) s];
+}
+
+/// Keeps every [k]-th point of [points] (always the first and adjusted to
+/// keep the last). The line-styles' zoom-band decimation: drawing geometry
+/// only ever smooths to within one fog cell, the same contract a coarser
+/// grid gives the circles.
+List<LatLng> decimate(List<LatLng> points, int k) {
+  if (k <= 1 || points.length < 3) return points;
+  final out = <LatLng>[
+    for (var i = 0; i < points.length; i += k) points[i],
+  ];
+  if (out.last != points.last) out.add(points.last);
+  return out;
+}

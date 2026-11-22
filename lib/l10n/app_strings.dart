@@ -153,6 +153,11 @@ abstract class AppStrings {
 
   // Theme.
   String get theme;
+  String get fogStyle;
+  String get fogStyleSubtitle;
+  String get fogStyleCircles;
+  String get fogStylePolyline;
+  String get fogStyleInk;
   String get themeSubtitle;
   String get systemTheme;
   String get lightTheme;
@@ -477,6 +482,16 @@ class EnglishStrings extends AppStrings {
   String get theme => 'Theme';
   @override
   String get themeSubtitle => 'Appearance of the app';
+  @override
+  String get fogStyle => 'Fog style';
+  @override
+  String get fogStyleSubtitle => 'How explored areas are drawn';
+  @override
+  String get fogStyleCircles => 'Circles';
+  @override
+  String get fogStylePolyline => 'Lines';
+  @override
+  String get fogStyleInk => 'Ink';
   @override
   String get systemTheme => 'System';
   @override
@@ -810,6 +825,16 @@ class ItalianStrings extends AppStrings {
   String get theme => 'Tema';
   @override
   String get themeSubtitle => "Aspetto dell'app";
+  @override
+  String get fogStyle => 'Stile della nebbia';
+  @override
+  String get fogStyleSubtitle => 'Come vengono disegnate le aree esplorate';
+  @override
+  String get fogStyleCircles => 'Cerchi';
+  @override
+  String get fogStylePolyline => 'Linee';
+  @override
+  String get fogStyleInk => 'Inchiostro';
   @override
   String get systemTheme => 'Sistema';
   @override

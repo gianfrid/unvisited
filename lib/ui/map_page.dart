@@ -13,6 +13,7 @@ import '../recording/recording_session.dart';
 import '../tile_source.dart';
 import 'app_model.dart';
 import 'fog_of_war.dart';
+import 'ink_stroke.dart';
 import 'map_actions.dart';
 import 'map_controls.dart';
 import 'playback_dashboard.dart';
@@ -891,6 +892,54 @@ class _MapPageState extends State<MapPage> {
     return out;
   }
 
+  /// The fog overlay in the two line styles: per aggregate, its decimated
+  /// track segments as uniform polylines in the aggregate tint — raised
+  /// alpha, since a thin line needs more opacity than the circles to read.
+  /// The ink style draws the same geometry as layered ink passes (bleed
+  /// under core) instead of one flat stroke.
+  List<Polyline> _buildFogLines(List<MapTrack> tracks) {
+    final tintKeys = widget.model.aggregateTintKeys;
+    final ink = widget.model.fogStyle == 'ink';
+    final out = <Polyline>[];
+    for (final a in widget.model.aggregates) {
+      final tint = exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
+      for (final seg in splitTrackSegments(a.points)) {
+        final pts = decimate(seg, _fogLineDecimation());
+        if (pts.length < 2) continue;
+        if (!ink) {
+          out.add(Polyline(points: pts, strokeWidth: 3.5, color: tint));
+        } else {
+          for (final pass in inkStrokes(
+            pts,
+            passCount: inkPassWidthFactors.length,
+            minRunLength: inkBaseRunLength,
+            maxStripsPerTrack: inkMaxStripsPerTrack,
+          )) {
+            for (final s in pass.strips) {
+              out.add(Polyline(
+                points: s.run,
+                strokeWidth: pass.width,
+                color: inkHue.withValues(alpha: pass.alpha),
+              ));
+            }
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Band-aware decimation for the fog line styles: keep every k-th
+  /// point, where k is the current fog band's power-of-two coarsening —
+  /// the same contract the circles ride, so cost decays as the view
+  /// zooms out.
+  int _fogLineDecimation() {
+    final k = (_fogCellSize / baseCellSizeMeters).round();
+    return k < 1 ? 1 : k;
+  }
+
+  /// The fog overlay in the two line styles...
+
   /// Unlocked road corridors: the matched sub-polylines persisted on each
   /// visible track, drawn fat and translucent in the track's aggregate
   /// tint so corridors and their circles read as one overlay. A way
@@ -1032,15 +1081,20 @@ class _MapPageState extends State<MapPage> {
               // below the fog: undiscovered roads are background hints,
               // and everything discovered paints over them.
               if (unvisited.isNotEmpty) PolylineLayer(polylines: unvisited),
-              // The fog-of-war circles, absent while a replay runs (and
-              // back on close): a replay rides the bare map — the
-              // circles are noise around the trace it draws. Starting or
-              // stopping a replay is a model-wide rebuild, so the layer
-              // mounts and unmounts there; per-tick updates never touch
-              // it. The corridors below are unrelated to the fog's
-              // absence — the played track's corridors stay.
+              // The fog-of-war overlay, absent while a replay runs (and
+              // back on close): circles by default, or one of the line
+              // styles when Settings picks one — same replay gate either
+              // way.
               if (widget.model.playback == null)
-                CircleLayer(circles: _buildFogCircles(mapTracks)),
+                switch (widget.model.fogStyle) {
+                  'polyline' => PolylineLayer(
+                      polylines: _buildFogLines(mapTracks),
+                    ),
+                  'ink' => PolylineLayer(
+                      polylines: _buildFogLines(mapTracks),
+                    ),
+                  _ => CircleLayer(circles: _buildFogCircles(mapTracks)),
+                },
               // Unlocked road corridors (fog-of-war for streets), above
               // the circles so the corridor reads on top of the blobs.
               if (corridors.isNotEmpty) PolylineLayer(polylines: corridors),

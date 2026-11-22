@@ -110,6 +110,25 @@ class SettingsSheet extends StatelessWidget {
                   ),
                   ListTile(
                     dense: true,
+                    title: Text(strings.fogStyle),
+                    subtitle: Text(strings.fogStyleSubtitle),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 0,
+                    ),
+                    trailing: SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'circles', label: Text('Circles')),
+                        ButtonSegment(value: 'polyline', label: Text('Lines')),
+                        ButtonSegment(value: 'ink', label: Text('Ink')),
+                      ],
+                      selected: {model.fogStyle},
+                      onSelectionChanged: (selection) =>
+                          model.setFogStyle(selection.first),
+                    ),
+                  ),
+                  ListTile(
+                    dense: true,
                     title: Text(strings.controlSide),
                     subtitle: Text(strings.controlSideSubtitle),
                     contentPadding: const EdgeInsets.symmetric(

@@ -24,7 +24,7 @@ import '../road/road_store.dart';
 import '../recording/position_source.dart' show PositionSource;
 import '../recording/recording_session.dart' show RecordingSession;
 import '../storage/track_store.dart';
-import 'fog_of_war.dart' show unlockCenters;
+import 'fog_of_war.dart' show fogStyleOrDefault, unlockCenters;
 import 'import_coordinator.dart';
 import 'playback_controller.dart';
 import 'recording_controller.dart';
@@ -688,6 +688,16 @@ class AppModel extends ChangeNotifier {
   /// aggregate now).
   Future<void> setRecordingTint(String key) async {
     await store.saveRecordingTint(key);
+    notifyListeners();
+  }
+
+  /// The exploration overlay's display style ('circles', 'polyline' or
+  /// 'ink'), normalized through fogStyleOrDefault.
+  String get fogStyle => fogStyleOrDefault(store.fogStyle);
+
+  /// Saves the exploration overlay's display style.
+  Future<void> setFogStyle(String style) async {
+    await store.saveFogStyle(style);
     notifyListeners();
   }
 

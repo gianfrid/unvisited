@@ -32,6 +32,19 @@ const defaultRecordingTintKey = 'red';
 Color exploredAreaColor(String key) =>
     explorationTints[key] ?? explorationTints[defaultTintKey]!;
 
+/// The ink hue the "ink" fog style draws with: a deep blue-black pen ink,
+/// independent of the aggregate tints (ink reads as one hand across the
+/// whole map, like a highlighter atlas drawn in one pen).
+const inkHue = Color(0xFF1A237E);
+
+/// Per-pass opacities of the ink style, bleed first (the wide pass under
+/// the core reads faintest); the core pass lands near-opaque.
+const inkPassAlphas = <double>[0.25, 0.6, 0.9];
+
+/// Per-pass relative widths of the ink style, multiplied by the polyline
+/// style's stroke width; bleed widest, core narrowest.
+const inkPassWidthFactors = <double>[2.2, 1.4, 0.7];
+
 /// The solid counterparts for the recording trace, which draws at its own
 /// alpha; unknown keys fall back to the recording default.
 Color recordingTraceColor(String key) =>

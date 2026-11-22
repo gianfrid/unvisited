@@ -12,6 +12,7 @@ import '../import/tcx_parser.dart';
 import '../import/track_importer.dart';
 import '../models/track.dart';
 import '../road/road_format.dart';
+import '../ui/fog_of_war.dart' show defaultFogStyle, fogStyleOrDefault;
 
 /// Catalog entry for a stored track. The original track file lives as
 /// `tracks/<contentHash>.<ext>`; this record holds everything the UI needs
@@ -202,6 +203,7 @@ class AppSettings {
     this.language = 'system',
     this.themeMode = 'system',
     this.tileLayer = 'standard',
+    this.fogStyle = defaultFogStyle,
     this.mapRotation = 'north',
     this.keepScreenOn = true,
     this.debugLogging = false,
@@ -228,6 +230,11 @@ class AppSettings {
 
   /// Base tile style: 'standard' (OSM raster) or 'cycle' (CyclOSM).
   final String tileLayer;
+
+  /// Exploration overlay display style ('circles', 'polyline' or 'ink') —
+  /// how the unlocked fog reads over the tiles. Normalized (unknown
+  /// values fall back) on read; see fog_of_war.dart.
+  final String fogStyle;
 
   /// The recording follow-camera's rotation mode: 'north' (the default —
   /// the map stays north-up) or 'course' (course-up, where below the
@@ -281,6 +288,7 @@ class AppSettings {
         language: (m['language'] as String?) ?? 'system',
         themeMode: (m['themeMode'] as String?) ?? 'system',
         tileLayer: (m['tileLayer'] as String?) ?? 'standard',
+        fogStyle: (m['fogStyle'] as String?) ?? defaultFogStyle,
         mapRotation: _migrateMapRotation(m['mapRotation'] as String?),
         keepScreenOn: (m['keepScreenOn'] as bool?) ?? true,
         debugLogging: (m['debugLogging'] as bool?) ?? false,
@@ -298,6 +306,7 @@ class AppSettings {
     String? language,
     String? themeMode,
     String? tileLayer,
+    String? fogStyle,
     String? mapRotation,
     bool? keepScreenOn,
     bool? debugLogging,
@@ -313,6 +322,7 @@ class AppSettings {
         language: language ?? this.language,
         themeMode: themeMode ?? this.themeMode,
         tileLayer: tileLayer ?? this.tileLayer,
+        fogStyle: fogStyle ?? this.fogStyle,
         mapRotation: mapRotation ?? this.mapRotation,
         keepScreenOn: keepScreenOn ?? this.keepScreenOn,
         debugLogging: debugLogging ?? this.debugLogging,
@@ -329,6 +339,7 @@ class AppSettings {
         'language': language,
         'themeMode': themeMode,
         'tileLayer': tileLayer,
+        'fogStyle': fogStyle,
         'mapRotation': mapRotation,
         'keepScreenOn': keepScreenOn,
         'debugLogging': debugLogging,
@@ -388,6 +399,9 @@ class TrackStore {
   String get language => _settings.language;
   String get themeMode => _settings.themeMode;
   String get tileLayer => _settings.tileLayer;
+
+  /// The normalized fog display style (unknown stored values fall back).
+  String get fogStyle => fogStyleOrDefault(_settings.fogStyle);
   String get mapRotation => _settings.mapRotation;
   bool get keepScreenOn => _settings.keepScreenOn;
   bool get debugLogging => _settings.debugLogging;
@@ -468,6 +482,11 @@ class TrackStore {
   /// Saves the base tile style choice ('standard' or 'cycle').
   Future<void> saveTileLayer(String layer) async =>
       _apply(_settings.copyWith(tileLayer: layer));
+
+  /// Saves the exploration overlay's display style ('circles', 'polyline'
+  /// or 'ink').
+  Future<void> saveFogStyle(String style) async =>
+      _apply(_settings.copyWith(fogStyle: style));
 
   /// Saves whether the recording follow-camera rotates course-up
   /// ('on' or 'off'; 'off' keeps the map north-up).
