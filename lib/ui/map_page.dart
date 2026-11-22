@@ -520,7 +520,8 @@ class _MapPageState extends State<MapPage> {
                   Polyline(
                     points: s.run,
                     strokeWidth: inkWidthMeters * pass.width * _pxPerMeter(),
-                    color: inkHue.withValues(alpha: 1),
+              color: inkColorFor(key ?? defaultTintKey)
+                  .withValues(alpha: 1),
                   ),
           ]),
         ];
@@ -983,7 +984,8 @@ class _MapPageState extends State<MapPage> {
             out.add(Polyline(
               points: s.run,
               strokeWidth: inkWidthMeters * pass.width * pxPerMeter,
-              color: inkHue.withValues(alpha: pass.alpha),
+              color: inkColorFor(tintKeys[a.anchorId] ?? defaultTintKey)
+                  .withValues(alpha: pass.alpha),
             ));
           }
         }

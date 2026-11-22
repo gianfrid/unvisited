@@ -2848,6 +2848,20 @@ void main() {
     await tester.pump();
     expect(model.selectedAggregate, isNotNull);
     expect(find.byType(CircleLayer), findsNothing);
+
+    // The ink colour follows the aggregate's tint: the multitrack colour
+    // override repaints the strokes with the derived ink colour.
+    Color fogColor() => tester
+        .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+        .expand((l) => l.polylines)
+        .first
+        .color;
+    final before = fogColor();
+    expect(before, inkColorFor('green').withValues(alpha: 0.25));
+    await model.setAggregateColor('orange');
+    await tester.pump();
+    expect(fogColor(), isNot(before));
+    expect(fogColor(), inkColorFor('orange').withValues(alpha: 0.25));
     expect(tester.takeException(), isNull);
   });
 
