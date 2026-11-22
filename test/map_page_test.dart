@@ -2760,6 +2760,50 @@ void main() {
     );
   });
 
+  testWidgets('the fog style setting swaps circles for lines on the map', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    expect(model.tracks.length, 1);
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    // Default: fog circles, no polylines.
+    expect(find.byType(CircleLayer), findsOneWidget);
+    expect(find.byType(PolylineLayer), findsNothing);
+
+    // Open Settings and pick the line style.
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.ensureVisible(find.text('Lines'));
+    await tester.pump();
+    await tester.tap(find.text('Lines'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.fogStyle, 'polyline');
+
+    // The sheet is still up; close it and the map repaints with lines.
+    Navigator.of(tester.element(find.text('Fog style'))).pop();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(CircleLayer), findsNothing);
+    final lines = tester
+        .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+        .expand((l) => l.polylines)
+        .toList();
+    expect(lines, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('settings sheet shows the About card and delete-all entry', (
     tester,
   ) async {

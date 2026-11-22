@@ -116,11 +116,23 @@ class SettingsSheet extends StatelessWidget {
                       horizontal: 16,
                       vertical: 0,
                     ),
-                    trailing: SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'circles', label: Text('Circles')),
-                        ButtonSegment(value: 'polyline', label: Text('Lines')),
-                        ButtonSegment(value: 'ink', label: Text('Ink')),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(
+                          value: 'circles',
+                          label: Text(strings.fogStyleCircles),
+                        ),
+                        ButtonSegment(
+                          value: 'polyline',
+                          label: Text(strings.fogStylePolyline),
+                        ),
+                        ButtonSegment(
+                          value: 'ink',
+                          label: Text(strings.fogStyleInk),
+                        ),
                       ],
                       selected: {model.fogStyle},
                       onSelectionChanged: (selection) =>
