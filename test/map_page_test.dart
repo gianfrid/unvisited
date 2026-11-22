@@ -26,6 +26,7 @@ import 'package:unvisited/storage/track_store.dart';
 import 'package:unvisited/tile_source.dart';
 import 'package:unvisited/ui/app_model.dart';
 import 'package:unvisited/ui/fog_of_war.dart';
+import 'package:unvisited/ui/ink_stroke.dart' show inkWidthMeters;
 import 'package:unvisited/ui/map_actions.dart';
 import 'package:unvisited/ui/map_page.dart';
 import 'package:unvisited/ui/recording_dashboard.dart';
@@ -2801,6 +2802,52 @@ void main() {
         .expand((l) => l.polylines)
         .toList();
     expect(lines, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('ink mode draws meter-sized strokes; selection follows style', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    await model.setFogStyle('ink');
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    expect(find.byType(CircleLayer), findsNothing);
+    final layers = tester.widgetList<PolylineLayer>(find.byType(PolylineLayer));
+    final inkPolylines = layers.expand((l) => l.polylines).toList();
+    expect(inkPolylines, isNotEmpty);
+    // The core pass is sized in ground meters: at the test camera the
+    // stroke width must match 10 m converted to pixels (plus wobble).
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+    final pxPerMeter =
+        1 / groundResolution(zoom: camera.zoom, latitude: camera.center.latitude);
+    final coreWidth = inkWidthMeters * 0.7 * pxPerMeter;
+    expect(
+      inkPolylines.map((p) => p.strokeWidth).reduce((a, b) => a < b ? a : b),
+      closeTo(coreWidth * 0.8, coreWidth * 0.25),
+    );
+    // Layered passes, not one flat stroke.
+    expect(inkPolylines.map((p) => p.strokeWidth).toSet().length, greaterThan(1));
+
+    // Selecting the track in ink mode highlights with ink strokes (no
+    // circle highlight layer appears).
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    final point = model.visibleTracks.single.points.first;
+    await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(point));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(model.selectedAggregate, isNotNull);
+    expect(find.byType(CircleLayer), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

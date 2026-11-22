@@ -90,6 +90,12 @@ class _MapPageState extends State<MapPage> {
         latitude: event.camera.center.latitude,
       );
       var dirty = cell != _fogCellSize;
+      final zoomStep = (event.camera.zoom * 2).roundToDouble() / 2;
+      _cameraZoom = event.camera.zoom;
+      if (!dirty && zoomStep != _fogZoomStep) {
+        dirty = widget.model.fogStyle == 'ink';
+      }
+      _fogZoomStep = zoomStep;
       if (!dirty && _locatedPosition != null) {
         // The position marker shows the last fix; once the user pans away
         // from it, it would sit somewhere they are not — drop it.
@@ -143,6 +149,12 @@ class _MapPageState extends State<MapPage> {
   /// Current fog-cell edge for the explored overlay; updated from map
   /// events in initState and read when the circles are built.
   double _fogCellSize = baseCellSizeMeters;
+
+  /// The camera zoom quantized to half-steps, for the meter-sized ink
+  /// style: its stroke widths convert from ground meters to pixels with
+  /// the current zoom, so the width refreshes twice per zoom level
+  /// without redrawing the (cached) stroke geometry per frame.
+  double _fogZoomStep = 0.0;
 
   /// True while a locate attempt is in flight. Acquiring a fix takes
   /// seconds (longer on a cold GPS), so the button shows a spinner and
@@ -471,28 +483,65 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  /// The selected aggregate's highlight: the same cells the fog grid
-  /// draws, computed over just the selection's points, in a more transparent
-  /// opaque version of the aggregate's own resolved color so the selection
-  /// reads on top of the shared overlay.
-  List<CircleMarker> _selectionHighlight() {
+  /// The selected aggregate's highlight, in the active fog style so the
+  /// selection reads the same language the map is drawn in: boosted-
+  /// opacity circles, solid tinted lines, or full-strength ink strokes.
+  List<Widget> _selectionHighlightLayers() {
     final selected = widget.model.selectedAggregate;
     if (selected == null) return const [];
     final key = widget.model.aggregateTintKeys[selected.anchorId];
     final tint = exploredAreaColor(key ?? defaultTintKey);
-    final highlight = tint.withValues(alpha: (tint.a + 0.55).clamp(0.0, 1.0));
-    return [
-      for (final c in unlockCenters(
-        selected.points,
-        cellSizeMeters: _fogCellSize,
-      ))
-        CircleMarker(
-          point: c,
-          color: highlight,
-          radius: unlockRadiusForCell(_fogCellSize),
-          useRadiusInMeter: true,
-        ),
-    ];
+    switch (widget.model.fogStyle) {
+      case 'polyline':
+        return [
+          PolylineLayer(polylines: [
+            for (final seg in splitTrackSegments(selected.points))
+              if (decimate(seg, _fogLineDecimation()).length >= 2)
+                Polyline(
+                  points: decimate(seg, _fogLineDecimation()),
+                  strokeWidth: 4.5,
+                  color: tint.withValues(alpha: 1),
+                  borderStrokeWidth: 1,
+                  borderColor: Colors.black38,
+                ),
+          ]),
+        ];
+      case 'ink':
+        return [
+          PolylineLayer(polylines: [
+            for (final seg in splitTrackSegments(selected.points))
+              for (final pass in inkStrokes(
+                decimate(seg, _fogLineDecimation()),
+                passCount: inkPassWidthFactors.length,
+                minRunLength: inkBaseRunLength,
+                maxStripsPerTrack: inkMaxStripsPerTrack,
+              ))
+                for (final s in pass.strips)
+                  Polyline(
+                    points: s.run,
+                    strokeWidth: inkWidthMeters * pass.width * _pxPerMeter(),
+                    color: inkHue.withValues(alpha: 1),
+                  ),
+          ]),
+        ];
+      default:
+        final highlight =
+            tint.withValues(alpha: (tint.a + 0.55).clamp(0.0, 1.0));
+        return [
+          CircleLayer(circles: [
+            for (final c in unlockCenters(
+              selected.points,
+              cellSizeMeters: _fogCellSize,
+            ))
+              CircleMarker(
+                point: c,
+                color: highlight,
+                radius: unlockRadiusForCell(_fogCellSize),
+                useRadiusInMeter: true,
+              ),
+          ]),
+        ];
+    }
   }
 
   /// Fits the camera, but only once it has a real size. At launch the map
@@ -895,39 +944,75 @@ class _MapPageState extends State<MapPage> {
   /// The fog overlay in the two line styles: per aggregate, its decimated
   /// track segments as uniform polylines in the aggregate tint — raised
   /// alpha, since a thin line needs more opacity than the circles to read.
-  /// The ink style draws the same geometry as layered ink passes (bleed
-  /// under core) instead of one flat stroke.
+  /// The ink style draws the same geometry as layered meter-sized ink
+  /// passes (bleed under core), converted to pixels via the current zoom.
   List<Polyline> _buildFogLines(List<MapTrack> tracks) {
     final tintKeys = widget.model.aggregateTintKeys;
     final ink = widget.model.fogStyle == 'ink';
+    // Ground meters to screen pixels at the current camera: the ink
+    // strokes are sized in meters (like the fog circles), the polyline
+    // style stays a fixed screen-space width.
+    final pxPerMeter = _pxPerMeter();
     final out = <Polyline>[];
     for (final a in widget.model.aggregates) {
       final tint = exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
-      for (final seg in splitTrackSegments(a.points)) {
-        final pts = decimate(seg, _fogLineDecimation());
-        if (pts.length < 2) continue;
-        if (!ink) {
-          out.add(Polyline(points: pts, strokeWidth: 3.5, color: tint));
-        } else {
-          for (final pass in inkStrokes(
-            pts,
-            passCount: inkPassWidthFactors.length,
-            minRunLength: inkBaseRunLength,
-            maxStripsPerTrack: inkMaxStripsPerTrack,
-          )) {
-            for (final s in pass.strips) {
-              out.add(Polyline(
-                points: s.run,
-                strokeWidth: pass.width,
-                color: inkHue.withValues(alpha: pass.alpha),
-              ));
-            }
+      final key = '${a.anchorId}@$_fogCellSize';
+      var passes = _inkPassesCache[key];
+      if (passes == null) {
+        passes = [
+          for (final seg in splitTrackSegments(a.points))
+            ...inkStrokes(
+              decimate(seg, _fogLineDecimation()),
+              passCount: inkPassWidthFactors.length,
+              minRunLength: inkBaseRunLength,
+              maxStripsPerTrack: inkMaxStripsPerTrack,
+            ),
+        ];
+        _inkPassesCache[key] = passes;
+      }
+      if (!ink) {
+        for (final seg in splitTrackSegments(a.points)) {
+          final pts = decimate(seg, _fogLineDecimation());
+          if (pts.length >= 2) {
+            out.add(Polyline(points: pts, strokeWidth: 3.5, color: tint));
+          }
+        }
+      } else {
+        for (final pass in passes) {
+          for (final s in pass.strips) {
+            out.add(Polyline(
+              points: s.run,
+              strokeWidth: inkWidthMeters * pass.width * pxPerMeter,
+              color: inkHue.withValues(alpha: pass.alpha),
+            ));
           }
         }
       }
     }
     return out;
   }
+
+  /// Cache of ink stroke passes per aggregate @ fog band: recomputed only
+  /// on band crossings (like the circle centers), reused across pans and
+  /// same-band zooms. Pass widths are in meters and converted to pixels
+  /// at paint time, so a 0.5-zoom-step refresh needs no recompute.
+  final _inkPassesCache = <String, List<InkPass>>{};
+
+  /// Ground meters to screen pixels at the current camera (1.0 when the
+  /// camera has no size yet, e.g. first layout).
+  double _pxPerMeter() {
+    final zoom = _cameraZoom;
+    if (zoom == null) return 1.0;
+    return 1.0 /
+        groundResolution(
+          zoom: zoom,
+          latitude: _mapController.camera.center.latitude,
+        );
+  }
+
+  /// The camera zoom at the last map event, or null before the first
+  /// one; drives the meter-to-pixel conversion of the ink style.
+  double? _cameraZoom;
 
   /// Band-aware decimation for the fog line styles: keep every k-th
   /// point, where k is the current fog band's power-of-two coarsening —
@@ -1101,7 +1186,7 @@ class _MapPageState extends State<MapPage> {
               // The selected aggregate's highlight, above corridors so the
               // selection reads on top of the overlay.
               if (widget.model.selectedAnchor != null)
-                CircleLayer(circles: _selectionHighlight()),
+                ..._selectionHighlightLayers(),
               // The live recording trace: the session's accepted fixes as
               // polylines, translucent in a fixed recording red — outside
               // the catalog tint family, clearly in-progress. Above the

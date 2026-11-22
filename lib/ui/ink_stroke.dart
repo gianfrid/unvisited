@@ -18,6 +18,13 @@ const inkBaseRunLength = 16;
 /// Perpendicular jitter cap, in meters: sub-pixel even at mid zoom.
 const inkJitterMeters = 1.5;
 
+/// Base stroke width, in ground meters, of the ink style's core pass —
+/// deliberately below the fog circles' 15 m unlock radius so ink and
+/// circles read differently. Pass width factors multiply this (bleed ≈
+/// 22 m, core ≈ 7 m); the caller converts to screen pixels via the map's
+/// ground resolution.
+const inkWidthMeters = 10.0;
+
 /// Per-track polyline budget across all passes: when a band's geometry
 /// exceeds it, strip lengths double (and the floor degrades to one strip
 /// per pass) rather than drop points.

@@ -1,8 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:unvisited/ui/fog_of_war.dart' show unlockRadiusMeters;
 import 'package:unvisited/ui/ink_stroke.dart';
 
 void main() {
+  test('ink base width is 10 m, below the fog unlock radius', () {
+    expect(inkWidthMeters, 10.0);
+    expect(inkWidthMeters, lessThan(unlockRadiusMeters));
+  });
+
   // A short synthetic segment around Paris, ~10 m steps.
   final segment = [
     for (var i = 0; i < 60; i++) LatLng(48.8584 + i * 1e-5, 2.2946),
