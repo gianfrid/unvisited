@@ -497,8 +497,11 @@ class _MapPageState extends State<MapPage> {
             label: strings.undoAction,
             onPressed: () => model.undoLastHide(),
           ),
-          // The Material default (4 s): fades away on its own, long enough
-          // to tap Undo.
+          // Undo rides the default 4 s fade. Without this, SnackBars
+          // with an action persist until tapped (Flutter 3.47's default:
+          // `persist ?? action != null`), so the toast would never
+          // dismiss on its own.
+          persist: false,
         ),
       );
     }

@@ -2075,6 +2075,39 @@ void main() {
     expect(model.aggregates.single.trackIds, hasLength(1));
   });
 
+  testWidgets('the undo toast fades away when left alone', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    model.selectedAnchor = model.aggregates.single.anchorId;
+    model.notifyListeners();
+    await tester.pump();
+    await model.hideSelectedAggregate();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Area hidden'), findsOneWidget);
+
+    // The Material default duration (4 s) plus the exit animation — and
+    // the trailing pump that flushes the dismissal frame: the toast must
+    // be gone, no Undo left to tap. (persist: false is what makes an
+    // actioned SnackBar fade at all — Flutter 3.47 persists them by
+    // default.)
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Area hidden'), findsNothing);
+    expect(find.byKey(const ValueKey('undo-hide-action')), findsNothing);
+  });
+
   testWidgets('the bar dismiss drops the selection, the tracks stay visible', (
     tester,
   ) async {
