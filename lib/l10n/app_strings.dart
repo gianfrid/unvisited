@@ -222,10 +222,18 @@ abstract class AppStrings {
   // Tint swatch names (keys live in track_colors.dart).
   String tintName(String key);
 
-  // Selection bar (aggregate tracks and selection): hide, recolor, dismiss.
+  // Selection bar (aggregate tracks and selection): hide, recolor, dismiss,
+  // and the member-picking bubble's labeled actions.
   String get selectionHideTooltip;
   String get selectionColorTooltip;
   String get selectionDismissTooltip;
+  String get selectionTracksTooltip;
+  String get memberPickToast;
+  String get memberPickHide;
+  String get memberPickHideOthers;
+  String get memberPickShow;
+  String get areaHiddenToast;
+  String get undoAction;
 
   // Per-track menu (⋮ on a track tile): Info / Delete / Export.
   String get trackMenuTooltip;
@@ -279,6 +287,20 @@ class EnglishStrings extends AppStrings {
   String get selectionColorTooltip => 'Change the color';
   @override
   String get selectionDismissTooltip => 'Dismiss selection';
+  @override
+  String get selectionTracksTooltip => 'Tracks in this area';
+  @override
+  String get memberPickToast => 'Tap a track to pick it';
+  @override
+  String get memberPickHide => 'Hide this track';
+  @override
+  String get memberPickHideOthers => 'Hide the others';
+  @override
+  String get memberPickShow => 'Show this track';
+  @override
+  String get areaHiddenToast => 'Area hidden';
+  @override
+  String get undoAction => 'Undo';
   @override
   String get trackMenuTooltip => 'Track actions';
   @override
@@ -609,6 +631,20 @@ class ItalianStrings extends AppStrings {
   String get selectionColorTooltip => 'Cambia il colore';
   @override
   String get selectionDismissTooltip => 'Annulla la selezione';
+  @override
+  String get selectionTracksTooltip => 'Tracce in quest\'area';
+  @override
+  String get memberPickToast => 'Tocca una traccia per sceglierla';
+  @override
+  String get memberPickHide => 'Nascondi questa traccia';
+  @override
+  String get memberPickHideOthers => 'Nascondi le altre';
+  @override
+  String get memberPickShow => 'Mostra questa traccia';
+  @override
+  String get areaHiddenToast => 'Area nascosta';
+  @override
+  String get undoAction => 'Annulla';
   @override
   String get trackMenuTooltip => 'Azioni traccia';
   @override
