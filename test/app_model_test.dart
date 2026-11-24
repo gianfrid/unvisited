@@ -1556,6 +1556,40 @@ void main() {
       expect(model.selectedAnchor, isNull);
     });
 
+    test('hideSelectedAggregate is undoable via undoLastHide', () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      final a = await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      final b = await importGpx(
+        'b.gpx',
+        lat: 45.0,
+        lon: 9.0002,
+        time: start.add(const Duration(days: 1)),
+      );
+      model.selectAggregateAt(const LatLng(45.0, 9.0), toleranceMeters: 100);
+
+      final epochBefore = model.aggregateHideEpoch;
+      await model.hideSelectedAggregate();
+      expect(model.aggregateHideEpoch, epochBefore + 1);
+      expect(model.store.tracks.every((t) => !t.visible), isTrue);
+
+      // Undo re-shows exactly the hidden members and rebuilds aggregates.
+      await model.undoLastHide();
+      expect(model.store.tracks.every((t) => t.visible), isTrue);
+      expect(model.aggregates.single.trackIds, containsAll([a, b]));
+
+      // A second hide replaces the undoable set; undo after a delete of
+      // one member is a safe no-op for it.
+      await model.hideSelectedAggregate();
+      await model.delete(model.store.tracks.singleWhere((t) => t.id == b));
+      await model.undoLastHide();
+      expect(model.store.tracks.singleWhere((t) => t.id == a).visible, isTrue);
+      expect(model.store.tracks.where((t) => t.id == b), isEmpty);
+
+      // Undo with nothing hidden is a no-op.
+      await model.undoLastHide();
+      expect(model.store.tracks.single.visible, isTrue);
+    });
+
     test('hiding a member track stops its replay', () async {
       model.store.importBytes(fixture('morning_walk.gpx'));
       final track = model.tracks.single;

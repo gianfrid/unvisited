@@ -2033,6 +2033,48 @@ void main() {
     expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
   });
 
+  testWidgets('hiding an aggregate fires an undo toast that restores it',
+      (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    await tester.tapAt(
+      mapOrigin +
+          camera.latLngToScreenOffset(model.visibleTracks.single.points.first),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(model.selectedAnchor, isNotNull);
+
+    await tester.tap(find.byKey(const ValueKey('selection-hide')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.store.tracks.single.visible, isFalse);
+
+    // The undo toast is showing with its action...
+    expect(find.text('Area hidden'), findsOneWidget);
+    expect(find.byKey(const ValueKey('undo-hide-action')), findsOneWidget);
+
+    // ...and tapping Undo re-shows the aggregate's tracks.
+    await tester.tap(find.byKey(const ValueKey('undo-hide-action')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.store.tracks.single.visible, isTrue);
+    expect(model.aggregates.single.trackIds, hasLength(1));
+  });
+
   testWidgets('the bar dismiss drops the selection, the tracks stay visible', (
     tester,
   ) async {

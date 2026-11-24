@@ -109,6 +109,8 @@ Map<String, String> allStrings(AppStrings s) => {
       'memberPickHide': s.memberPickHide,
       'memberPickHideOthers': s.memberPickHideOthers,
       'memberPickShow': s.memberPickShow,
+      'areaHiddenToast': s.areaHiddenToast,
+      'undoAction': s.undoAction,
       'trackMenuTooltip': s.trackMenuTooltip,
       'trackMenuInfo': s.trackMenuInfo,
       'trackMenuExport': s.trackMenuExport,

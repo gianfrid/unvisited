@@ -232,6 +232,8 @@ abstract class AppStrings {
   String get memberPickHide;
   String get memberPickHideOthers;
   String get memberPickShow;
+  String get areaHiddenToast;
+  String get undoAction;
 
   // Per-track menu (⋮ on a track tile): Info / Delete / Export.
   String get trackMenuTooltip;
@@ -295,6 +297,10 @@ class EnglishStrings extends AppStrings {
   String get memberPickHideOthers => 'Hide the others';
   @override
   String get memberPickShow => 'Show this track';
+  @override
+  String get areaHiddenToast => 'Area hidden';
+  @override
+  String get undoAction => 'Undo';
   @override
   String get trackMenuTooltip => 'Track actions';
   @override
@@ -635,6 +641,10 @@ class ItalianStrings extends AppStrings {
   String get memberPickHideOthers => 'Nascondi le altre';
   @override
   String get memberPickShow => 'Mostra questa traccia';
+  @override
+  String get areaHiddenToast => 'Area nascosta';
+  @override
+  String get undoAction => 'Annulla';
   @override
   String get trackMenuTooltip => 'Azioni traccia';
   @override

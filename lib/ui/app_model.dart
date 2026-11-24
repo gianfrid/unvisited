@@ -1040,14 +1040,43 @@ class AppModel extends ChangeNotifier {
 
   /// Hides the selected aggregate's member tracks (deselect = the
   /// underlying tracks leave the map) and drops the selection.
+  /// Bumped when the selected aggregate is hidden from the selection bar;
+  /// MapPage compares against the value it last handled (the
+  /// fitRequestEpoch pattern) to fire the undo toast.
+  int aggregateHideEpoch = 0;
+
+  /// The member ids hidden by the last [hideSelectedAggregate] — the undo
+  /// toast's target. Session-only; nothing persists a hidden area.
+  List<String>? _lastHiddenAggregateIds;
+
   Future<void> hideSelectedAggregate() async {
     final selected = selectedAggregate;
     if (selected == null) return;
     _clearSelectionState();
+    final hidden = <String>[];
     for (final id in selected.trackIds) {
       final matches = store.tracks.where((s) => s.id == id);
       final t = matches.isEmpty ? null : matches.first;
-      if (t != null && t.visible) await store.setVisible(t, false);
+      if (t != null && t.visible) {
+        await store.setVisible(t, false);
+        hidden.add(id);
+      }
+    }
+    _lastHiddenAggregateIds = hidden;
+    aggregateHideEpoch++;
+    _catalogDataChanged();
+  }
+
+  /// Re-shows the tracks hidden by the last [hideSelectedAggregate] (the
+  /// undo toast's action): members deleted meanwhile are skipped.
+  Future<void> undoLastHide() async {
+    final ids = _lastHiddenAggregateIds;
+    if (ids == null) return;
+    _lastHiddenAggregateIds = null;
+    for (final id in ids) {
+      final matches = store.tracks.where((s) => s.id == id);
+      final t = matches.isEmpty ? null : matches.first;
+      if (t != null && !t.visible) await store.setVisible(t, true);
     }
     _catalogDataChanged();
   }

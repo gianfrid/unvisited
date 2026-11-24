@@ -418,6 +418,10 @@ class _MapPageState extends State<MapPage> {
   /// to its aggregate when no per-track fit is pending).
   int _seenFitRequestEpoch = 0;
 
+  /// The aggregate-hide epoch last handled (the undo toast fires on a
+  /// bump — the fitRequestEpoch pattern).
+  int _seenAggregateHideEpoch = 0;
+
   /// Cached unlock centers keyed to the current overlay inputs (visible
   /// track ids + cell size), so pans and transient item rebuilds do not
   /// re-walk every track point.
@@ -477,6 +481,26 @@ class _MapPageState extends State<MapPage> {
     }
     if (model.pickedMemberId == null) _bubbleAt = null;
     _wasMemberPicking = model.memberPicking;
+    // The selection bar's hide button fired: offer the undo toast.
+    final hideEpoch = model.aggregateHideEpoch;
+    if (hideEpoch != _seenAggregateHideEpoch) {
+      _seenAggregateHideEpoch = hideEpoch;
+      final strings = AppStrings.ofContext(context);
+      // Hide-then-show, so a rapid second hide replaces the toast instead
+      // of queueing behind it (the showMapToast discipline).
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(strings.areaHiddenToast),
+          action: SnackBarAction(
+            key: const ValueKey('undo-hide-action'),
+            label: strings.undoAction,
+            onPressed: () => model.undoLastHide(),
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
     final epoch = widget.model.importEpoch;
     if (epoch != _seenImportEpoch) {
       _seenImportEpoch = epoch;
