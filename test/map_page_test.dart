@@ -2068,28 +2068,32 @@ void main() {
   });
 
   testWidgets(
-    'the selection bar member strip hides and re-shows a single track',
+    'member-picking: the tracks button colors the tracks on the map, a tap '
+    'picks one, and the bar can hide it or show only it',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
       final model = AppModel(TrackStore(root));
-      // Two single-point tracks ~22 m apart: one two-track aggregate.
-      // Distinct start times: identical time + zero distance would trip
-      // the cross-format near-duplicate rule (±2 s AND within 10%).
-      String gpx(String name, double lat, double lon, String time) =>
+      // Two two-point tracks ~15.7 m apart: one two-track aggregate with
+      // drawable line segments. Distinct start times: identical time +
+      // zero distance would trip the cross-format near-duplicate rule
+      // (±2 s AND within 10%).
+      String gpx(String name, double lon, String time) =>
           '<?xml version="1.0" encoding="UTF-8"?>\n'
           '<gpx version="1.1" creator="test"><trk>'
           '<name>$name</name><trkseg>'
-          '<trkpt lat="$lat" lon="$lon"><time>$time</time></trkpt>'
+          '<trkpt lat="45.0" lon="$lon"><time>$time</time></trkpt>'
+          '<trkpt lat="45.0" lon="${lon + 0.0001}">'
+          '<time>$time</time></trkpt>'
           '</trkseg></trk></gpx>\n';
       model.store.importBytes(
-          utf8.encode(gpx('Alpha', 45.0, 9.0, '2026-06-01T08:00:00Z')));
+          utf8.encode(gpx('Alpha', 9.0, '2026-06-01T08:00:00Z')));
       model.store.importBytes(
-          utf8.encode(gpx('Beta', 45.0, 9.0002, '2026-06-02T08:00:00Z')));
+          utf8.encode(gpx('Beta', 9.0002, '2026-06-02T08:00:00Z')));
       // importBytes derives the name from the bytes, not the <name> tag:
-      // identify the second track by import order.
+      // identify the tracks by import order.
+      final aId = model.store.tracks.first.id;
       final bId = model.store.tracks.last.id;
-      expect(model.aggregates, hasLength(1));
       expect(model.aggregates.single.trackIds, hasLength(2));
 
       await pumpMapPage(
@@ -2100,53 +2104,66 @@ void main() {
       );
       await tester.pump();
 
-      // Select via a map tap on a track point, like a user would.
-      final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
-      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
-      await tester.tapAt(
-        mapOrigin +
-            camera.latLngToScreenOffset(
-                model.visibleTracks.first.points.first),
-      );
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pump();
+      Future<void> tapAtTrackPoint(String id) async {
+        final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+        final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+        final point = model.visibleTracks
+            .firstWhere((t) => t.meta.id == id)
+            .points
+            .first;
+        await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(point));
+        // Double-tap zoom delays the tap; see the select tests above.
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+      }
+
+      // Select the aggregate via a map tap, like a user would.
+      await tapAtTrackPoint(aId);
       expect(model.selectedAnchor, isNotNull);
       expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
-      expect(find.byKey(const ValueKey('selection-members')), findsNothing);
+      expect(model.memberPicking, isFalse);
 
-      // Expand the strip: one chip per member track.
+      // The tracks button enters picking mode: member polylines are drawn
+      // (the fog is circles by default, so the PolylineLayer is the
+      // member layer) with distinct colors for the two near tracks.
       await tester.tap(find.byKey(const ValueKey('selection-tracks')));
       await tester.pump();
-      expect(find.byKey(const ValueKey('selection-members')), findsOneWidget);
-      expect(
-        find.byKey(ValueKey('selection-member-$bId')),
-        findsOneWidget,
-      );
+      expect(model.memberPicking, isTrue);
+      expect(find.byType(PolylineLayer), findsWidgets);
+      final colors = model.memberTintKeys;
+      expect(colors[aId] == colors[bId], isFalse);
 
-      // The eye hides just that track; the chip stays, greyed, and the
-      // selection survives (the anchor is the other member).
-      await tester.tap(find.byKey(ValueKey('selection-member-toggle-$bId')));
+      // A map tap on Beta's own point picks Beta (nearest wins): it glows
+      // and the bar shows the picked-track row.
+      await tapAtTrackPoint(bId);
+      expect(model.pickedMemberId, bId);
+      expect(model.selectedAnchor, isNotNull);
+      expect(find.byKey(const ValueKey('selection-picked')), findsOneWidget);
+
+      // Hide the picked track: it leaves the map, the pick clears, the
+      // selection survives (the anchor is Alpha).
+      await tester.tap(find.byKey(const ValueKey('selection-pick-hide')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
           isFalse);
-      expect(model.selectedAnchor, isNotNull);
-      expect(model.selectedAggregate?.trackIds, hasLength(1));
-      expect(find.byKey(ValueKey('selection-member-$bId')),
-          findsOneWidget);
+      expect(model.pickedMemberId, isNull);
+      expect(find.byKey(const ValueKey('selection-picked')), findsNothing);
+      expect(model.selectedAnchor, aId);
+      expect(model.selectedAggregate?.trackIds, [aId]);
 
-      // Tapping the eye again re-shows the track and restores the aggregate.
-      await tester.tap(find.byKey(ValueKey('selection-member-toggle-$bId')));
+      // Pick Alpha and show only it: Alpha stays, Beta stays hidden, and
+      // the selection is the single-track aggregate.
+      await tapAtTrackPoint(aId);
+      expect(model.pickedMemberId, aId);
+      await tester.tap(find.byKey(const ValueKey('selection-pick-only')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
-      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+      expect(model.store.tracks.singleWhere((t) => t.id == aId).visible,
           isTrue);
-      expect(model.selectedAggregate?.trackIds, hasLength(2));
-
-      // Collapse hides the strip again.
-      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
-      await tester.pump();
-      expect(find.byKey(const ValueKey('selection-members')), findsNothing);
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isFalse);
+      expect(model.selectedAggregate?.trackIds, [aId]);
     },
   );
 

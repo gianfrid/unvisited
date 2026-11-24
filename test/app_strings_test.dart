@@ -107,6 +107,7 @@ Map<String, String> allStrings(AppStrings s) => {
       'selectionTracksTooltip': s.selectionTracksTooltip,
       'trackHideTooltip': s.trackHideTooltip,
       'trackShowTooltip': s.trackShowTooltip,
+      'trackShowOnlyTooltip': s.trackShowOnlyTooltip,
       'trackMenuTooltip': s.trackMenuTooltip,
       'trackMenuInfo': s.trackMenuInfo,
       'trackMenuExport': s.trackMenuExport,

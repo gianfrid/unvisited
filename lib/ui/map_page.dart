@@ -476,11 +476,61 @@ class _MapPageState extends State<MapPage> {
 
   void _onMapTap(LatLng tap) {
     if (widget.model.isRecording) return; // the recording UI owns taps then
-    widget.model.selectAggregateAt(
-      tap,
-      toleranceMeters: _hitToleranceMeters(tap),
-      clearIfMiss: widget.model.selectedAnchor != null,
-    );
+    // In member-picking mode a tap picks one of the colored member tracks
+    // instead of (de)selecting the aggregate.
+    widget.model.mapTap(tap, toleranceMeters: _hitToleranceMeters(tap));
+  }
+
+  /// Member-picking mode: one polyline per visible member of the selected
+  /// aggregate, each in its own assigned tint (see
+  /// [AppModel.memberTintKeys]) so near tracks read in different colors.
+  /// The picked track glows — a wide translucent halo under a solid line
+  /// with a light border. Plain colored lines in every fog style: the mode
+  /// is temporary and must read as "the tracks themselves".
+  List<Widget> _memberPickLayers() {
+    final model = widget.model;
+    final selected = model.selectedAggregate;
+    if (selected == null) return const [];
+    final colors = model.memberTintKeys;
+    final picked = model.pickedMemberId;
+    final polylines = <Polyline>[];
+    for (final t in model.visibleTracks) {
+      if (!selected.trackIds.contains(t.meta.id)) continue;
+      final color =
+          exploredAreaColor(colors[t.meta.id] ?? defaultTintKey)
+              .withValues(alpha: 1);
+      final segments = [
+        for (final seg in splitTrackSegments(t.points))
+          if (decimate(seg, _fogLineDecimation()).length >= 2)
+            decimate(seg, _fogLineDecimation()),
+      ];
+      if (t.meta.id == picked) {
+        for (final pts in segments) {
+          polylines.add(Polyline(
+            points: pts,
+            strokeWidth: 11,
+            color: color.withValues(alpha: 0.35),
+          ));
+          polylines.add(Polyline(
+            points: pts,
+            strokeWidth: 4.5,
+            color: color,
+            borderStrokeWidth: 1.5,
+            borderColor: Colors.white70,
+          ));
+        }
+      } else {
+        for (final pts in segments) {
+          polylines.add(Polyline(
+            points: pts,
+            strokeWidth: 4,
+            color: color.withValues(alpha: 0.9),
+          ));
+        }
+      }
+    }
+    if (polylines.isEmpty) return const [];
+    return [PolylineLayer(polylines: polylines)];
   }
 
   /// The selected aggregate's highlight, in the active fog style so the
@@ -1186,8 +1236,12 @@ class _MapPageState extends State<MapPage> {
               // the circles so the corridor reads on top of the blobs.
               if (corridors.isNotEmpty) PolylineLayer(polylines: corridors),
               // The selected aggregate's highlight, above corridors so the
-              // selection reads on top of the overlay.
-              if (widget.model.selectedAnchor != null)
+              // selection reads on top of the overlay — or, in
+              // member-picking mode, one colored polyline per member track
+              // (the picked one glowing) in place of the highlight.
+              if (widget.model.memberPicking)
+                ..._memberPickLayers()
+              else if (widget.model.selectedAnchor != null)
                 ..._selectionHighlightLayers(),
               // The live recording trace: the session's accepted fixes as
               // polylines, translucent in a fixed recording red — outside

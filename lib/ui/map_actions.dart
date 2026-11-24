@@ -260,14 +260,15 @@ class RecordingSpeedSegment extends StatelessWidget {
 }
 
 /// The aggregate selection's actions pill, at the bottom of the map while
-/// an aggregate is selected: hide / color / fit / dismiss, plus a tracks
-/// toggle that expands the pill into a member strip — one chip per track
-/// of the selected multitrack, each with an eye to hide or show just that
-/// track (hidden members stay listed, greyed). A temporary state, the
-/// first child of the page's single bottom column (see `MapPage`). [onFit]
-/// frames the selected aggregate on the map (the page's camera fit);
-/// [onDismiss] clears the selection in the page's state.
-class SelectionBar extends StatefulWidget {
+/// an aggregate is selected: hide / color / fit / tracks / dismiss. The
+/// tracks button toggles member-picking mode — the selected multitrack's
+/// member tracks are drawn on the map, each in its own color, so a map tap
+/// picks one (it glows, and a second row appears here with that track's
+/// actions: hide it, or show only it). A temporary state, the first child
+/// of the page's single bottom column (see `MapPage`). [onFit] frames the
+/// selected aggregate on the map (the page's camera fit); [onDismiss]
+/// clears the selection in the page's state.
+class SelectionBar extends StatelessWidget {
   const SelectionBar({
     super.key,
     required this.model,
@@ -279,34 +280,27 @@ class SelectionBar extends StatefulWidget {
   final VoidCallback onFit;
   final VoidCallback onDismiss;
 
-  @override
-  State<SelectionBar> createState() => _SelectionBarState();
-}
-
-class _SelectionBarState extends State<SelectionBar> {
-  /// Whether the member strip is showing. Widget-local view state; the
-  /// page keys the bar by the selected anchor, so a new selection mounts
-  /// a fresh state — collapsed.
-  bool _expanded = false;
-
-  /// The selection's member tracks, in selection order; members deleted
-  /// while selected drop out.
-  List<StoredTrack> _memberTracks() {
-    final ids = widget.model.selectedMemberIds;
-    if (ids == null) return const [];
-    final byId = {for (final t in widget.model.store.tracks) t.id: t};
-    return [for (final id in ids) if (byId[id] != null) byId[id]!];
+  /// The picked member track, if a map tap picked one in member-picking
+  /// mode (null while just browsing the colored tracks).
+  StoredTrack? _pickedTrack(AppModel model) {
+    final id = model.pickedMemberId;
+    if (id == null) return null;
+    for (final t in model.store.tracks) {
+      if (t.id == id) return t;
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
-    final model = widget.model;
-    final members = _memberTracks();
+    final model = this.model;
+    final scheme = Theme.of(context).colorScheme;
+    final picked = _pickedTrack(model);
     return Material(
       elevation: 2,
       borderRadius: BorderRadius.circular(24),
-      color: Theme.of(context).colorScheme.surface,
+      color: scheme.surface,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Column(
@@ -354,123 +348,74 @@ class _SelectionBarState extends State<SelectionBar> {
                   onPressed: () {
                     final selected = model.selectedAggregate;
                     if (selected == null || selected.points.isEmpty) return;
-                    widget.onFit();
+                    onFit();
                   },
                 ),
-                Tooltip(
-                  message: strings.selectionTracksTooltip,
-                  child: InkWell(
-                    key: const ValueKey('selection-tracks'),
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: members.isEmpty
-                        ? null
-                        : () => setState(() => _expanded = !_expanded),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 12),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _expanded
-                                ? Icons.expand_less
-                                : Icons.stacked_line_chart,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${members.length}',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                IconButton(
+                  key: const ValueKey('selection-tracks'),
+                  tooltip: strings.selectionTracksTooltip,
+                  icon: const Icon(Icons.stacked_line_chart),
+                  color: model.memberPicking ? scheme.primary : null,
+                  onPressed: () => model.toggleMemberPicking(),
                 ),
                 IconButton(
                   key: const ValueKey('selection-dismiss'),
                   tooltip: strings.selectionDismissTooltip,
                   icon: const Icon(Icons.close),
-                  onPressed: widget.onDismiss,
+                  onPressed: onDismiss,
                 ),
               ],
             ),
-            if (_expanded) ...[
+            // A picked member track's actions, while member-picking: its
+            // name plus hide-this and show-only-this.
+            if (picked != null) ...[
               const Divider(height: 1),
-              SizedBox(
-                key: const ValueKey('selection-members'),
-                height: 44,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final t in members) _memberChip(strings, t),
-                    ],
-                  ),
+              Padding(
+                key: const ValueKey('selection-picked'),
+                padding:
+                    const EdgeInsets.only(left: 12, right: 4, top: 2, bottom: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: exploredAreaColor(
+                                model.memberTintKeys[picked.id] ??
+                                    defaultTintKey)
+                            .withValues(alpha: 1),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Text(
+                        picked.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      key: const ValueKey('selection-pick-hide'),
+                      tooltip: strings.trackHideTooltip,
+                      icon: const Icon(Icons.visibility_off),
+                      onPressed: () => model.hidePickedMember(),
+                    ),
+                    IconButton(
+                      key: const ValueKey('selection-pick-only'),
+                      tooltip: strings.trackShowOnlyTooltip,
+                      icon: const Icon(Icons.filter_1),
+                      onPressed: () => model.showOnlyPickedMember(),
+                    ),
+                  ],
                 ),
               ),
             ],
           ],
-        ),
-      ),
-    );
-  }
-
-  /// One member track's chip: tint dot, ellipsized name, and the eye that
-  /// hides or shows just this track. Hidden tracks stay in the strip,
-  /// dimmed, so the toggle works both ways from the same place.
-  Widget _memberChip(AppStrings strings, StoredTrack t) {
-    final model = widget.model;
-    final scheme = Theme.of(context).colorScheme;
-    return Opacity(
-      key: ValueKey('selection-member-${t.id}'),
-      opacity: t.visible ? 1.0 : 0.45,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: scheme.outlineVariant),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          padding: const EdgeInsets.only(left: 8, right: 2),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: exploredAreaColor(model.tintKeyForTrack(t))
-                      .withValues(alpha: 1),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 110),
-                child: Text(
-                  t.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-              IconButton(
-                key: ValueKey('selection-member-toggle-${t.id}'),
-                tooltip: t.visible
-                    ? strings.trackHideTooltip
-                    : strings.trackShowTooltip,
-                constraints: const BoxConstraints(
-                    minWidth: 32, minHeight: 32, maxHeight: 32),
-                iconSize: 18,
-                icon: Icon(
-                    t.visible ? Icons.visibility : Icons.visibility_off),
-                onPressed: () =>
-                    model.setSelectedMemberVisible(t.id, !t.visible),
-              ),
-            ],
-          ),
         ),
       ),
     );

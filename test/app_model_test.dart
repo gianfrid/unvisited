@@ -1472,6 +1472,83 @@ void main() {
       expect(model.aggregates, isEmpty);
     });
 
+    test('member-picking: pick on the map, hide it, or show only it',
+        () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      final a = await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      final b = await importGpx(
+        'b.gpx',
+        lat: 45.0,
+        lon: 9.0002,
+        time: start.add(const Duration(days: 1)),
+      );
+      final c = await importGpx(
+        'c.gpx',
+        lat: 45.0,
+        lon: 9.0003,
+        time: start.add(const Duration(days: 2)),
+      );
+
+      expect(model.selectAggregateAt(const LatLng(45.0, 9.0),
+          toleranceMeters: 100), isTrue);
+      expect(model.memberPicking, isFalse);
+      model.toggleMemberPicking();
+      expect(model.memberPicking, isTrue);
+
+      // Near members (all within 30 m pairwise here) get distinct colors.
+      final colors = model.memberTintKeys;
+      expect(colors[a] == colors[b], isFalse);
+      expect(colors[b] == colors[c], isFalse);
+      expect(colors.values.toSet(), hasLength(3));
+
+      // A tap in picking mode picks the nearest member track, it does not
+      // change the aggregate selection.
+      model.mapTap(const LatLng(45.0, 9.0002), toleranceMeters: 30);
+      expect(model.pickedMemberId, b);
+      expect(model.selectedAnchor, a);
+      // A tap far from every member clears the pick.
+      model.mapTap(const LatLng(45.1, 9.0), toleranceMeters: 30);
+      expect(model.pickedMemberId, isNull);
+
+      // Hide the picked track: it leaves the map, the pick clears, the
+      // selection survives (the anchor was not hidden).
+      model.mapTap(const LatLng(45.0, 9.0002), toleranceMeters: 30);
+      await model.hidePickedMember();
+      expect(model.pickedMemberId, isNull);
+      expect(model.store.tracks.singleWhere((t) => t.id == b).visible,
+          isFalse);
+      expect(model.selectedAnchor, a);
+      expect(model.selectedAggregate?.trackIds, containsAll([a, c]));
+
+      // Show only the picked one: every other member hides, and the color
+      // override migrates when the anchor is among the hidden. (Picking
+      // mode is still on from above, so the tap routes to the pick.)
+      await model.setAllVisible(true);
+      model.selectAggregateAt(const LatLng(45.0, 9.0), toleranceMeters: 100);
+      await model.setAggregateColor('blue');
+      model.mapTap(const LatLng(45.0, 9.0003), toleranceMeters: 30);
+      expect(model.pickedMemberId, c);
+      await model.showOnlyPickedMember();
+      expect(model.pickedMemberId, isNull);
+      expect(model.store.tracks.singleWhere((t) => t.id == c).visible, isTrue);
+      expect(model.store.tracks.where((t) => t.id != c).every((t) => !t.visible),
+          isTrue);
+      // The anchor (a) was hidden, so the selection re-anchored to c and
+      // took the color override with it.
+      expect(model.selectedAnchor, c);
+      expect(model.store.aggregateColor(c), 'blue');
+      expect(model.store.aggregateColor(a), isNull);
+
+      // Leaving picking mode and clearing the selection both reset it.
+      model.toggleMemberPicking();
+      expect(model.memberPicking, isFalse);
+      model.toggleMemberPicking();
+      await model.hideSelectedAggregate();
+      expect(model.memberPicking, isFalse);
+      expect(model.pickedMemberId, isNull);
+      expect(model.selectedAnchor, isNull);
+    });
+
     test('hiding a member track stops its replay', () async {
       model.store.importBytes(fixture('morning_walk.gpx'));
       final track = model.tracks.single;

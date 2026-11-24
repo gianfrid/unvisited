@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../aggregate/aggregate_tracks.dart'
     show AggregateInput, AggregateTrack, AggregateIndex, UnionFindAggregateIndex;
+import '../aggregate/member_colors.dart' show assignMemberTintKeys;
 import '../debug_log.dart';
 import '../geo.dart' show haversineMeters;
 import '../host_channel.dart' show hostChannel;
@@ -851,15 +852,34 @@ class AppModel extends ChangeNotifier {
 
   /// The selected aggregate's member ids, captured at selection time.
   /// Aggregates are built from visible tracks only, so a member hidden
-  /// from the selection bar leaves [aggregates] — this list is what the
-  /// bar's member strip still shows (greyed) until the selection clears.
+  /// while selected leaves [aggregates] — this list is what member-picking
+  /// mode still considers until the selection clears.
   List<String>? selectedMemberIds;
 
-  /// Drops the selection: anchor and captured member list both go.
-  void clearSelection() {
-    if (selectedAnchor == null && selectedMemberIds == null) return;
+  /// Member-picking mode: while an aggregate is selected, the tracks
+  /// button toggles drawing each member track on the map in its own color
+  /// so a map tap can pick one. Cleared together with the selection.
+  bool memberPicking = false;
+
+  /// The member track picked by a map tap in member-picking mode (the one
+  /// that glows and whose actions the bar shows), or null.
+  String? pickedMemberId;
+
+  void _clearSelectionState() {
     selectedAnchor = null;
     selectedMemberIds = null;
+    memberPicking = false;
+    pickedMemberId = null;
+  }
+
+  /// Drops the selection: anchor, captured member list, and picking state
+  /// all go.
+  void clearSelection() {
+    if (selectedAnchor == null && selectedMemberIds == null &&
+        !memberPicking && pickedMemberId == null) {
+      return;
+    }
+    _clearSelectionState();
     notifyListeners();
   }
 
@@ -870,8 +890,7 @@ class AppModel extends ChangeNotifier {
       if (a.anchorId == anchor) return a;
     }
     // The aggregate is gone (hidden, deleted): drop the selection.
-    selectedAnchor = null;
-    selectedMemberIds = null;
+    _clearSelectionState();
     return null;
   }
 
@@ -896,11 +915,117 @@ class AppModel extends ChangeNotifier {
       }
     }
     if (clearIfMiss && selectedAnchor != null) {
-      selectedAnchor = null;
-      selectedMemberIds = null;
+      _clearSelectionState();
       notifyListeners();
     }
     return false;
+  }
+
+  /// Routes a map tap: in member-picking mode a tap picks the nearest
+  /// member track of the selection (see [pickMemberAt]); otherwise it is
+  /// the plain aggregate selection.
+  void mapTap(LatLng tap, {required double toleranceMeters}) {
+    if (memberPicking && selectedAnchor != null) {
+      pickMemberAt(tap, toleranceMeters: toleranceMeters);
+      return;
+    }
+    selectAggregateAt(
+      tap,
+      toleranceMeters: toleranceMeters,
+      clearIfMiss: selectedAnchor != null,
+    );
+  }
+
+  /// Toggles member-picking mode for the current selection (the selection
+  /// bar's tracks button). Exiting clears any picked track.
+  void toggleMemberPicking() {
+    if (selectedAnchor == null) return;
+    memberPicking = !memberPicking;
+    if (!memberPicking) pickedMemberId = null;
+    notifyListeners();
+  }
+
+  /// Picks the visible member track of the current selection with a point
+  /// within [toleranceMeters] of [tap] — the nearest such point wins; a
+  /// miss clears the pick. Returns the picked track id, or null.
+  String? pickMemberAt(LatLng tap, {required double toleranceMeters}) {
+    final ids = selectedMemberIds ?? const <String>[];
+    String? bestId;
+    var bestDist = toleranceMeters;
+    for (final id in ids) {
+      for (final t in visibleTracks) {
+        if (t.meta.id != id) continue;
+        for (final p in t.points) {
+          final d = haversineMeters(
+              tap.latitude, tap.longitude, p.latitude, p.longitude);
+          if (d <= bestDist) {
+            bestDist = d;
+            bestId = id;
+          }
+        }
+      }
+    }
+    pickedMemberId = bestId;
+    notifyListeners();
+    return bestId;
+  }
+
+  /// The per-member tint keys for member-picking mode: near tracks get
+  /// different palette colors (see [assignMemberTintKeys]). Memoized on
+  /// the captured member list, like [aggregates].
+  Map<String, String>? _memberTintKeys;
+  String? _memberTintKeysSource;
+
+  Map<String, String> get memberTintKeys {
+    final ids = selectedMemberIds;
+    if (ids == null) return const {};
+    final source = ids.join('|');
+    if (source != _memberTintKeysSource) {
+      _memberTintKeysSource = source;
+      final byId = {for (final t in visibleTracks) t.meta.id: t};
+      _memberTintKeys = assignMemberTintKeys(
+        [
+          for (final id in ids)
+            if (byId[id] != null)
+              AggregateInput(
+                id: id,
+                points: byId[id]!.points,
+                startTimeUtc: byId[id]!.meta.startTimeUtc,
+              ),
+        ],
+        palette: explorationTints.keys.toList(),
+      );
+    }
+    return _memberTintKeys!;
+  }
+
+  /// Hides the picked member track (the bar's picked-track action) and
+  /// clears the pick.
+  Future<void> hidePickedMember() async {
+    final picked = pickedMemberId;
+    if (picked == null) return;
+    pickedMemberId = null;
+    await setSelectedMemberVisible(picked, false);
+  }
+
+  /// Shows only the picked member track: hides every other visible member
+  /// of the selection, then clears the pick. The selection re-anchors if
+  /// the hidden anchor was among them (see [_reanchorIfAnchorHidden]).
+  Future<void> showOnlyPickedMember() async {
+    final picked = pickedMemberId;
+    if (picked == null) return;
+    pickedMemberId = null;
+    for (final id in selectedMemberIds ?? const <String>[]) {
+      if (id == picked) continue;
+      final matches = store.tracks.where((s) => s.id == id);
+      final t = matches.isEmpty ? null : matches.first;
+      if (t != null && t.visible) {
+        await store.setVisible(t, false);
+        player.trackRemoved(id);
+      }
+    }
+    await _reanchorIfAnchorHidden();
+    _catalogDataChanged();
   }
 
   /// Hides the selected aggregate's member tracks (deselect = the
@@ -908,8 +1033,7 @@ class AppModel extends ChangeNotifier {
   Future<void> hideSelectedAggregate() async {
     final selected = selectedAggregate;
     if (selected == null) return;
-    selectedAnchor = null;
-    selectedMemberIds = null;
+    _clearSelectionState();
     for (final id in selected.trackIds) {
       final matches = store.tracks.where((s) => s.id == id);
       final t = matches.isEmpty ? null : matches.first;
@@ -918,43 +1042,50 @@ class AppModel extends ChangeNotifier {
     _catalogDataChanged();
   }
 
-  /// Shows or hides one member track of the current selection, from the
-  /// selection bar's member strip. Hiding a replaying track stops its
-  /// replay (same rule as delete — a marker on a hidden track would be a
-  /// ghost of hidden data). Hiding the selection's anchor re-anchors the
-  /// selection to the aggregate of the first remaining visible member and
-  /// moves the persisted color override with it; if no member remains
-  /// visible, the aggregate is gone and the selection drops (the
-  /// [selectedAggregate] getter's existing fallback).
+  /// After members were hidden: if the selection's anchor track is no
+  /// longer visible, move the selection to the aggregate of the first
+  /// remaining visible member and migrate the persisted color override to
+  /// the new anchor. (A still-visible anchor stays the anchor of its
+  /// re-clustered aggregate — hiding members never introduces an earlier
+  /// one.) If no member remains visible, the aggregate is gone and the
+  /// [selectedAggregate] getter's fallback drops the selection.
+  Future<void> _reanchorIfAnchorHidden() async {
+    final anchor = selectedAnchor;
+    if (anchor == null) return;
+    final anchorMatches = store.tracks.where((s) => s.id == anchor);
+    if (anchorMatches.isNotEmpty && anchorMatches.first.visible) return;
+    for (final id in selectedMemberIds ?? const <String>[]) {
+      if (id == anchor) continue;
+      final matches = store.tracks.where((s) => s.id == id);
+      if (matches.isEmpty || !matches.first.visible) continue;
+      for (final a in aggregates) {
+        if (a.trackIds.contains(id)) {
+          if (a.anchorId != anchor) {
+            final color = store.aggregateColor(anchor);
+            if (color != null) {
+              await store.saveAggregateColor(a.anchorId, color);
+              await store.saveAggregateColor(anchor, '');
+            }
+            selectedAnchor = a.anchorId;
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  /// Shows or hides one member track of the current selection (the picked
+  /// track's hide action, or the drawer). Hiding a replaying track stops
+  /// its replay (same rule as delete — a marker on a hidden track would be
+  /// a ghost of hidden data). Hiding the selection's anchor re-anchors the
+  /// selection (see [_reanchorIfAnchorHidden]).
   Future<void> setSelectedMemberVisible(String trackId, bool visible) async {
     final matches = store.tracks.where((s) => s.id == trackId);
     final t = matches.isEmpty ? null : matches.first;
     if (t == null || t.visible == visible) return;
     await store.setVisible(t, visible);
     if (!visible) player.trackRemoved(trackId);
-    final oldAnchor = selectedAnchor;
-    if (!visible && oldAnchor != null && oldAnchor == trackId) {
-      final remaining = selectedMemberIds ?? const <String>[];
-      AggregateTrack? next;
-      for (final id in remaining) {
-        if (id == trackId) continue;
-        for (final a in aggregates) {
-          if (a.trackIds.contains(id)) {
-            next = a;
-            break;
-          }
-        }
-        if (next != null) break;
-      }
-      if (next != null && next.anchorId != oldAnchor) {
-        final color = store.aggregateColor(oldAnchor);
-        if (color != null) {
-          await store.saveAggregateColor(next.anchorId, color);
-          await store.saveAggregateColor(oldAnchor, '');
-        }
-        selectedAnchor = next.anchorId;
-      }
-    }
+    if (!visible) await _reanchorIfAnchorHidden();
     _catalogDataChanged();
   }
 

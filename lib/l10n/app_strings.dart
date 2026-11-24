@@ -230,6 +230,7 @@ abstract class AppStrings {
   String get selectionTracksTooltip;
   String get trackHideTooltip;
   String get trackShowTooltip;
+  String get trackShowOnlyTooltip;
 
   // Per-track menu (⋮ on a track tile): Info / Delete / Export.
   String get trackMenuTooltip;
@@ -289,6 +290,8 @@ class EnglishStrings extends AppStrings {
   String get trackHideTooltip => 'Hide this track';
   @override
   String get trackShowTooltip => 'Show this track';
+  @override
+  String get trackShowOnlyTooltip => 'Show only this track';
   @override
   String get trackMenuTooltip => 'Track actions';
   @override
@@ -625,6 +628,8 @@ class ItalianStrings extends AppStrings {
   String get trackHideTooltip => 'Nascondi questa traccia';
   @override
   String get trackShowTooltip => 'Mostra questa traccia';
+  @override
+  String get trackShowOnlyTooltip => 'Mostra solo questa traccia';
   @override
   String get trackMenuTooltip => 'Azioni traccia';
   @override
