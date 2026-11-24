@@ -586,28 +586,49 @@ class _MapPageState extends State<MapPage> {
     }
     _memberLanesKey = key;
     final assignments = model.memberAssignments;
-    // Lane spacing: 3 screen px at the current zoom, centered on the true
-    // geometry (lane 0 sits on it when there is an odd member count).
+    // Decimate every member first, in lane order: one point list per
+    // member drives both the overlap grid and the drawn segments.
+    final orderedIds = [
+      for (final id in ids)
+        if (byId[id] != null && assignments[id] != null) id,
+    ]..sort((x, y) => assignments[x]!.lane.compareTo(assignments[y]!.lane));
+    final decSegments = <String, List<List<LatLng>>>{};
+    final membersPoints = <List<LatLng>>[];
+    for (final id in orderedIds) {
+      final segs = <List<LatLng>>[];
+      for (final seg in splitTrackSegments(model.pointsOf(byId[id]!))) {
+        final dec = decimate(seg, _fogLineDecimation());
+        if (dec.length >= 2) segs.add(dec);
+      }
+      decSegments[id] = segs;
+      membersPoints.add([for (final s in segs) ...s]);
+    }
+    // Lane spacing: 3 screen px at the current zoom. Offsets are adaptive
+    // per vertex (laneOffsetsPerVertex): a track alone at a vertex stays
+    // on its true geometry; overlapping members spread ±0.5, ±1.5, …
+    // lanes around it. Two members count as overlapping within ~7.5 px.
     final laneMeters =
         3.0 *
         groundResolution(
           zoom: zoom,
           latitude: _mapController.camera.center.latitude,
         );
-    final laneCount = ids.length;
+    final overlapMeters = 2.5 * laneMeters;
     final lanes = <_MemberLane>[];
-    for (final id in ids) {
-      final t = byId[id];
-      final a = assignments[id];
-      if (t == null || a == null) continue;
-      final offset = (a.lane - (laneCount - 1) / 2) * laneMeters;
+    for (var i = 0; i < orderedIds.length; i++) {
+      final id = orderedIds[i];
       final segments = <List<LatLng>>[];
-      for (final seg in splitTrackSegments(model.pointsOf(t))) {
-        final dec = decimate(seg, _fogLineDecimation());
-        if (dec.length < 2) continue;
-        segments.add(offsetLanePoints(dec, offset));
+      for (final seg in decSegments[id]!) {
+        final offsets = laneOffsetsPerVertex(
+          seg,
+          selfIndex: i,
+          membersPoints: membersPoints,
+          laneMeters: laneMeters,
+          overlapMeters: overlapMeters,
+        );
+        segments.add(offsetLanePointsPerVertex(seg, offsets));
       }
-      lanes.add(_MemberLane(id, a, t.visible, segments));
+      lanes.add(_MemberLane(id, assignments[id]!, byId[id]!.visible, segments));
     }
     _memberLanesCache = lanes;
     return lanes;
