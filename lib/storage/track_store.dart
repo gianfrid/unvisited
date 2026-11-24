@@ -133,6 +133,66 @@ class StoredTrack {
   }
 }
 
+/// Catalog entry for a stored geotagged photo: the image file lives as
+/// `photos/<contentHash>.<ext>` (the same FNV-1a identity tracks use, so
+/// byte-identical photos never duplicate), and this record holds the
+/// capture position and time — everything the map's pin and the preview
+/// need without reading the bytes. The extension comes from a content
+/// sniff at save time, never from a path the app does not own.
+class StoredPhoto {
+  StoredPhoto({
+    required this.id,
+    required this.file,
+    required this.lat,
+    required this.lon,
+    required this.takenAt,
+  });
+
+  final String id; // content hash (FNV-1a 64-bit hex)
+  final String file; // relative to the store's photos directory
+
+  /// The capture position (the latest fix in hand at capture time;
+  /// user-editable afterward through the preview dialog).
+  double lat;
+  double lon;
+
+  /// UTC capture time. The photo file's own EXIF is untouched — the
+  /// catalog entry is the record the app reads.
+  final DateTime takenAt;
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'file': file,
+        'lat': lat,
+        'lon': lon,
+        'takenAt': takenAt.toIso8601String(),
+      };
+
+  /// Tolerant read, like [StoredTrack.fromMap]: a malformed or partial
+  /// entry returns null so one bad photo never breaks the whole catalog.
+  static StoredPhoto? fromMap(Map<dynamic, dynamic> m) {
+    final id = m['id'];
+    final file = m['file'];
+    final takenAt = m['takenAt'] is String
+        ? DateTime.tryParse(m['takenAt'] as String)
+        : null;
+    if (id is! String ||
+        file is! String ||
+        m['lat'] is! num ||
+        m['lon'] is! num ||
+        takenAt == null) {
+      return null;
+    }
+    return StoredPhoto(
+      id: id,
+      file: file,
+      lat: (m['lat'] as num).toDouble(),
+      lon: (m['lon'] as num).toDouble(),
+      takenAt: takenAt.toUtc(),
+    );
+  }
+}
+
 /// What one import attempt did with the bytes. A sealed family so
 /// consumers switch over it exhaustively instead of matching on the
 /// reason string.
@@ -375,10 +435,21 @@ class TrackStore {
   File get indexFile =>
       File('${root.path}${Platform.pathSeparator}index.json');
 
+  Directory get photosDir {
+    final d = Directory('${root.path}${Platform.pathSeparator}photos');
+    if (!d.existsSync()) d.createSync(recursive: true);
+    return d;
+  }
+
   final List<StoredTrack> _tracks = [];
 
   /// All cataloged tracks, insertion ordered.
   List<StoredTrack> get tracks => List.unmodifiable(_tracks);
+
+  final List<StoredPhoto> _photos = [];
+
+  /// All cataloged photos, insertion ordered.
+  List<StoredPhoto> get photos => List.unmodifiable(_photos);
 
   /// The persisted user preferences — one [AppSettings] snapshot in the
   /// index. The getters below delegate; saving produces a new snapshot
@@ -540,6 +611,16 @@ class TrackStore {
       }
       final settings = map['settings'];
       if (settings is Map) _settings = AppSettings.fromMap(settings);
+      final photos = map['photos'];
+      if (photos is List) {
+        for (final raw in photos) {
+          if (raw is! Map) continue;
+          final p = StoredPhoto.fromMap(raw);
+          if (p != null && File(_photoPathFor(p)).existsSync()) {
+            _photos.add(p);
+          }
+        }
+      }
       final list = map['tracks'] as List;
       for (final raw in list) {
         try {
@@ -686,13 +767,21 @@ class TrackStore {
   }
 
   /// Removes every cataloged track: all files under `tracks/` and all
-  /// index entries. The empty index is persisted immediately.
+  /// index entries. Photos go with it — delete-all is the "wipe
+  /// exploration data" action, and photos are exploration data too
+  /// (the photos toggle hides them, this deletes them). The empty index
+  /// is persisted immediately.
   Future<void> clearAll() async {
     for (final t in _tracks) {
       final f = File(_pathFor(t));
       if (f.existsSync()) f.deleteSync();
     }
+    for (final p in _photos) {
+      final f = File(_photoPathFor(p));
+      if (f.existsSync()) f.deleteSync();
+    }
     _tracks.clear();
+    _photos.clear();
     _saveIndex();
   }
 
@@ -764,6 +853,10 @@ class TrackStore {
     final map = {
       'version': 1,
       'tracks': _tracks.map((t) => t.toMap()).toList(),
+      // Written only when non-empty: indexes from before photos stay
+      // unchanged (the same rule as unlockedWays).
+      if (_photos.isNotEmpty)
+        'photos': _photos.map((p) => p.toMap()).toList(),
       if (_lastPositionLat != null && _lastPositionLon != null)
         'lastPosition': {'lat': _lastPositionLat, 'lon': _lastPositionLon},
       'settings': _settings.toMap(),
@@ -776,9 +869,86 @@ class TrackStore {
   String _pathFor(StoredTrack t) =>
       '${tracksDir.path}${Platform.pathSeparator}${t.file}';
 
+  String _photoPathFor(StoredPhoto p) =>
+      '${photosDir.path}${Platform.pathSeparator}${p.file}';
+
+
+
   /// The stored file of a track, as imported (never rewritten on the way
   /// out — export ships the very bytes the catalog keeps).
   File trackFileFor(StoredTrack t) => File(_pathFor(t));
+
+  /// The stored image of a photo (never rewritten on the way out — Save
+  /// to gallery and Share copy it out through the host channel).
+  File photoFileFor(StoredPhoto p) => File(_photoPathFor(p));
+
+  /// Stores a captured photo's bytes under `photos/` and catalogs it at
+  /// the captured position. Byte-identical photos never duplicate: the
+  /// id is the content hash, so a capture that lands the same bytes
+  /// returns the existing entry (with its original position — the
+  /// stored photo is the record, not the later attempt).
+  StoredPhoto addPhoto(
+    List<int> bytes, {
+    required double lat,
+    required double lon,
+    required DateTime takenAt,
+  }) {
+    final id = contentHash(bytes);
+    for (final p in _photos) {
+      if (p.id == id) return p;
+    }
+    final photo = StoredPhoto(
+      id: id,
+      file: '$id.${_photoExt(bytes)}',
+      lat: lat,
+      lon: lon,
+      takenAt: takenAt.toUtc(),
+    );
+    final target = File(_photoPathFor(photo));
+    target.createSync(recursive: true);
+    target.writeAsBytesSync(bytes, flush: true);
+    _photos.add(photo);
+    _saveIndex();
+    return photo;
+  }
+
+  /// Moves a stored photo to a corrected position (the preview dialog's
+  /// Reposition action); persists with the rest of the index.
+  Future<void> updatePhotoPosition(
+    StoredPhoto photo, {
+    required double lat,
+    required double lon,
+  }) async {
+    photo.lat = lat;
+    photo.lon = lon;
+    _saveIndex();
+  }
+
+  /// Removes one photo: its entry and its file (the file is the app's
+  /// own copy — nothing is left behind on the device).
+  Future<void> removePhoto(StoredPhoto photo) async {
+    _photos.removeWhere((p) => p.id == photo.id);
+    final f = File(_photoPathFor(photo));
+    if (f.existsSync()) f.deleteSync();
+    _saveIndex();
+  }
+
+  /// The image type from the bytes themselves, never a path the app
+  /// does not own — the same content-first rule as track formats.
+  static String _photoExt(List<int> bytes) {
+    bool at(int i, int byte) => bytes.length > i && bytes[i] == byte;
+    if (at(0, 0x89) && at(1, 0x50) && at(2, 0x4E) && at(3, 0x47)) {
+      return 'png';
+    }
+    if (at(0, 0x52) && at(1, 0x49) && at(2, 0x46) && at(3, 0x46) &&
+        at(8, 0x57) && at(9, 0x45) && at(10, 0x42) && at(11, 0x50)) {
+      return 'webp';
+    }
+    // JPEG's SOI marker covers the by-far common case; anything unknown
+    // (e.g. HEIC from some camera apps) keeps the .jpg name — a
+    // misnamed file still previews.
+    return 'jpg';
+  }
 }
 
 /// 64-bit FNV-1a content hash, stable across runs and platforms that this

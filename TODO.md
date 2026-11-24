@@ -1,1 +1,9 @@
 <!-- Open work lives here; completed items are deleted, not ticked. -->
+
+Optional geotagged photos (Android-only, user request 2026-11-24): a camera button opens the system camera app, and the taken photo is saved tagged with the current position; photos show as map markers, tapping one previews it and allows editing the position; Settings offers a switch that hides the whole feature but keeps stored photos. Decided with the user: `image_picker`, app-private `photos/` storage (gallery storage declined), position = latest fix in hand (session fix while recording, else the latest located fix), camera button in the record cluster. Plan: docs/plans/2026-11-24-geotagged-photos.md
+
+2. Capture seam — `image_picker` dependency behind an injectable `PhotoSource` port (no runtime permission, no manifest change); `AppModel.takePhoto(position)` copies the captured bytes through the store and notifies; unit tests with a fake source.
+3. Camera button — camera `HeaderAction` in the record cluster (gated on location support + a fix in hand + the photos setting; session fix while recording, else the latest fix), capture-failure toast, strings en + it, widget tests.
+4. Photo markers and preview — pins on the map above the overlay (gated by the setting; kept during replays), tap to preview (image, taken-at date, Delete with confirmation, Save to gallery and Share via the host channel — MediaStore insert and the existing FileProvider), strings en + it, widget tests.
+5. Reposition — the preview's Reposition action enters a tap-to-move mode (the next map tap sets the photo's position, Cancel leaves it), persisted through the store, strings en + it, widget tests.
+6. Settings + docs — Android-only "Photos" switch (default on, persisted `settings.photos`) hiding the camera button and markers but not the stored files; SPEC (scope item + manual verification), ARCHITECTURE and README updates; tests.
