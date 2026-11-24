@@ -497,7 +497,8 @@ class _MapPageState extends State<MapPage> {
             label: strings.undoAction,
             onPressed: () => model.undoLastHide(),
           ),
-          duration: const Duration(seconds: 6),
+          // The Material default (4 s): fades away on its own, long enough
+          // to tap Undo.
         ),
       );
     }
