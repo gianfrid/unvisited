@@ -222,10 +222,14 @@ abstract class AppStrings {
   // Tint swatch names (keys live in track_colors.dart).
   String tintName(String key);
 
-  // Selection bar (aggregate tracks and selection): hide, recolor, dismiss.
+  // Selection bar (aggregate tracks and selection): hide, recolor, dismiss,
+  // and the member strip's per-track eye toggles.
   String get selectionHideTooltip;
   String get selectionColorTooltip;
   String get selectionDismissTooltip;
+  String get selectionTracksTooltip;
+  String get trackHideTooltip;
+  String get trackShowTooltip;
 
   // Per-track menu (⋮ on a track tile): Info / Delete / Export.
   String get trackMenuTooltip;
@@ -279,6 +283,12 @@ class EnglishStrings extends AppStrings {
   String get selectionColorTooltip => 'Change the color';
   @override
   String get selectionDismissTooltip => 'Dismiss selection';
+  @override
+  String get selectionTracksTooltip => 'Tracks in this area';
+  @override
+  String get trackHideTooltip => 'Hide this track';
+  @override
+  String get trackShowTooltip => 'Show this track';
   @override
   String get trackMenuTooltip => 'Track actions';
   @override
@@ -609,6 +619,12 @@ class ItalianStrings extends AppStrings {
   String get selectionColorTooltip => 'Cambia il colore';
   @override
   String get selectionDismissTooltip => 'Annulla la selezione';
+  @override
+  String get selectionTracksTooltip => 'Tracce in quest\'area';
+  @override
+  String get trackHideTooltip => 'Nascondi questa traccia';
+  @override
+  String get trackShowTooltip => 'Mostra questa traccia';
   @override
   String get trackMenuTooltip => 'Azioni traccia';
   @override

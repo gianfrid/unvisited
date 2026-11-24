@@ -2068,6 +2068,89 @@ void main() {
   });
 
   testWidgets(
+    'the selection bar member strip hides and re-shows a single track',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      // Two single-point tracks ~22 m apart: one two-track aggregate.
+      // Distinct start times: identical time + zero distance would trip
+      // the cross-format near-duplicate rule (±2 s AND within 10%).
+      String gpx(String name, double lat, double lon, String time) =>
+          '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<gpx version="1.1" creator="test"><trk>'
+          '<name>$name</name><trkseg>'
+          '<trkpt lat="$lat" lon="$lon"><time>$time</time></trkpt>'
+          '</trkseg></trk></gpx>\n';
+      model.store.importBytes(
+          utf8.encode(gpx('Alpha', 45.0, 9.0, '2026-06-01T08:00:00Z')));
+      model.store.importBytes(
+          utf8.encode(gpx('Beta', 45.0, 9.0002, '2026-06-02T08:00:00Z')));
+      // importBytes derives the name from the bytes, not the <name> tag:
+      // identify the second track by import order.
+      final bId = model.store.tracks.last.id;
+      expect(model.aggregates, hasLength(1));
+      expect(model.aggregates.single.trackIds, hasLength(2));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+
+      // Select via a map tap on a track point, like a user would.
+      final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      await tester.tapAt(
+        mapOrigin +
+            camera.latLngToScreenOffset(
+                model.visibleTracks.first.points.first),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(model.selectedAnchor, isNotNull);
+      expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+      expect(find.byKey(const ValueKey('selection-members')), findsNothing);
+
+      // Expand the strip: one chip per member track.
+      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('selection-members')), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('selection-member-$bId')),
+        findsOneWidget,
+      );
+
+      // The eye hides just that track; the chip stays, greyed, and the
+      // selection survives (the anchor is the other member).
+      await tester.tap(find.byKey(ValueKey('selection-member-toggle-$bId')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isFalse);
+      expect(model.selectedAnchor, isNotNull);
+      expect(model.selectedAggregate?.trackIds, hasLength(1));
+      expect(find.byKey(ValueKey('selection-member-$bId')),
+          findsOneWidget);
+
+      // Tapping the eye again re-shows the track and restores the aggregate.
+      await tester.tap(find.byKey(ValueKey('selection-member-toggle-$bId')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isTrue);
+      expect(model.selectedAggregate?.trackIds, hasLength(2));
+
+      // Collapse hides the strip again.
+      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('selection-members')), findsNothing);
+    },
+  );
+
+  testWidgets(
     'selection bar and recording chip stack in the bottom column, below the actions',
     (tester) async {
       // Narrow phone surface: the bars must not overlap each other, the

@@ -1361,6 +1361,9 @@ class _MapPageState extends State<MapPage> {
                   // map, above the recording chip and the action stack.
                   if (widget.model.selectedAnchor != null) ...[
                     SelectionBar(
+                      // Keyed by the anchor so a different selection
+                      // starts with the member strip collapsed.
+                      key: ValueKey(widget.model.selectedAnchor),
                       model: widget.model,
                       onFit: () {
                         final selected = widget.model.selectedAggregate;
@@ -1373,7 +1376,7 @@ class _MapPageState extends State<MapPage> {
                         );
                       },
                       onDismiss: () =>
-                          setState(() => widget.model.selectedAnchor = null),
+                          setState(() => widget.model.clearSelection()),
                     ),
                     const SizedBox(height: 4),
                   ],

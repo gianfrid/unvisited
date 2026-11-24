@@ -7,6 +7,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
+import '../storage/track_store.dart';
 import 'app_model.dart';
 import 'track_colors.dart';
 
@@ -259,12 +260,14 @@ class RecordingSpeedSegment extends StatelessWidget {
 }
 
 /// The aggregate selection's actions pill, at the bottom of the map while
-/// an aggregate is selected: hide / color / fit / dismiss — a temporary
-/// state, the first child of the page's single bottom column (see
-/// `MapPage`). [onFit] frames the selected aggregate on the map (the
-/// page's camera fit); [onDismiss] clears the selection in the page's
-/// state.
-class SelectionBar extends StatelessWidget {
+/// an aggregate is selected: hide / color / fit / dismiss, plus a tracks
+/// toggle that expands the pill into a member strip — one chip per track
+/// of the selected multitrack, each with an eye to hide or show just that
+/// track (hidden members stay listed, greyed). A temporary state, the
+/// first child of the page's single bottom column (see `MapPage`). [onFit]
+/// frames the selected aggregate on the map (the page's camera fit);
+/// [onDismiss] clears the selection in the page's state.
+class SelectionBar extends StatefulWidget {
   const SelectionBar({
     super.key,
     required this.model,
@@ -277,66 +280,197 @@ class SelectionBar extends StatelessWidget {
   final VoidCallback onDismiss;
 
   @override
+  State<SelectionBar> createState() => _SelectionBarState();
+}
+
+class _SelectionBarState extends State<SelectionBar> {
+  /// Whether the member strip is showing. Widget-local view state; the
+  /// page keys the bar by the selected anchor, so a new selection mounts
+  /// a fresh state — collapsed.
+  bool _expanded = false;
+
+  /// The selection's member tracks, in selection order; members deleted
+  /// while selected drop out.
+  List<StoredTrack> _memberTracks() {
+    final ids = widget.model.selectedMemberIds;
+    if (ids == null) return const [];
+    final byId = {for (final t in widget.model.store.tracks) t.id: t};
+    return [for (final id in ids) if (byId[id] != null) byId[id]!];
+  }
+
+  @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
+    final model = widget.model;
+    final members = _memberTracks();
     return Material(
       elevation: 2,
       borderRadius: BorderRadius.circular(24),
       color: Theme.of(context).colorScheme.surface,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
+        child: Column(
           key: const ValueKey('selection-bar'),
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              key: const ValueKey('selection-hide'),
-              tooltip: strings.selectionHideTooltip,
-              icon: const Icon(Icons.visibility_off),
-              onPressed: () async {
-                await model.hideSelectedAggregate();
-              },
-            ),
-            PopupMenuButton<String>(
-              key: const ValueKey('selection-color'),
-              tooltip: strings.selectionColorTooltip,
-              icon: const Icon(Icons.palette_outlined),
-              onSelected: (key) => model.setAggregateColor(key),
-              itemBuilder: (context) => [
-                for (final entry in explorationTints.entries)
-                  PopupMenuItem(
-                    value: entry.key,
-                    child: Row(
-                      children: [
-                        Icon(Icons.circle,
-                            color: entry.value.withValues(alpha: 1),
-                            size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          AppStrings.ofContext(context).tintName(entry.key),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const ValueKey('selection-hide'),
+                  tooltip: strings.selectionHideTooltip,
+                  icon: const Icon(Icons.visibility_off),
+                  onPressed: () async {
+                    await model.hideSelectedAggregate();
+                  },
+                ),
+                PopupMenuButton<String>(
+                  key: const ValueKey('selection-color'),
+                  tooltip: strings.selectionColorTooltip,
+                  icon: const Icon(Icons.palette_outlined),
+                  onSelected: (key) => model.setAggregateColor(key),
+                  itemBuilder: (context) => [
+                    for (final entry in explorationTints.entries)
+                      PopupMenuItem(
+                        value: entry.key,
+                        child: Row(
+                          children: [
+                            Icon(Icons.circle,
+                                color: entry.value.withValues(alpha: 1),
+                                size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              AppStrings.ofContext(context).tintName(entry.key),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+                  ],
+                ),
+                IconButton(
+                  key: const ValueKey('selection-fit'),
+                  tooltip: strings.fitTooltip,
+                  icon: const Icon(Icons.zoom_out_map),
+                  onPressed: () {
+                    final selected = model.selectedAggregate;
+                    if (selected == null || selected.points.isEmpty) return;
+                    widget.onFit();
+                  },
+                ),
+                Tooltip(
+                  message: strings.selectionTracksTooltip,
+                  child: InkWell(
+                    key: const ValueKey('selection-tracks'),
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: members.isEmpty
+                        ? null
+                        : () => setState(() => _expanded = !_expanded),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _expanded
+                                ? Icons.expand_less
+                                : Icons.stacked_line_chart,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${members.length}',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+                ),
+                IconButton(
+                  key: const ValueKey('selection-dismiss'),
+                  tooltip: strings.selectionDismissTooltip,
+                  icon: const Icon(Icons.close),
+                  onPressed: widget.onDismiss,
+                ),
               ],
             ),
-            IconButton(
-              key: const ValueKey('selection-fit'),
-              tooltip: strings.fitTooltip,
-              icon: const Icon(Icons.zoom_out_map),
-              onPressed: () {
-                final selected = model.selectedAggregate;
-                if (selected == null || selected.points.isEmpty) return;
-                onFit();
-              },
-            ),
-            IconButton(
-              key: const ValueKey('selection-dismiss'),
-              tooltip: strings.selectionDismissTooltip,
-              icon: const Icon(Icons.close),
-              onPressed: onDismiss,
-            ),
+            if (_expanded) ...[
+              const Divider(height: 1),
+              SizedBox(
+                key: const ValueKey('selection-members'),
+                height: 44,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final t in members) _memberChip(strings, t),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
+        ),
+      ),
+    );
+  }
+
+  /// One member track's chip: tint dot, ellipsized name, and the eye that
+  /// hides or shows just this track. Hidden tracks stay in the strip,
+  /// dimmed, so the toggle works both ways from the same place.
+  Widget _memberChip(AppStrings strings, StoredTrack t) {
+    final model = widget.model;
+    final scheme = Theme.of(context).colorScheme;
+    return Opacity(
+      key: ValueKey('selection-member-${t.id}'),
+      opacity: t.visible ? 1.0 : 0.45,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          padding: const EdgeInsets.only(left: 8, right: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: exploredAreaColor(model.tintKeyForTrack(t))
+                      .withValues(alpha: 1),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 110),
+                child: Text(
+                  t.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+              IconButton(
+                key: ValueKey('selection-member-toggle-${t.id}'),
+                tooltip: t.visible
+                    ? strings.trackHideTooltip
+                    : strings.trackShowTooltip,
+                constraints: const BoxConstraints(
+                    minWidth: 32, minHeight: 32, maxHeight: 32),
+                iconSize: 18,
+                icon: Icon(
+                    t.visible ? Icons.visibility : Icons.visibility_off),
+                onPressed: () =>
+                    model.setSelectedMemberVisible(t.id, !t.visible),
+              ),
+            ],
+          ),
         ),
       ),
     );

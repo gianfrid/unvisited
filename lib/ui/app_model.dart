@@ -849,6 +849,20 @@ class AppModel extends ChangeNotifier {
   /// recomputed as the visible set or the zoom changes.
   String? selectedAnchor;
 
+  /// The selected aggregate's member ids, captured at selection time.
+  /// Aggregates are built from visible tracks only, so a member hidden
+  /// from the selection bar leaves [aggregates] — this list is what the
+  /// bar's member strip still shows (greyed) until the selection clears.
+  List<String>? selectedMemberIds;
+
+  /// Drops the selection: anchor and captured member list both go.
+  void clearSelection() {
+    if (selectedAnchor == null && selectedMemberIds == null) return;
+    selectedAnchor = null;
+    selectedMemberIds = null;
+    notifyListeners();
+  }
+
   AggregateTrack? get selectedAggregate {
     final anchor = selectedAnchor;
     if (anchor == null) return null;
@@ -857,6 +871,7 @@ class AppModel extends ChangeNotifier {
     }
     // The aggregate is gone (hidden, deleted): drop the selection.
     selectedAnchor = null;
+    selectedMemberIds = null;
     return null;
   }
 
@@ -874,6 +889,7 @@ class AppModel extends ChangeNotifier {
                 p.longitude) <=
             toleranceMeters) {
           selectedAnchor = a.anchorId;
+          selectedMemberIds = a.trackIds;
           notifyListeners();
           return true;
         }
@@ -881,6 +897,7 @@ class AppModel extends ChangeNotifier {
     }
     if (clearIfMiss && selectedAnchor != null) {
       selectedAnchor = null;
+      selectedMemberIds = null;
       notifyListeners();
     }
     return false;
@@ -892,10 +909,51 @@ class AppModel extends ChangeNotifier {
     final selected = selectedAggregate;
     if (selected == null) return;
     selectedAnchor = null;
+    selectedMemberIds = null;
     for (final id in selected.trackIds) {
       final matches = store.tracks.where((s) => s.id == id);
       final t = matches.isEmpty ? null : matches.first;
       if (t != null && t.visible) await store.setVisible(t, false);
+    }
+    _catalogDataChanged();
+  }
+
+  /// Shows or hides one member track of the current selection, from the
+  /// selection bar's member strip. Hiding a replaying track stops its
+  /// replay (same rule as delete — a marker on a hidden track would be a
+  /// ghost of hidden data). Hiding the selection's anchor re-anchors the
+  /// selection to the aggregate of the first remaining visible member and
+  /// moves the persisted color override with it; if no member remains
+  /// visible, the aggregate is gone and the selection drops (the
+  /// [selectedAggregate] getter's existing fallback).
+  Future<void> setSelectedMemberVisible(String trackId, bool visible) async {
+    final matches = store.tracks.where((s) => s.id == trackId);
+    final t = matches.isEmpty ? null : matches.first;
+    if (t == null || t.visible == visible) return;
+    await store.setVisible(t, visible);
+    if (!visible) player.trackRemoved(trackId);
+    final oldAnchor = selectedAnchor;
+    if (!visible && oldAnchor != null && oldAnchor == trackId) {
+      final remaining = selectedMemberIds ?? const <String>[];
+      AggregateTrack? next;
+      for (final id in remaining) {
+        if (id == trackId) continue;
+        for (final a in aggregates) {
+          if (a.trackIds.contains(id)) {
+            next = a;
+            break;
+          }
+        }
+        if (next != null) break;
+      }
+      if (next != null && next.anchorId != oldAnchor) {
+        final color = store.aggregateColor(oldAnchor);
+        if (color != null) {
+          await store.saveAggregateColor(next.anchorId, color);
+          await store.saveAggregateColor(oldAnchor, '');
+        }
+        selectedAnchor = next.anchorId;
+      }
     }
     _catalogDataChanged();
   }
