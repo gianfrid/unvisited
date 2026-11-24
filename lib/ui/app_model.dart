@@ -12,7 +12,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../aggregate/aggregate_tracks.dart'
     show AggregateInput, AggregateTrack, AggregateIndex, UnionFindAggregateIndex;
-import '../aggregate/member_colors.dart' show assignMemberTintKeys;
+import '../aggregate/member_colors.dart'
+    show MemberColorAssignment, assignMemberColors;
 import '../debug_log.dart';
 import '../geo.dart' show haversineMeters;
 import '../host_channel.dart' show hostChannel;
@@ -921,21 +922,6 @@ class AppModel extends ChangeNotifier {
     return false;
   }
 
-  /// Routes a map tap: in member-picking mode a tap picks the nearest
-  /// member track of the selection (see [pickMemberAt]); otherwise it is
-  /// the plain aggregate selection.
-  void mapTap(LatLng tap, {required double toleranceMeters}) {
-    if (memberPicking && selectedAnchor != null) {
-      pickMemberAt(tap, toleranceMeters: toleranceMeters);
-      return;
-    }
-    selectAggregateAt(
-      tap,
-      toleranceMeters: toleranceMeters,
-      clearIfMiss: selectedAnchor != null,
-    );
-  }
-
   /// Toggles member-picking mode for the current selection (the selection
   /// bar's tracks button). Exiting clears any picked track.
   void toggleMemberPicking() {
@@ -945,67 +931,91 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Picks the visible member track of the current selection with a point
-  /// within [toleranceMeters] of [tap] — the nearest such point wins; a
-  /// miss clears the pick. Returns the picked track id, or null.
-  String? pickMemberAt(LatLng tap, {required double toleranceMeters}) {
-    final ids = selectedMemberIds ?? const <String>[];
-    String? bestId;
-    var bestDist = toleranceMeters;
-    for (final id in ids) {
-      for (final t in visibleTracks) {
-        if (t.meta.id != id) continue;
-        for (final p in t.points) {
-          final d = haversineMeters(
-              tap.latitude, tap.longitude, p.latitude, p.longitude);
-          if (d <= bestDist) {
-            bestDist = d;
-            bestId = id;
-          }
-        }
-      }
-    }
-    pickedMemberId = bestId;
+  /// Exits member-picking mode (a map tap that missed every lane, or the
+  /// tracks button toggling off): clears the pick and the mode.
+  void exitMemberPicking() {
+    if (!memberPicking && pickedMemberId == null) return;
+    memberPicking = false;
+    pickedMemberId = null;
     notifyListeners();
-    return bestId;
   }
 
-  /// The per-member tint keys for member-picking mode: near tracks get
-  /// different palette colors (see [assignMemberTintKeys]). Memoized on
-  /// the captured member list, like [aggregates].
-  Map<String, String>? _memberTintKeys;
-  String? _memberTintKeysSource;
+  /// Picks a member track of the current selection. The page resolves the
+  /// tapped lane in screen space (hit-testing the same offset geometry it
+  /// draws — see MapPage) and hands the id over; the model only owns the
+  /// pick state.
+  void pickMember(String id) {
+    if (pickedMemberId == id) return;
+    pickedMemberId = id;
+    notifyListeners();
+  }
 
-  Map<String, String> get memberTintKeys {
+  /// Clears the pick without leaving member-picking mode.
+  void clearPick() {
+    if (pickedMemberId == null) return;
+    pickedMemberId = null;
+    notifyListeners();
+  }
+
+  /// The per-member tint key + lane assignments for member-picking mode:
+  /// near tracks get different palette colors and every member its own
+  /// draw lane (see [assignMemberColors]). Memoized on the captured member
+  /// list, like [aggregates].
+  Map<String, MemberColorAssignment>? _memberAssignments;
+  String? _memberAssignmentsSource;
+
+  Map<String, MemberColorAssignment> get memberAssignments {
     final ids = selectedMemberIds;
     if (ids == null) return const {};
     final source = ids.join('|');
-    if (source != _memberTintKeysSource) {
-      _memberTintKeysSource = source;
-      final byId = {for (final t in visibleTracks) t.meta.id: t};
-      _memberTintKeys = assignMemberTintKeys(
+    if (source != _memberAssignmentsSource) {
+      _memberAssignmentsSource = source;
+      final byId = {for (final t in store.tracks) t.id: t};
+      _memberAssignments = assignMemberColors(
         [
           for (final id in ids)
             if (byId[id] != null)
               AggregateInput(
                 id: id,
-                points: byId[id]!.points,
-                startTimeUtc: byId[id]!.meta.startTimeUtc,
+                points: pointsOf(byId[id]!),
+                startTimeUtc: byId[id]!.startTimeUtc,
               ),
         ],
         palette: explorationTints.keys.toList(),
       );
     }
-    return _memberTintKeys!;
+    return _memberAssignments!;
   }
 
-  /// Hides the picked member track (the bar's picked-track action) and
+  /// A stored track's points, loading and caching the file on first use —
+  /// works for hidden tracks too (ghost lanes in picking mode need them),
+  /// unlike [visibleTracks].
+  List<LatLng> pointsOf(StoredTrack t) {
+    final cached = imports.cachedPoints(t);
+    if (cached != null) return cached;
+    final data = store.loadPoints(t);
+    if (data == null) return const [];
+    final pts = data.points.map((p) => LatLng(p.lat, p.lon)).toList();
+    imports.rememberPoints(t, pts);
+    return pts;
+  }
+
+  /// Hides the picked member track (the bubble's "Hide this track") and
   /// clears the pick.
   Future<void> hidePickedMember() async {
     final picked = pickedMemberId;
     if (picked == null) return;
     pickedMemberId = null;
     await setSelectedMemberVisible(picked, false);
+  }
+
+  /// Re-shows the picked member track (a ghost lane's bubble action) and
+  /// clears the pick.
+  Future<void> showPickedMember() async {
+    final picked = pickedMemberId;
+    if (picked == null) return;
+    pickedMemberId = null;
+    await setSelectedMemberVisible(picked, true);
   }
 
   /// Shows only the picked member track: hides every other visible member

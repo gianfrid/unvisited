@@ -2067,31 +2067,41 @@ void main() {
     expect(model.store.tracks.single.visible, isTrue);
   });
 
+  /// Two two-point GPX tracks; distinct start times, since identical time
+  /// + equal distance would trip the cross-format near-duplicate rule
+  /// (±2 s AND within 10%). importBytes derives names from the bytes, so
+  /// tests identify tracks by import order.
+  String twoPointGpx(double lon, String time) =>
+      '<?xml version="1.0" encoding="UTF-8"?>\n'
+      '<gpx version="1.1" creator="test"><trk><trkseg>'
+      '<trkpt lat="45.0" lon="$lon"><time>$time</time></trkpt>'
+      '<trkpt lat="45.0" lon="${lon + 0.0001}">'
+      '<time>$time</time></trkpt>'
+      '</trkseg></trk></gpx>\n';
+
+  Future<void> tapAtMapPoint(WidgetTester tester, AppModel model, LatLng p) async {
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(p));
+    // Double-tap zoom delays the tap; see the select tests above.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+  }
+
+  LatLng firstPointOf(AppModel model, String id) =>
+      model.pointsOf(model.store.tracks.singleWhere((t) => t.id == id)).first;
+
   testWidgets(
-    'member-picking: the tracks button colors the tracks on the map, a tap '
-    'picks one, and the bar can hide it or show only it',
+    'member-picking: lanes on the map, tap picks one into a bubble, hide / '
+    'show / hide-others, tap-away exits',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
       final model = AppModel(TrackStore(root));
-      // Two two-point tracks ~15.7 m apart: one two-track aggregate with
-      // drawable line segments. Distinct start times: identical time +
-      // zero distance would trip the cross-format near-duplicate rule
-      // (±2 s AND within 10%).
-      String gpx(String name, double lon, String time) =>
-          '<?xml version="1.0" encoding="UTF-8"?>\n'
-          '<gpx version="1.1" creator="test"><trk>'
-          '<name>$name</name><trkseg>'
-          '<trkpt lat="45.0" lon="$lon"><time>$time</time></trkpt>'
-          '<trkpt lat="45.0" lon="${lon + 0.0001}">'
-          '<time>$time</time></trkpt>'
-          '</trkseg></trk></gpx>\n';
       model.store.importBytes(
-          utf8.encode(gpx('Alpha', 9.0, '2026-06-01T08:00:00Z')));
+          utf8.encode(twoPointGpx(9.0, '2026-06-01T08:00:00Z')));
       model.store.importBytes(
-          utf8.encode(gpx('Beta', 9.0002, '2026-06-02T08:00:00Z')));
-      // importBytes derives the name from the bytes, not the <name> tag:
-      // identify the tracks by import order.
+          utf8.encode(twoPointGpx(9.0002, '2026-06-02T08:00:00Z')));
       final aId = model.store.tracks.first.id;
       final bId = model.store.tracks.last.id;
       expect(model.aggregates.single.trackIds, hasLength(2));
@@ -2104,66 +2114,137 @@ void main() {
       );
       await tester.pump();
 
-      Future<void> tapAtTrackPoint(String id) async {
-        final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
-        final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
-        final point = model.visibleTracks
-            .firstWhere((t) => t.meta.id == id)
-            .points
-            .first;
-        await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(point));
-        // Double-tap zoom delays the tap; see the select tests above.
-        await tester.pump(const Duration(milliseconds: 400));
-        await tester.pump();
-      }
-
       // Select the aggregate via a map tap, like a user would.
-      await tapAtTrackPoint(aId);
+      await tapAtMapPoint(tester, model, firstPointOf(model, aId));
       expect(model.selectedAnchor, isNotNull);
       expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
       expect(model.memberPicking, isFalse);
 
-      // The tracks button enters picking mode: member polylines are drawn
-      // (the fog is circles by default, so the PolylineLayer is the
-      // member layer) with distinct colors for the two near tracks.
+      // The tracks button enters picking mode: member lanes are drawn (the
+      // fog is circles by default, so a PolylineLayer is the member layer)
+      // with distinct colors for the two near tracks, and the toast says
+      // what the mode is.
       await tester.tap(find.byKey(const ValueKey('selection-tracks')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(model.memberPicking, isTrue);
       expect(find.byType(PolylineLayer), findsWidgets);
-      final colors = model.memberTintKeys;
-      expect(colors[aId] == colors[bId], isFalse);
+      expect(find.text('Tap a track to pick it'), findsOneWidget);
+      final lanes = model.memberAssignments;
+      expect(lanes[aId]!.tintKey == lanes[bId]!.tintKey, isFalse);
+      expect(lanes[aId]!.lane == lanes[bId]!.lane, isFalse);
 
-      // A map tap on Beta's own point picks Beta (nearest wins): it glows
-      // and the bar shows the picked-track row.
-      await tapAtTrackPoint(bId);
+      // A map tap on Beta's lane picks Beta: the bubble floats on the map
+      // with its actions.
+      await tapAtMapPoint(tester, model, firstPointOf(model, bId));
       expect(model.pickedMemberId, bId);
       expect(model.selectedAnchor, isNotNull);
-      expect(find.byKey(const ValueKey('selection-picked')), findsOneWidget);
+      expect(find.byKey(const ValueKey('member-bubble')), findsOneWidget);
+      expect(find.byKey(const ValueKey('member-bubble-hide')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('member-bubble-hide-others')), findsOneWidget);
 
-      // Hide the picked track: it leaves the map, the pick clears, the
-      // selection survives (the anchor is Alpha).
-      await tester.tap(find.byKey(const ValueKey('selection-pick-hide')));
+      // Hide this track: Beta becomes a ghost lane (still drawn, dashed),
+      // the bubble closes, the selection survives (the anchor is Alpha).
+      await tester.tap(find.byKey(const ValueKey('member-bubble-hide')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
           isFalse);
       expect(model.pickedMemberId, isNull);
-      expect(find.byKey(const ValueKey('selection-picked')), findsNothing);
+      expect(find.byKey(const ValueKey('member-bubble')), findsNothing);
       expect(model.selectedAnchor, aId);
       expect(model.selectedAggregate?.trackIds, [aId]);
+      expect(find.byType(PolylineLayer), findsWidgets,
+          reason: 'the ghost lane is still drawn');
 
-      // Pick Alpha and show only it: Alpha stays, Beta stays hidden, and
-      // the selection is the single-track aggregate.
-      await tapAtTrackPoint(aId);
-      expect(model.pickedMemberId, aId);
-      await tester.tap(find.byKey(const ValueKey('selection-pick-only')));
+      // Tapping the ghost lane opens the bubble with the show action;
+      // showing restores the track and the two-track aggregate.
+      await tapAtMapPoint(tester, model, firstPointOf(model, bId));
+      expect(model.pickedMemberId, bId);
+      expect(find.byKey(const ValueKey('member-bubble-show')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('member-bubble-show')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isTrue);
+      expect(model.selectedAggregate?.trackIds, hasLength(2));
+
+      // Hide the others: Alpha leaves, Beta stays, the selection
+      // re-anchors to Beta (the anchor Alpha was hidden).
+      await tapAtMapPoint(tester, model, firstPointOf(model, bId));
+      expect(model.pickedMemberId, bId);
+      await tester.tap(
+          find.byKey(const ValueKey('member-bubble-hide-others')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(model.store.tracks.singleWhere((t) => t.id == aId).visible,
-          isTrue);
-      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
           isFalse);
-      expect(model.selectedAggregate?.trackIds, [aId]);
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isTrue);
+      expect(model.selectedAnchor, bId);
+      expect(model.selectedAggregate?.trackIds, [bId]);
+
+      // A tap away from every lane exits picking mode.
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      await tester.tapAt(mapOrigin + const Offset(5, 5));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(model.memberPicking, isFalse);
+      expect(model.pickedMemberId, isNull);
+    },
+  );
+
+  testWidgets(
+    'a repeated tap where two coincident lanes converge cycles the pick',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      // Alpha and Gamma share the exact geometry (different start times,
+      // so the near-duplicate rule does not fire): their lanes sit 3 px
+      // apart, a tie at a crossing.
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0, '2026-06-01T08:00:00Z')));
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0, '2026-06-03T08:00:00Z')));
+      final ids = model.store.tracks.map((t) => t.id).toList();
+      expect(model.aggregates.single.trackIds, hasLength(2));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+
+      await tapAtMapPoint(tester, model, firstPointOf(model, ids.first));
+      expect(model.selectedAnchor, isNotNull);
+      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
+      await tester.pump();
+      expect(model.memberPicking, isTrue);
+
+      final point = firstPointOf(model, ids.first);
+      await tapAtMapPoint(tester, model, point);
+      final firstPick = model.pickedMemberId;
+      expect(firstPick, isNotNull);
+      // Let the double-tap window expire so the next tap is a tap, not a
+      // (clamped, invisible at max zoom) double-tap zoom.
+      await tester.pump(const Duration(seconds: 1));
+      // Again at (almost) the same spot — 40 px over, inside the 48 px
+      // same-spot window but past the double-tap slop (36 px), so the
+      // gesture is a tap, not a zoom: the tie promotes the other lane.
+      final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      await tester.tapAt(
+          mapOrigin + camera.latLngToScreenOffset(point) + const Offset(40, 0));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(model.pickedMemberId, isNotNull);
+      expect(model.pickedMemberId, isNot(firstPick),
+          reason: 'the tie promotes the other coincident lane');
+      expect(model.pickedMemberId, ids.firstWhere((id) => id != firstPick));
     },
   );
 

@@ -7,7 +7,6 @@ library;
 import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
-import '../storage/track_store.dart';
 import 'app_model.dart';
 import 'track_colors.dart';
 
@@ -262,12 +261,12 @@ class RecordingSpeedSegment extends StatelessWidget {
 /// The aggregate selection's actions pill, at the bottom of the map while
 /// an aggregate is selected: hide / color / fit / tracks / dismiss. The
 /// tracks button toggles member-picking mode — the selected multitrack's
-/// member tracks are drawn on the map, each in its own color, so a map tap
-/// picks one (it glows, and a second row appears here with that track's
-/// actions: hide it, or show only it). A temporary state, the first child
-/// of the page's single bottom column (see `MapPage`). [onFit] frames the
-/// selected aggregate on the map (the page's camera fit); [onDismiss]
-/// clears the selection in the page's state.
+/// member tracks are drawn on the map, each in its own color and lane, so
+/// a map tap picks one; the picked track's actions live in the on-map
+/// bubble, not here. A temporary state, the first child of the page's
+/// single bottom column (see `MapPage`). [onFit] frames the selected
+/// aggregate on the map (the page's camera fit); [onDismiss] clears the
+/// selection in the page's state.
 class SelectionBar extends StatelessWidget {
   const SelectionBar({
     super.key,
@@ -280,23 +279,11 @@ class SelectionBar extends StatelessWidget {
   final VoidCallback onFit;
   final VoidCallback onDismiss;
 
-  /// The picked member track, if a map tap picked one in member-picking
-  /// mode (null while just browsing the colored tracks).
-  StoredTrack? _pickedTrack(AppModel model) {
-    final id = model.pickedMemberId;
-    if (id == null) return null;
-    for (final t in model.store.tracks) {
-      if (t.id == id) return t;
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
     final model = this.model;
     final scheme = Theme.of(context).colorScheme;
-    final picked = _pickedTrack(model);
     return Material(
       elevation: 2,
       borderRadius: BorderRadius.circular(24),
@@ -366,55 +353,6 @@ class SelectionBar extends StatelessWidget {
                 ),
               ],
             ),
-            // A picked member track's actions, while member-picking: its
-            // name plus hide-this and show-only-this.
-            if (picked != null) ...[
-              const Divider(height: 1),
-              Padding(
-                key: const ValueKey('selection-picked'),
-                padding:
-                    const EdgeInsets.only(left: 12, right: 4, top: 2, bottom: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: exploredAreaColor(
-                                model.memberTintKeys[picked.id] ??
-                                    defaultTintKey)
-                            .withValues(alpha: 1),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 180),
-                      child: Text(
-                        picked.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      key: const ValueKey('selection-pick-hide'),
-                      tooltip: strings.trackHideTooltip,
-                      icon: const Icon(Icons.visibility_off),
-                      onPressed: () => model.hidePickedMember(),
-                    ),
-                    IconButton(
-                      key: const ValueKey('selection-pick-only'),
-                      tooltip: strings.trackShowOnlyTooltip,
-                      icon: const Icon(Icons.filter_1),
-                      onPressed: () => model.showOnlyPickedMember(),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),

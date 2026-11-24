@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../aggregate/member_colors.dart' show MemberColorAssignment;
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart';
 import '../recording/recording_session.dart';
@@ -14,6 +15,7 @@ import '../tile_source.dart';
 import 'app_model.dart';
 import 'fog_of_war.dart';
 import 'ink_stroke.dart';
+import 'lane_offset.dart';
 import 'map_actions.dart';
 import 'map_controls.dart';
 import 'playback_dashboard.dart';
@@ -22,6 +24,17 @@ import 'road_coverage_chip.dart';
 import 'settings_sheet.dart';
 import 'track_colors.dart';
 import 'track_list.dart';
+
+/// One member lane in member-picking mode: as drawn and hit-tested —
+/// decimated, segment-split, and offset sideways by its lane index.
+class _MemberLane {
+  _MemberLane(this.id, this.assignment, this.visible, this.segments);
+
+  final String id;
+  final MemberColorAssignment assignment;
+  final bool visible;
+  final List<List<LatLng>> segments;
+}
 
 class MapPage extends StatefulWidget {
   const MapPage({
@@ -93,7 +106,10 @@ class _MapPageState extends State<MapPage> {
       final zoomStep = (event.camera.zoom * 2).roundToDouble() / 2;
       _cameraZoom = event.camera.zoom;
       if (!dirty && zoomStep != _fogZoomStep) {
-        dirty = widget.model.fogStyle == 'ink';
+        // Ink strokes and the picking-mode lanes both convert ground
+        // meters to pixels per zoom half-step.
+        dirty =
+            widget.model.fogStyle == 'ink' || widget.model.memberPicking;
       }
       _fogZoomStep = zoomStep;
       if (!dirty && _locatedPosition != null) {
@@ -402,8 +418,35 @@ class _MapPageState extends State<MapPage> {
     super.dispose();
   }
 
+  /// Whether picking mode was on at the last model change, to detect the
+  /// off→on transition (toast + fit) and the pick being cleared (bubble).
+  bool _wasMemberPicking = false;
+
   void _onModelChanged() {
     if (!mounted) return;
+    final model = widget.model;
+    if (model.memberPicking && !_wasMemberPicking) {
+      // Entering picking: say what the mode is, and make sure the whole
+      // selection is on screen before the user goes hunting for lanes.
+      _toast(AppStrings.ofContext(context).memberPickToast);
+      final selected = model.selectedAggregate;
+      if (selected != null && selected.points.isNotEmpty) {
+        final bounds = LatLngBounds.fromPoints(selected.points);
+        final visible = _mapController.camera.visibleBounds;
+        final onScreen = visible.contains(bounds.northEast) &&
+            visible.contains(bounds.southWest);
+        if (!onScreen) {
+          _fitWhenSized(
+            CameraFit.coordinates(
+              coordinates: selected.points,
+              padding: _fitPadding,
+            ),
+          );
+        }
+      }
+    }
+    if (model.pickedMemberId == null) _bubbleAt = null;
+    _wasMemberPicking = model.memberPicking;
     final epoch = widget.model.importEpoch;
     if (epoch != _seenImportEpoch) {
       _seenImportEpoch = epoch;
@@ -476,61 +519,307 @@ class _MapPageState extends State<MapPage> {
 
   void _onMapTap(LatLng tap) {
     if (widget.model.isRecording) return; // the recording UI owns taps then
-    // In member-picking mode a tap picks one of the colored member tracks
-    // instead of (de)selecting the aggregate.
-    widget.model.mapTap(tap, toleranceMeters: _hitToleranceMeters(tap));
+    final model = widget.model;
+    // In member-picking mode a tap picks one of the colored member lanes
+    // instead of (de)selecting the aggregate; a miss exits the mode.
+    if (model.memberPicking && model.selectedAnchor != null) {
+      _pickMemberAtTap(tap);
+      return;
+    }
+    model.selectAggregateAt(
+      tap,
+      toleranceMeters: _hitToleranceMeters(tap),
+      clearIfMiss: model.selectedAnchor != null,
+    );
   }
 
-  /// Member-picking mode: one polyline per visible member of the selected
+  // --- Member-picking mode -------------------------------------------------
+
+  /// All member lanes of the current selection at the current zoom
+  /// half-step, memoized: lane offsets are in ground meters and change
+  /// with the zoom band, like the fog coarsening.
+  List<_MemberLane>? _memberLanesCache;
+  String? _memberLanesKey;
+
+  List<_MemberLane> _memberLanes() {
+    final model = widget.model;
+    final ids = model.selectedMemberIds ?? const <String>[];
+    if (model.selectedAggregate == null || ids.isEmpty) return const [];
+    final zoom = _cameraZoom ?? _mapController.camera.zoom;
+    final byId = {for (final t in model.store.tracks) t.id: t};
+    final visKey = [
+      for (final id in ids) '${id[0]}${byId[id]?.visible == true ? 1 : 0}',
+    ].join(',');
+    final key = '$_fogZoomStep|${ids.join(',')}|$visKey';
+    if (key == _memberLanesKey && _memberLanesCache != null) {
+      return _memberLanesCache!;
+    }
+    _memberLanesKey = key;
+    final assignments = model.memberAssignments;
+    // Lane spacing: 3 screen px at the current zoom, centered on the true
+    // geometry (lane 0 sits on it when there is an odd member count).
+    final laneMeters =
+        3.0 *
+        groundResolution(
+          zoom: zoom,
+          latitude: _mapController.camera.center.latitude,
+        );
+    final laneCount = ids.length;
+    final lanes = <_MemberLane>[];
+    for (final id in ids) {
+      final t = byId[id];
+      final a = assignments[id];
+      if (t == null || a == null) continue;
+      final offset = (a.lane - (laneCount - 1) / 2) * laneMeters;
+      final segments = <List<LatLng>>[];
+      for (final seg in splitTrackSegments(model.pointsOf(t))) {
+        final dec = decimate(seg, _fogLineDecimation());
+        if (dec.length < 2) continue;
+        segments.add(offsetLanePoints(dec, offset));
+      }
+      lanes.add(_MemberLane(id, a, t.visible, segments));
+    }
+    _memberLanesCache = lanes;
+    return lanes;
+  }
+
+  /// Screen-px distance from [p] to the segment [a]-[b].
+  static double _pxDistToSegment(Offset p, Offset a, Offset b) {
+    final abx = b.dx - a.dx, aby = b.dy - a.dy;
+    final lenSq = abx * abx + aby * aby;
+    var t = lenSq == 0
+        ? 0.0
+        : (((p.dx - a.dx) * abx + (p.dy - a.dy) * aby) / lenSq).clamp(0.0, 1.0);
+    final dx = p.dx - (a.dx + t * abx), dy = p.dy - (a.dy + t * aby);
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  /// Lane candidates for a picking-mode tap at map-local [offset], nearest
+  /// first, within [tolerancePx]: (member id, px distance). Hit-tested
+  /// against the same offset lane geometry the layer draws, so what the
+  /// user aims at is what hits.
+  List<(String, double)> _laneCandidatesAt(
+    Offset offset, {
+    required double tolerancePx,
+  }) {
+    final camera = _mapController.camera;
+    final out = <(String, double)>[];
+    for (final lane in _memberLanes()) {
+      var best = tolerancePx;
+      for (final seg in lane.segments) {
+        for (var i = 0; i < seg.length - 1; i++) {
+          final d = _pxDistToSegment(
+            offset,
+            camera.latLngToScreenOffset(seg[i]),
+            camera.latLngToScreenOffset(seg[i + 1]),
+          );
+          if (d < best) best = d;
+        }
+      }
+      if (best < tolerancePx) out.add((lane.id, best));
+    }
+    out.sort((a, b) => a.$2.compareTo(b.$2));
+    return out;
+  }
+
+  /// The tap that last picked, for cycling between near-coincident lanes.
+  Offset? _lastPickTap;
+  DateTime? _lastPickTapTime;
+  List<String> _lastPickCandidateIds = const [];
+  int _cycleIndex = 0;
+
+  /// Where the action bubble floats (map-local), set with the pick.
+  Offset? _bubbleAt;
+
+  /// The lane under the mouse cursor in picking mode (desktop hover).
+  String? _hoveredMemberId;
+
+  void _pickMemberAtTap(LatLng tap) {
+    final model = widget.model;
+    final offset = _mapController.camera.latLngToScreenOffset(tap);
+    final candidates = _laneCandidatesAt(offset, tolerancePx: 24);
+    if (candidates.isEmpty) {
+      // Tap-away: a miss leaves picking mode back to plain selection.
+      _bubbleAt = null;
+      model.exitMemberPicking();
+      return;
+    }
+    final now = DateTime.now();
+    var index = 0;
+    // "Same spot" = within 48 px (past the double-tap slop of 36 px, so a
+    // repeated tap is a tap, not a zoom): re-tapping a crossing promotes
+    // the next coincident lane; anything farther is a deliberate new aim.
+    final sameSpot =
+        _lastPickTap != null &&
+        (offset - _lastPickTap!).distance < 48 &&
+        _lastPickTapTime != null &&
+        now.difference(_lastPickTapTime!) < const Duration(seconds: 2);
+    final ids = [for (final c in candidates) c.$1];
+    if (sameSpot &&
+        ids.length > 1 &&
+        candidates[1].$2 - candidates[0].$2 < 4 &&
+        ids.join() == _lastPickCandidateIds.join()) {
+      // A repeated tap where two lanes converge (a crossing): promote the
+      // next candidate instead of re-picking the same one.
+      index = (_cycleIndex + 1) % candidates.length;
+    }
+    _lastPickTap = offset;
+    _lastPickTapTime = now;
+    _lastPickCandidateIds = ids;
+    _cycleIndex = index;
+    model.pickMember(candidates[index].$1);
+    // The bubble floats fully above the tap point (its fixed height plus
+    // a leader gap), so the spot stays tappable — a repeated tap there
+    // cycles coincident lanes instead of hitting the bubble.
+    _bubbleAt = offset + const Offset(0, -170);
+    setState(() {});
+  }
+
+  /// Member-picking mode: one parallel lane per member of the selected
   /// aggregate, each in its own assigned tint (see
-  /// [AppModel.memberTintKeys]) so near tracks read in different colors.
-  /// The picked track glows — a wide translucent halo under a solid line
-  /// with a light border. Plain colored lines in every fog style: the mode
-  /// is temporary and must read as "the tracks themselves".
+  /// [AppModel.memberAssignments]) so overlapping tracks read side by side
+  /// in different colors. Hidden members stay as dashed grey ghost lanes.
+  /// The picked (or, on desktop, hovered) lane glows — a wide translucent
+  /// halo under a solid line with a light border. Plain colored lines in
+  /// every fog style: the mode is temporary and must read as "the tracks
+  /// themselves".
   List<Widget> _memberPickLayers() {
     final model = widget.model;
-    final selected = model.selectedAggregate;
-    if (selected == null) return const [];
-    final colors = model.memberTintKeys;
+    if (model.selectedAggregate == null) return const [];
     final picked = model.pickedMemberId;
-    final polylines = <Polyline>[];
-    for (final t in model.visibleTracks) {
-      if (!selected.trackIds.contains(t.meta.id)) continue;
+    final hovered = _hoveredMemberId;
+    final ghosts = <Polyline>[];
+    final lanes = <Polyline>[];
+    final glow = <Polyline>[];
+    for (final lane in _memberLanes()) {
       final color =
-          exploredAreaColor(colors[t.meta.id] ?? defaultTintKey)
-              .withValues(alpha: 1);
-      final segments = [
-        for (final seg in splitTrackSegments(t.points))
-          if (decimate(seg, _fogLineDecimation()).length >= 2)
-            decimate(seg, _fogLineDecimation()),
-      ];
-      if (t.meta.id == picked) {
-        for (final pts in segments) {
-          polylines.add(Polyline(
-            points: pts,
+          exploredAreaColor(lane.assignment.tintKey).withValues(alpha: 1);
+      if (!lane.visible) {
+        for (final seg in lane.segments) {
+          ghosts.add(Polyline(
+            points: seg,
+            strokeWidth: 3,
+            color: Colors.grey.withValues(alpha: 0.55),
+            pattern: StrokePattern.dashed(segments: [6.0, 6.0]),
+          ));
+        }
+        continue;
+      }
+      final hot = lane.id == picked || lane.id == hovered;
+      for (final seg in lane.segments) {
+        if (hot) {
+          glow.add(Polyline(
+            points: seg,
             strokeWidth: 11,
             color: color.withValues(alpha: 0.35),
           ));
-          polylines.add(Polyline(
-            points: pts,
+          lanes.add(Polyline(
+            points: seg,
             strokeWidth: 4.5,
             color: color,
-            borderStrokeWidth: 1.5,
+            borderStrokeWidth: lane.id == picked ? 1.5 : 0,
             borderColor: Colors.white70,
           ));
-        }
-      } else {
-        for (final pts in segments) {
-          polylines.add(Polyline(
-            points: pts,
+        } else {
+          lanes.add(Polyline(
+            points: seg,
             strokeWidth: 4,
             color: color.withValues(alpha: 0.9),
           ));
         }
       }
     }
-    if (polylines.isEmpty) return const [];
-    return [PolylineLayer(polylines: polylines)];
+    final all = [...ghosts, ...lanes, ...glow];
+    if (all.isEmpty) return const [];
+    return [PolylineLayer(polylines: all)];
+  }
+
+  /// The action bubble for the picked member track, floating on the map at
+  /// the tap that picked it: the track's name in its lane color, with
+  /// labeled actions — hide this track / hide the others for a visible
+  /// pick, show it again for a ghost.
+  Widget _memberBubble() {
+    final model = widget.model;
+    final id = model.pickedMemberId;
+    final pos = _bubbleAt;
+    if (id == null || pos == null) return const SizedBox.shrink();
+    final matches = model.store.tracks.where((t) => t.id == id);
+    if (matches.isEmpty) return const SizedBox.shrink();
+    final t = matches.first;
+    final strings = AppStrings.ofContext(context);
+    final scheme = Theme.of(context).colorScheme;
+    final color = exploredAreaColor(
+      model.memberAssignments[id]?.tintKey ?? defaultTintKey,
+    ).withValues(alpha: 1);
+    // Clamp inside the map's bounds so the bubble never leaves the view.
+    final size = _mapController.camera.size;
+    const bubbleW = 240.0, bubbleH = 170.0;
+    final dx =
+        pos.dx.clamp(4.0, math.max(size.width - bubbleW - 4, 4)).toDouble();
+    final dy =
+        pos.dy.clamp(4.0, math.max(size.height - bubbleH - 4, 4)).toDouble();
+    return Positioned(
+      key: const ValueKey('member-bubble'),
+      left: dx,
+      top: dy,
+      width: bubbleW,
+      child: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(12),
+        color: scheme.surface,
+        child: SizedBox(
+          height: 158,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+              Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: t.visible ? color : Colors.grey,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      t.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              if (t.visible) ...[
+                TextButton(
+                  key: const ValueKey('member-bubble-hide'),
+                  onPressed: () => model.hidePickedMember(),
+                  child: Text(strings.memberPickHide),
+                ),
+                TextButton(
+                  key: const ValueKey('member-bubble-hide-others'),
+                  onPressed: () => model.showOnlyPickedMember(),
+                  child: Text(strings.memberPickHideOthers),
+                ),
+              ] else
+                TextButton(
+                  key: const ValueKey('member-bubble-show'),
+                  onPressed: () => model.showPickedMember(),
+                  child: Text(strings.memberPickShow),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// The selected aggregate's highlight, in the active fog style so the
@@ -1142,7 +1431,16 @@ class _MapPageState extends State<MapPage> {
       endDrawer: TrackDrawer(model: widget.model),
       body: Stack(
         children: [
-          FlutterMap(
+          // Hover in picking mode previews the lane under the cursor
+          // (desktop; a no-op on touch, where there is no hover).
+          MouseRegion(
+            onHover: _onPickingHover,
+            onExit: (_) {
+              if (_hoveredMemberId != null) {
+                setState(() => _hoveredMemberId = null);
+              }
+            },
+            child: FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               // Start at the last saved position (Berlin as the very first
@@ -1298,6 +1596,7 @@ class _MapPageState extends State<MapPage> {
                 ],
               ),
             ],
+          ),
           ),
           // The edge control pill (rotation mode, zoom in/out, locate) on
           // the configured edge (settings), vertically centered in the
@@ -1472,8 +1771,18 @@ class _MapPageState extends State<MapPage> {
               alignment: Alignment.topCenter,
               child: LinearProgressIndicator(),
             ),
+          // The picked member track's action bubble, topmost on the map.
+          _memberBubble(),
         ],
       ),
     );
+  }
+
+  /// Desktop hover in picking mode: glow the lane under the cursor.
+  void _onPickingHover(PointerHoverEvent event) {
+    if (!widget.model.memberPicking) return;
+    final candidates = _laneCandidatesAt(event.localPosition, tolerancePx: 12);
+    final id = candidates.isEmpty ? null : candidates.first.$1;
+    if (id != _hoveredMemberId) setState(() => _hoveredMemberId = id);
   }
 }

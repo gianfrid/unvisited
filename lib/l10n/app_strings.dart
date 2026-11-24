@@ -223,14 +223,15 @@ abstract class AppStrings {
   String tintName(String key);
 
   // Selection bar (aggregate tracks and selection): hide, recolor, dismiss,
-  // and the member strip's per-track eye toggles.
+  // and the member-picking bubble's labeled actions.
   String get selectionHideTooltip;
   String get selectionColorTooltip;
   String get selectionDismissTooltip;
   String get selectionTracksTooltip;
-  String get trackHideTooltip;
-  String get trackShowTooltip;
-  String get trackShowOnlyTooltip;
+  String get memberPickToast;
+  String get memberPickHide;
+  String get memberPickHideOthers;
+  String get memberPickShow;
 
   // Per-track menu (⋮ on a track tile): Info / Delete / Export.
   String get trackMenuTooltip;
@@ -287,11 +288,13 @@ class EnglishStrings extends AppStrings {
   @override
   String get selectionTracksTooltip => 'Tracks in this area';
   @override
-  String get trackHideTooltip => 'Hide this track';
+  String get memberPickToast => 'Tap a track to pick it';
   @override
-  String get trackShowTooltip => 'Show this track';
+  String get memberPickHide => 'Hide this track';
   @override
-  String get trackShowOnlyTooltip => 'Show only this track';
+  String get memberPickHideOthers => 'Hide the others';
+  @override
+  String get memberPickShow => 'Show this track';
   @override
   String get trackMenuTooltip => 'Track actions';
   @override
@@ -625,11 +628,13 @@ class ItalianStrings extends AppStrings {
   @override
   String get selectionTracksTooltip => 'Tracce in quest\'area';
   @override
-  String get trackHideTooltip => 'Nascondi questa traccia';
+  String get memberPickToast => 'Tocca una traccia per sceglierla';
   @override
-  String get trackShowTooltip => 'Mostra questa traccia';
+  String get memberPickHide => 'Nascondi questa traccia';
   @override
-  String get trackShowOnlyTooltip => 'Mostra solo questa traccia';
+  String get memberPickHideOthers => 'Nascondi le altre';
+  @override
+  String get memberPickShow => 'Mostra questa traccia';
   @override
   String get trackMenuTooltip => 'Azioni traccia';
   @override

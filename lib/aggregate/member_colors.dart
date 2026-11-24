@@ -5,13 +5,38 @@ import 'package:latlong2/latlong.dart';
 import '../geo.dart' show haversineMeters;
 import 'aggregate_tracks.dart' show AggregateInput;
 
-/// Assigns each member track of a selected aggregate its own tint key, so
-/// the member-picking mode can draw every track on the map in a distinct
-/// color. Two tracks count as *near* when any pair of their points comes
-/// within [nearMeters]; near tracks never share a color while the palette
-/// lasts (repetitions are allowed — and unavoidable past the palette size
-/// — only for tracks that do not overlap). Pure Dart — no Flutter imports
-/// — so the assignment stays unit-testable like the clustering.
+/// One member track's picking-mode assignment: its tint key and its lane
+/// index (see [assignMemberColors]).
+class MemberColorAssignment {
+  const MemberColorAssignment(this.tintKey, this.lane);
+
+  /// The palette key the track draws in.
+  final String tintKey;
+
+  /// The parallel-lane index the track draws at when several members
+  /// overlap (0 = on the true geometry, 1, 2, … offset sideways). Lanes
+  /// are unique per call, so coincident tracks each get their own screen
+  /// space to hover and tap.
+  final int lane;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MemberColorAssignment &&
+      other.tintKey == tintKey &&
+      other.lane == lane;
+
+  @override
+  int get hashCode => Object.hash(tintKey, lane);
+}
+
+/// Assigns each member track of a selected aggregate its own tint key and
+/// draw lane, so the member-picking mode can draw every track on the map
+/// in a distinct color even where they overlap. Two tracks count as *near*
+/// when any pair of their points comes within [nearMeters]; near tracks
+/// never share a color while the palette lasts (repetitions are allowed —
+/// and unavoidable past the palette size — only for tracks that do not
+/// overlap). Pure Dart — no Flutter imports — so the assignment stays
+/// unit-testable like the clustering.
 ///
 /// Adjacency is found with the same grid-bucketed neighbor scan the
 /// union-find in `aggregate_tracks.dart` uses (cell edge = nearMeters,
@@ -20,7 +45,9 @@ import 'aggregate_tracks.dart' show AggregateInput;
 /// O(points) per area, not O(n²) pairwise. The coloring itself is greedy:
 /// members ordered by descending degree (ties broken by id, so the result
 /// is deterministic) take the first palette key no neighbor already has.
-Map<String, String> assignMemberTintKeys(
+/// The same order is the lane order, so the most-connected (most
+/// overlapping) track rides lane 0, on the true geometry.
+Map<String, MemberColorAssignment> assignMemberColors(
   List<AggregateInput> members, {
   double nearMeters = 30,
   required List<String> palette,
@@ -83,8 +110,9 @@ Map<String, String> assignMemberTintKeys(
       return members[a].id.compareTo(members[b].id);
     });
   final assigned = List<String?>.filled(n, null);
-  final result = <String, String>{};
-  for (final i in order) {
+  final result = <String, MemberColorAssignment>{};
+  for (var lane = 0; lane < order.length; lane++) {
+    final i = order[lane];
     final used = {
       for (final j in adj[i])
         if (assigned[j] != null) assigned[j]!,
@@ -97,7 +125,7 @@ Map<String, String> assignMemberTintKeys(
       }
     }
     assigned[i] = key;
-    result[members[i].id] = key;
+    result[members[i].id] = MemberColorAssignment(key, lane);
   }
   return result;
 }

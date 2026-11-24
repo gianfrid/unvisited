@@ -1495,24 +1495,25 @@ void main() {
       model.toggleMemberPicking();
       expect(model.memberPicking, isTrue);
 
-      // Near members (all within 30 m pairwise here) get distinct colors.
-      final colors = model.memberTintKeys;
-      expect(colors[a] == colors[b], isFalse);
-      expect(colors[b] == colors[c], isFalse);
-      expect(colors.values.toSet(), hasLength(3));
+      // Near members (all within 30 m pairwise here) get distinct colors
+      // and each its own lane; the page resolves taps in screen space, so
+      // the model just takes the picked id.
+      final assignments = model.memberAssignments;
+      expect(assignments[a]!.tintKey == assignments[b]!.tintKey, isFalse);
+      expect(assignments[b]!.tintKey == assignments[c]!.tintKey, isFalse);
+      expect(assignments.values.map((x) => x.tintKey).toSet(), hasLength(3));
+      expect(assignments.values.map((x) => x.lane).toSet(), {0, 1, 2});
 
-      // A tap in picking mode picks the nearest member track, it does not
-      // change the aggregate selection.
-      model.mapTap(const LatLng(45.0, 9.0002), toleranceMeters: 30);
+      model.pickMember(b);
       expect(model.pickedMemberId, b);
       expect(model.selectedAnchor, a);
-      // A tap far from every member clears the pick.
-      model.mapTap(const LatLng(45.1, 9.0), toleranceMeters: 30);
+      model.clearPick();
       expect(model.pickedMemberId, isNull);
+      expect(model.memberPicking, isTrue);
 
       // Hide the picked track: it leaves the map, the pick clears, the
       // selection survives (the anchor was not hidden).
-      model.mapTap(const LatLng(45.0, 9.0002), toleranceMeters: 30);
+      model.pickMember(b);
       await model.hidePickedMember();
       expect(model.pickedMemberId, isNull);
       expect(model.store.tracks.singleWhere((t) => t.id == b).visible,
@@ -1520,18 +1521,22 @@ void main() {
       expect(model.selectedAnchor, a);
       expect(model.selectedAggregate?.trackIds, containsAll([a, c]));
 
+      // Re-show the hidden member through the ghost's action.
+      model.pickMember(b);
+      await model.showPickedMember();
+      expect(model.store.tracks.singleWhere((t) => t.id == b).visible,
+          isTrue);
+      expect(model.selectedAggregate?.trackIds, containsAll([a, b, c]));
+
       // Show only the picked one: every other member hides, and the color
-      // override migrates when the anchor is among the hidden. (Picking
-      // mode is still on from above, so the tap routes to the pick.)
-      await model.setAllVisible(true);
-      model.selectAggregateAt(const LatLng(45.0, 9.0), toleranceMeters: 100);
+      // override migrates when the anchor is among the hidden.
       await model.setAggregateColor('blue');
-      model.mapTap(const LatLng(45.0, 9.0003), toleranceMeters: 30);
-      expect(model.pickedMemberId, c);
+      model.pickMember(c);
       await model.showOnlyPickedMember();
       expect(model.pickedMemberId, isNull);
       expect(model.store.tracks.singleWhere((t) => t.id == c).visible, isTrue);
-      expect(model.store.tracks.where((t) => t.id != c).every((t) => !t.visible),
+      expect(
+          model.store.tracks.where((t) => t.id != c).every((t) => !t.visible),
           isTrue);
       // The anchor (a) was hidden, so the selection re-anchored to c and
       // took the color override with it.
@@ -1539,13 +1544,15 @@ void main() {
       expect(model.store.aggregateColor(c), 'blue');
       expect(model.store.aggregateColor(a), isNull);
 
-      // Leaving picking mode and clearing the selection both reset it.
-      model.toggleMemberPicking();
+      // Exiting picking mode clears the pick; clearing the selection
+      // resets everything.
+      model.pickMember(c);
+      model.exitMemberPicking();
       expect(model.memberPicking, isFalse);
+      expect(model.pickedMemberId, isNull);
       model.toggleMemberPicking();
       await model.hideSelectedAggregate();
       expect(model.memberPicking, isFalse);
-      expect(model.pickedMemberId, isNull);
       expect(model.selectedAnchor, isNull);
     });
 
