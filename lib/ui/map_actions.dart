@@ -259,11 +259,14 @@ class RecordingSpeedSegment extends StatelessWidget {
 }
 
 /// The aggregate selection's actions pill, at the bottom of the map while
-/// an aggregate is selected: hide / color / fit / dismiss — a temporary
-/// state, the first child of the page's single bottom column (see
-/// `MapPage`). [onFit] frames the selected aggregate on the map (the
-/// page's camera fit); [onDismiss] clears the selection in the page's
-/// state.
+/// an aggregate is selected: hide / color / fit / tracks / dismiss. The
+/// tracks button toggles member-picking mode — the selected multitrack's
+/// member tracks are drawn on the map, each in its own color and lane, so
+/// a map tap picks one; the picked track's actions live in the on-map
+/// bubble, not here. A temporary state, the first child of the page's
+/// single bottom column (see `MapPage`). [onFit] frames the selected
+/// aggregate on the map (the page's camera fit); [onDismiss] clears the
+/// selection in the page's state.
 class SelectionBar extends StatelessWidget {
   const SelectionBar({
     super.key,
@@ -279,62 +282,76 @@ class SelectionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
+    final model = this.model;
+    final scheme = Theme.of(context).colorScheme;
     return Material(
       elevation: 2,
       borderRadius: BorderRadius.circular(24),
-      color: Theme.of(context).colorScheme.surface,
+      color: scheme.surface,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Row(
+        child: Column(
           key: const ValueKey('selection-bar'),
           mainAxisSize: MainAxisSize.min,
           children: [
-            IconButton(
-              key: const ValueKey('selection-hide'),
-              tooltip: strings.selectionHideTooltip,
-              icon: const Icon(Icons.visibility_off),
-              onPressed: () async {
-                await model.hideSelectedAggregate();
-              },
-            ),
-            PopupMenuButton<String>(
-              key: const ValueKey('selection-color'),
-              tooltip: strings.selectionColorTooltip,
-              icon: const Icon(Icons.palette_outlined),
-              onSelected: (key) => model.setAggregateColor(key),
-              itemBuilder: (context) => [
-                for (final entry in explorationTints.entries)
-                  PopupMenuItem(
-                    value: entry.key,
-                    child: Row(
-                      children: [
-                        Icon(Icons.circle,
-                            color: entry.value.withValues(alpha: 1),
-                            size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          AppStrings.ofContext(context).tintName(entry.key),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const ValueKey('selection-hide'),
+                  tooltip: strings.selectionHideTooltip,
+                  icon: const Icon(Icons.visibility_off),
+                  onPressed: () async {
+                    await model.hideSelectedAggregate();
+                  },
+                ),
+                PopupMenuButton<String>(
+                  key: const ValueKey('selection-color'),
+                  tooltip: strings.selectionColorTooltip,
+                  icon: const Icon(Icons.palette_outlined),
+                  onSelected: (key) => model.setAggregateColor(key),
+                  itemBuilder: (context) => [
+                    for (final entry in explorationTints.entries)
+                      PopupMenuItem(
+                        value: entry.key,
+                        child: Row(
+                          children: [
+                            Icon(Icons.circle,
+                                color: entry.value.withValues(alpha: 1),
+                                size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              AppStrings.ofContext(context).tintName(entry.key),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                  ],
+                ),
+                IconButton(
+                  key: const ValueKey('selection-fit'),
+                  tooltip: strings.fitTooltip,
+                  icon: const Icon(Icons.zoom_out_map),
+                  onPressed: () {
+                    final selected = model.selectedAggregate;
+                    if (selected == null || selected.points.isEmpty) return;
+                    onFit();
+                  },
+                ),
+                IconButton(
+                  key: const ValueKey('selection-tracks'),
+                  tooltip: strings.selectionTracksTooltip,
+                  icon: const Icon(Icons.stacked_line_chart),
+                  color: model.memberPicking ? scheme.primary : null,
+                  onPressed: () => model.toggleMemberPicking(),
+                ),
+                IconButton(
+                  key: const ValueKey('selection-dismiss'),
+                  tooltip: strings.selectionDismissTooltip,
+                  icon: const Icon(Icons.close),
+                  onPressed: onDismiss,
+                ),
               ],
-            ),
-            IconButton(
-              key: const ValueKey('selection-fit'),
-              tooltip: strings.fitTooltip,
-              icon: const Icon(Icons.zoom_out_map),
-              onPressed: () {
-                final selected = model.selectedAggregate;
-                if (selected == null || selected.points.isEmpty) return;
-                onFit();
-              },
-            ),
-            IconButton(
-              key: const ValueKey('selection-dismiss'),
-              tooltip: strings.selectionDismissTooltip,
-              icon: const Icon(Icons.close),
-              onPressed: onDismiss,
             ),
           ],
         ),

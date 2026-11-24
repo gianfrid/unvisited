@@ -2033,6 +2033,81 @@ void main() {
     expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
   });
 
+  testWidgets('hiding an aggregate fires an undo toast that restores it',
+      (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    await tester.tapAt(
+      mapOrigin +
+          camera.latLngToScreenOffset(model.visibleTracks.single.points.first),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(model.selectedAnchor, isNotNull);
+
+    await tester.tap(find.byKey(const ValueKey('selection-hide')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.store.tracks.single.visible, isFalse);
+
+    // The undo toast is showing with its action...
+    expect(find.text('Area hidden'), findsOneWidget);
+    expect(find.byKey(const ValueKey('undo-hide-action')), findsOneWidget);
+
+    // ...and tapping Undo re-shows the aggregate's tracks.
+    await tester.tap(find.byKey(const ValueKey('undo-hide-action')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(model.store.tracks.single.visible, isTrue);
+    expect(model.aggregates.single.trackIds, hasLength(1));
+  });
+
+  testWidgets('the undo toast fades away when left alone', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    model.selectedAnchor = model.aggregates.single.anchorId;
+    model.notifyListeners();
+    await tester.pump();
+    await model.hideSelectedAggregate();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Area hidden'), findsOneWidget);
+
+    // The Material default duration (4 s) plus the exit animation — and
+    // the trailing pump that flushes the dismissal frame: the toast must
+    // be gone, no Undo left to tap. (persist: false is what makes an
+    // actioned SnackBar fade at all — Flutter 3.47 persists them by
+    // default.)
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Area hidden'), findsNothing);
+    expect(find.byKey(const ValueKey('undo-hide-action')), findsNothing);
+  });
+
   testWidgets('the bar dismiss drops the selection, the tracks stay visible', (
     tester,
   ) async {
@@ -2066,6 +2141,187 @@ void main() {
     expect(find.byKey(const ValueKey('selection-bar')), findsNothing);
     expect(model.store.tracks.single.visible, isTrue);
   });
+
+  /// Two two-point GPX tracks; distinct start times, since identical time
+  /// + equal distance would trip the cross-format near-duplicate rule
+  /// (±2 s AND within 10%). importBytes derives names from the bytes, so
+  /// tests identify tracks by import order.
+  String twoPointGpx(double lon, String time) =>
+      '<?xml version="1.0" encoding="UTF-8"?>\n'
+      '<gpx version="1.1" creator="test"><trk><trkseg>'
+      '<trkpt lat="45.0" lon="$lon"><time>$time</time></trkpt>'
+      '<trkpt lat="45.0" lon="${lon + 0.0001}">'
+      '<time>$time</time></trkpt>'
+      '</trkseg></trk></gpx>\n';
+
+  Future<void> tapAtMapPoint(WidgetTester tester, AppModel model, LatLng p) async {
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(p));
+    // Double-tap zoom delays the tap; see the select tests above.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+  }
+
+  LatLng firstPointOf(AppModel model, String id) =>
+      model.pointsOf(model.store.tracks.singleWhere((t) => t.id == id)).first;
+
+  testWidgets(
+    'member-picking: lanes on the map, tap picks one into a bubble, hide / '
+    'show / hide-others, tap-away exits',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0, '2026-06-01T08:00:00Z')));
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0002, '2026-06-02T08:00:00Z')));
+      final aId = model.store.tracks.first.id;
+      final bId = model.store.tracks.last.id;
+      expect(model.aggregates.single.trackIds, hasLength(2));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+
+      // Select the aggregate via a map tap, like a user would.
+      await tapAtMapPoint(tester, model, firstPointOf(model, aId));
+      expect(model.selectedAnchor, isNotNull);
+      expect(find.byKey(const ValueKey('selection-bar')), findsOneWidget);
+      expect(model.memberPicking, isFalse);
+
+      // The tracks button enters picking mode: member lanes are drawn (the
+      // fog is circles by default, so a PolylineLayer is the member layer)
+      // with distinct colors for the two near tracks, and the toast says
+      // what the mode is.
+      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.memberPicking, isTrue);
+      expect(find.byType(PolylineLayer), findsWidgets);
+      expect(find.text('Tap a track to pick it'), findsOneWidget);
+      final lanes = model.memberAssignments;
+      expect(lanes[aId]!.tintKey == lanes[bId]!.tintKey, isFalse);
+      expect(lanes[aId]!.lane == lanes[bId]!.lane, isFalse);
+
+      // A map tap on Beta's lane picks Beta: the bubble floats on the map
+      // with its actions.
+      await tapAtMapPoint(tester, model, firstPointOf(model, bId));
+      expect(model.pickedMemberId, bId);
+      expect(model.selectedAnchor, isNotNull);
+      expect(find.byKey(const ValueKey('member-bubble')), findsOneWidget);
+      expect(find.byKey(const ValueKey('member-bubble-hide')), findsOneWidget);
+      expect(
+          find.byKey(const ValueKey('member-bubble-hide-others')), findsOneWidget);
+
+      // Hide this track: Beta becomes a ghost lane (still drawn, dashed),
+      // the bubble closes, the selection survives (the anchor is Alpha).
+      await tester.tap(find.byKey(const ValueKey('member-bubble-hide')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isFalse);
+      expect(model.pickedMemberId, isNull);
+      expect(find.byKey(const ValueKey('member-bubble')), findsNothing);
+      expect(model.selectedAnchor, aId);
+      expect(model.selectedAggregate?.trackIds, [aId]);
+      expect(find.byType(PolylineLayer), findsWidgets,
+          reason: 'the ghost lane is still drawn');
+
+      // Tapping the ghost lane opens the bubble with the show action;
+      // showing restores the track and the two-track aggregate.
+      await tapAtMapPoint(tester, model, firstPointOf(model, bId));
+      expect(model.pickedMemberId, bId);
+      expect(find.byKey(const ValueKey('member-bubble-show')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('member-bubble-show')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isTrue);
+      expect(model.selectedAggregate?.trackIds, hasLength(2));
+
+      // Hide the others: Alpha leaves, Beta stays, the selection
+      // re-anchors to Beta (the anchor Alpha was hidden).
+      await tapAtMapPoint(tester, model, firstPointOf(model, bId));
+      expect(model.pickedMemberId, bId);
+      await tester.tap(
+          find.byKey(const ValueKey('member-bubble-hide-others')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.store.tracks.singleWhere((t) => t.id == aId).visible,
+          isFalse);
+      expect(model.store.tracks.singleWhere((t) => t.id == bId).visible,
+          isTrue);
+      expect(model.selectedAnchor, bId);
+      expect(model.selectedAggregate?.trackIds, [bId]);
+
+      // A tap away from every lane exits picking mode.
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      await tester.tapAt(mapOrigin + const Offset(5, 5));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(model.memberPicking, isFalse);
+      expect(model.pickedMemberId, isNull);
+    },
+  );
+
+  testWidgets(
+    'a repeated tap where two coincident lanes converge cycles the pick',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      // Alpha and Gamma share the exact geometry (different start times,
+      // so the near-duplicate rule does not fire): their lanes sit 3 px
+      // apart, a tie at a crossing.
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0, '2026-06-01T08:00:00Z')));
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0, '2026-06-03T08:00:00Z')));
+      final ids = model.store.tracks.map((t) => t.id).toList();
+      expect(model.aggregates.single.trackIds, hasLength(2));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+
+      await tapAtMapPoint(tester, model, firstPointOf(model, ids.first));
+      expect(model.selectedAnchor, isNotNull);
+      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
+      await tester.pump();
+      expect(model.memberPicking, isTrue);
+
+      final point = firstPointOf(model, ids.first);
+      await tapAtMapPoint(tester, model, point);
+      final firstPick = model.pickedMemberId;
+      expect(firstPick, isNotNull);
+      // Let the double-tap window expire so the next tap is a tap, not a
+      // (clamped, invisible at max zoom) double-tap zoom.
+      await tester.pump(const Duration(seconds: 1));
+      // Again at (almost) the same spot — 40 px over, inside the 48 px
+      // same-spot window but past the double-tap slop (36 px), so the
+      // gesture is a tap, not a zoom: the tie promotes the other lane.
+      final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      await tester.tapAt(
+          mapOrigin + camera.latLngToScreenOffset(point) + const Offset(40, 0));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(model.pickedMemberId, isNotNull);
+      expect(model.pickedMemberId, isNot(firstPick),
+          reason: 'the tie promotes the other coincident lane');
+      expect(model.pickedMemberId, ids.firstWhere((id) => id != firstPick));
+    },
+  );
 
   testWidgets(
     'selection bar and recording chip stack in the bottom column, below the actions',

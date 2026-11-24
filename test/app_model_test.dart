@@ -1426,6 +1426,183 @@ void main() {
       expect(model.aggregates.single.trackIds, containsAll([a, b]));
     });
 
+    test('the selection bar hides and re-shows single member tracks',
+        () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      final a = await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      final b = await importGpx(
+        'b.gpx',
+        lat: 45.0,
+        lon: 9.0002,
+        time: start.add(const Duration(days: 3)),
+      );
+
+      expect(model.selectAggregateAt(const LatLng(45.0, 9.0),
+          toleranceMeters: 100), isTrue);
+      expect(model.selectedMemberIds, containsAllInOrder([a, b]));
+
+      // Hiding a non-anchor member keeps the selection (same anchor) and
+      // re-clusters the aggregate without it; the strip's captured member
+      // list still names both, so the toggle works back.
+      await model.setSelectedMemberVisible(b, false);
+      expect(model.store.tracks.singleWhere((t) => t.id == b).visible,
+          isFalse);
+      expect(model.selectedAnchor, a);
+      expect(model.selectedAggregate?.trackIds, [a]);
+      expect(model.selectedMemberIds, containsAll([a, b]));
+
+      // Re-showing from the bar restores the two-track aggregate.
+      await model.setSelectedMemberVisible(b, true);
+      expect(model.selectedAggregate?.trackIds, containsAll([a, b]));
+
+      // A color override follows the selection when the anchor member
+      // itself is hidden: it migrates to the remaining aggregate's anchor.
+      await model.setAggregateColor('blue');
+      await model.setSelectedMemberVisible(a, false);
+      expect(model.selectedAnchor, b);
+      expect(model.selectedAggregate?.trackIds, [b]);
+      expect(model.store.aggregateColor(b), 'blue');
+      expect(model.store.aggregateColor(a), isNull);
+
+      // Hiding the last visible member leaves no aggregate: the selection
+      // drops, as when the whole area is hidden.
+      await model.setSelectedMemberVisible(b, false);
+      expect(model.selectedAggregate, isNull);
+      expect(model.selectedAnchor, isNull);
+      expect(model.aggregates, isEmpty);
+    });
+
+    test('member-picking: pick on the map, hide it, or show only it',
+        () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      final a = await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      final b = await importGpx(
+        'b.gpx',
+        lat: 45.0,
+        lon: 9.0002,
+        time: start.add(const Duration(days: 1)),
+      );
+      final c = await importGpx(
+        'c.gpx',
+        lat: 45.0,
+        lon: 9.0003,
+        time: start.add(const Duration(days: 2)),
+      );
+
+      expect(model.selectAggregateAt(const LatLng(45.0, 9.0),
+          toleranceMeters: 100), isTrue);
+      expect(model.memberPicking, isFalse);
+      model.toggleMemberPicking();
+      expect(model.memberPicking, isTrue);
+
+      // Near members (all within 30 m pairwise here) get distinct colors
+      // and each its own lane; the page resolves taps in screen space, so
+      // the model just takes the picked id.
+      final assignments = model.memberAssignments;
+      expect(assignments[a]!.tintKey == assignments[b]!.tintKey, isFalse);
+      expect(assignments[b]!.tintKey == assignments[c]!.tintKey, isFalse);
+      expect(assignments.values.map((x) => x.tintKey).toSet(), hasLength(3));
+      expect(assignments.values.map((x) => x.lane).toSet(), {0, 1, 2});
+
+      model.pickMember(b);
+      expect(model.pickedMemberId, b);
+      expect(model.selectedAnchor, a);
+      model.clearPick();
+      expect(model.pickedMemberId, isNull);
+      expect(model.memberPicking, isTrue);
+
+      // Hide the picked track: it leaves the map, the pick clears, the
+      // selection survives (the anchor was not hidden).
+      model.pickMember(b);
+      await model.hidePickedMember();
+      expect(model.pickedMemberId, isNull);
+      expect(model.store.tracks.singleWhere((t) => t.id == b).visible,
+          isFalse);
+      expect(model.selectedAnchor, a);
+      expect(model.selectedAggregate?.trackIds, containsAll([a, c]));
+
+      // Re-show the hidden member through the ghost's action.
+      model.pickMember(b);
+      await model.showPickedMember();
+      expect(model.store.tracks.singleWhere((t) => t.id == b).visible,
+          isTrue);
+      expect(model.selectedAggregate?.trackIds, containsAll([a, b, c]));
+
+      // Show only the picked one: every other member hides, and the color
+      // override migrates when the anchor is among the hidden.
+      await model.setAggregateColor('blue');
+      model.pickMember(c);
+      await model.showOnlyPickedMember();
+      expect(model.pickedMemberId, isNull);
+      expect(model.store.tracks.singleWhere((t) => t.id == c).visible, isTrue);
+      expect(
+          model.store.tracks.where((t) => t.id != c).every((t) => !t.visible),
+          isTrue);
+      // The anchor (a) was hidden, so the selection re-anchored to c and
+      // took the color override with it.
+      expect(model.selectedAnchor, c);
+      expect(model.store.aggregateColor(c), 'blue');
+      expect(model.store.aggregateColor(a), isNull);
+
+      // Exiting picking mode clears the pick; clearing the selection
+      // resets everything.
+      model.pickMember(c);
+      model.exitMemberPicking();
+      expect(model.memberPicking, isFalse);
+      expect(model.pickedMemberId, isNull);
+      model.toggleMemberPicking();
+      await model.hideSelectedAggregate();
+      expect(model.memberPicking, isFalse);
+      expect(model.selectedAnchor, isNull);
+    });
+
+    test('hideSelectedAggregate is undoable via undoLastHide', () async {
+      final start = DateTime.utc(2026, 6, 1, 8);
+      final a = await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
+      final b = await importGpx(
+        'b.gpx',
+        lat: 45.0,
+        lon: 9.0002,
+        time: start.add(const Duration(days: 1)),
+      );
+      model.selectAggregateAt(const LatLng(45.0, 9.0), toleranceMeters: 100);
+
+      final epochBefore = model.aggregateHideEpoch;
+      await model.hideSelectedAggregate();
+      expect(model.aggregateHideEpoch, epochBefore + 1);
+      expect(model.store.tracks.every((t) => !t.visible), isTrue);
+
+      // Undo re-shows exactly the hidden members and rebuilds aggregates.
+      await model.undoLastHide();
+      expect(model.store.tracks.every((t) => t.visible), isTrue);
+      expect(model.aggregates.single.trackIds, containsAll([a, b]));
+
+      // A second hide replaces the undoable set; undo after a delete of
+      // one member is a safe no-op for it.
+      await model.hideSelectedAggregate();
+      await model.delete(model.store.tracks.singleWhere((t) => t.id == b));
+      await model.undoLastHide();
+      expect(model.store.tracks.singleWhere((t) => t.id == a).visible, isTrue);
+      expect(model.store.tracks.where((t) => t.id == b), isEmpty);
+
+      // Undo with nothing hidden is a no-op.
+      await model.undoLastHide();
+      expect(model.store.tracks.single.visible, isTrue);
+    });
+
+    test('hiding a member track stops its replay', () async {
+      model.store.importBytes(fixture('morning_walk.gpx'));
+      final track = model.tracks.single;
+      model.selectedAnchor = model.aggregates.single.anchorId;
+      model.selectedMemberIds = [track.id];
+      expect(model.startPlayback(track), isTrue);
+      expect(model.playback, isNotNull);
+
+      await model.setSelectedMemberVisible(track.id, false);
+      expect(model.playback, isNull);
+      expect(track.visible, isFalse);
+    });
+
     test('a tap too far from every aggregate point deselects', () async {
       final start = DateTime.utc(2026, 6, 1, 8);
       await importGpx('a.gpx', lat: 45.0, lon: 9.0, time: start);
