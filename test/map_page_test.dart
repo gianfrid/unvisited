@@ -20,6 +20,7 @@ import 'package:file_picker/file_picker.dart'
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
+import 'package:unvisited/photos/photo_source.dart' show PhotoCaptureSucceeded;
 import 'package:unvisited/recording/position_source.dart' show PositionFix;
 import 'package:unvisited/recording/recording_session.dart' show RecordingState;
 import 'package:unvisited/storage/track_store.dart';
@@ -4227,6 +4228,125 @@ void main() {
     expect(dashed.first.pattern, isA<StrokePattern>());
     // All four fixture ways are dark with no walked tracks yet.
     expect(dashed.length, greaterThanOrEqualTo(4));
+  });
+
+  testWidgets('the camera action needs a location platform and a fix', (
+    tester,
+  ) async {
+    // Desktop Linux: no location support, so the cluster (and the camera
+    // with it) is not offered at all.
+    final model = await createModel(createRoot(), FakePhotoSource());
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: createCache(),
+      locationSupported: false,
+    );
+    await tester.pump();
+    expect(find.byIcon(Icons.photo_camera_outlined), findsNothing);
+    expect(find.byKey(const ValueKey('camera-button')), findsNothing);
+  });
+
+  testWidgets('the camera action appears once a real fix exists', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource();
+    final model = await createModel(root, source);
+    mockGeolocator(
+      tester,
+      permission: 3,
+      // A fix that never arrives yet: the cluster is there (recording
+      // waits too), the camera button is not.
+      position: null,
+    );
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('record-cluster')), findsOneWidget);
+    expect(find.byKey(const ValueKey('camera-button')), findsNothing,
+        reason: 'no fix, nothing to tag a photo with');
+
+    // The silent retry timer or a locate brings the fix in; here the
+    // page's own locate action does, through the mocked channel.
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
+    await tester.tap(find.byTooltip('Center on current position'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('camera-button')), findsOneWidget);
+    expect(find.text('Camera'), findsOneWidget);
+  });
+
+  testWidgets('the camera action saves a photo and says so', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(3)));
+    final model = await createModel(root, source);
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('camera-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(source.captures, 1);
+    expect(model.photos, hasLength(1));
+    // The silent startup fix is what tags it: no second GPS request.
+    expect(model.photos.single.lat, 52.5200);
+    expect(model.photos.single.lon, 13.4050);
+    expect(find.text('Photo added to the map'), findsOneWidget);
+  });
+
+  testWidgets('a declined capture says so and stores nothing', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(); // declined by default
+    final model = await createModel(root, source);
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('camera-button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(model.photos, isEmpty);
+    expect(find.text('No photo taken'), findsOneWidget);
   });
 }
 

@@ -207,10 +207,11 @@ class MapControlPill extends StatelessWidget {
   }
 }
 
-/// The record cluster pill: the record button with Stop directly above it
-/// once paused (and while running). It sits on the map edge *opposite*
-/// the [MapControlPill], vertically centered — big and away from the
-/// other controls, sized for a handlebar mount (see `MapPage`).
+/// The record cluster pill: the camera action on top, then the record
+/// button with Stop directly above it once paused (and while running). It
+/// sits on the map edge *opposite* the [MapControlPill], vertically
+/// centered — big and away from the other controls, sized for a handlebar
+/// mount (see `MapPage`).
 ///
 /// The record slot only shows once a session could actually start: the
 /// page passes [gpsWorking] (a real fix arrived via its silent poll or a
@@ -219,13 +220,27 @@ class MapControlPill extends StatelessWidget {
 /// reads Resume and a Stop action appears before it, asking the track's
 /// name before it finalizes (discarding from the same dialog is
 /// two-step, confirmed).
+///
+/// The camera action rides the same gate: with no fix there is nothing to
+/// tag a photo with, so the button would be a dead one. It stays while a
+/// session runs (a photo on a ride is the point) and its position is the
+/// session's live fix then (see `MapPage._takePhoto`).
 class RecordCluster extends StatefulWidget {
-  const RecordCluster({super.key, required this.model, required this.gpsWorking});
+  const RecordCluster({
+    super.key,
+    required this.model,
+    required this.gpsWorking,
+    this.onTakePhoto,
+  });
 
   final AppModel model;
 
   /// True once a real position fix has arrived on this device.
   final bool gpsWorking;
+
+  /// The camera action; null hides the button (a platform without a
+  /// camera path, or no fix to tag a photo with).
+  final VoidCallback? onTakePhoto;
 
   @override
   RecordClusterState createState() => RecordClusterState();
@@ -345,6 +360,16 @@ class RecordClusterState extends State<RecordCluster> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (widget.onTakePhoto != null)
+              HeaderAction(
+                key: const ValueKey('camera-button'),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: strings.cameraLabel,
+                tooltip: strings.cameraTooltip,
+                onTap: widget.onTakePhoto,
+                width: 56,
+                iconSize: 24,
+              ),
             if (recording)
               HeaderAction(
                 icon: const Icon(Icons.stop),

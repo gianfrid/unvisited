@@ -6,24 +6,6 @@ import 'package:unvisited/ui/app_model.dart';
 
 import 'helpers.dart';
 
-/// A capture source the tests drive by hand.
-class FakePhotoSource implements PhotoSource {
-  FakePhotoSource(this._outcome);
-
-  PhotoCaptureOutcome _outcome;
-  int captures = 0;
-
-  set outcome(PhotoCaptureOutcome value) => _outcome = value;
-
-  @override
-  Future<PhotoCaptureOutcome> capture() async {
-    captures++;
-    return _outcome;
-  }
-}
-
-List<int> jpeg([int seed = 1]) => [0xFF, 0xD8, 0xFF, 0xE0, ...List.filled(16, seed)];
-
 void main() {
   late FakePhotoSource source;
   late AppModel model;
@@ -39,7 +21,7 @@ void main() {
 
   group('takePhoto', () {
     test('saves the captured bytes at the given position', () async {
-      source.outcome = PhotoCaptureSucceeded(jpeg());
+    source.outcome = PhotoCaptureSucceeded(jpegBytes());
       final when = DateTime.utc(2026, 11, 24, 9, 15);
       var notified = 0;
       model.addListener(() => notified++);
@@ -55,7 +37,7 @@ void main() {
       expect(photo.lon, 9.19);
       expect(photo.takenAt, when);
       expect(model.photos, hasLength(1));
-      expect(store.photoFileFor(photo).readAsBytesSync(), jpeg());
+      expect(store.photoFileFor(photo).readAsBytesSync(), jpegBytes());
       expect(notified, 1,
           reason: 'the new pin mounts off one catalog notification');
       expect(source.captures, 1);
@@ -85,7 +67,7 @@ void main() {
     });
 
     test('a repeated identical capture keeps the stored entry', () async {
-      source.outcome = PhotoCaptureSucceeded(jpeg(9));
+      source.outcome = PhotoCaptureSucceeded(jpegBytes(9));
       final first = await model.takePhoto(const LatLng(1, 2));
 
       final second = await model.takePhoto(const LatLng(3, 4));
@@ -104,7 +86,7 @@ void main() {
     late StoredPhoto photo;
 
     setUp(() async {
-      source.outcome = PhotoCaptureSucceeded(jpeg(5));
+      source.outcome = PhotoCaptureSucceeded(jpegBytes(5));
       final result = await model.takePhoto(const LatLng(45.0, 9.0));
       photo = (result as PhotoAdded).photo;
     });

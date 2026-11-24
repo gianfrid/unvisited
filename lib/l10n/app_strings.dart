@@ -56,6 +56,18 @@ abstract class AppStrings {
   /// did nothing.
   String get recordDeclined;
 
+  /// The record cluster's camera action: takes a geotagged photo through
+  /// the system camera app, tagged with the freshest fix in hand. Shown
+  /// only where a location fix exists (and hidden by the photos setting).
+  String get cameraLabel;
+  String get cameraTooltip;
+
+  /// Camera outcomes, toasted on the map: the pin appeared, the user
+  /// backed out of the camera app (not an error), or the capture failed.
+  String get photoAdded;
+  String get photoDeclined;
+  String get photoFailed;
+
   /// The record-mode dashboard's pause action; paired with [recordLabel]'s
   /// slot. Pausing closes the current `<trkseg>` (the session's existing
   /// semantics); resuming opens the next one.
@@ -349,6 +361,16 @@ class EnglishStrings extends AppStrings {
   String get stopLabel => 'Stop';
   @override
   String get recordDeclined => 'Recording needs location permission';
+  @override
+  String get cameraLabel => 'Camera';
+  @override
+  String get cameraTooltip => 'Take a photo here';
+  @override
+  String get photoAdded => 'Photo added to the map';
+  @override
+  String get photoDeclined => 'No photo taken';
+  @override
+  String get photoFailed => 'The camera could not be opened';
   @override
   String get pauseLabel => 'Pause';
   @override
@@ -682,6 +704,16 @@ class ItalianStrings extends AppStrings {
   String get stopLabel => 'Ferma';
   @override
   String get recordDeclined => 'La registrazione richiede la posizione';
+  @override
+  String get cameraLabel => 'Foto';
+  @override
+  String get cameraTooltip => 'Scatta una foto qui';
+  @override
+  String get photoAdded => 'Foto aggiunta alla mappa';
+  @override
+  String get photoDeclined => 'Nessuna foto scattata';
+  @override
+  String get photoFailed => 'Impossibile aprire la fotocamera';
   @override
   String get pauseLabel => 'Pausa';
   @override

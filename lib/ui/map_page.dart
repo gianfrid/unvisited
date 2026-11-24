@@ -166,6 +166,13 @@ class _MapPageState extends State<MapPage> {
   /// listener) so it never points at a spot the user has left behind.
   LatLng? _locatedPosition;
 
+  /// The freshest fix obtained this run — the silent startup poll or a
+  /// Locate — never cleared by panning. Distinct from [_locatedPosition]
+  /// (whose pan-drop rule keeps the marker honest): a photo taken after
+  /// panning still tags the place the user actually is. A photo's position
+  /// is the session's live fix while recording, else this one.
+  LatLng? _latestFix;
+
   /// How far the map center may drift from [_locatedPosition] before the
   /// marker is dropped. Roughly half a city block at the locate zoom.
   static const _markerClearDistance = 50.0; // meters
@@ -678,6 +685,7 @@ class _MapPageState extends State<MapPage> {
     if (!mounted || pos == null) return;
     // The fix is real: it opens the Record button and shows the marker.
     setState(() => _locatedPosition = pos);
+    _latestFix = pos;
     _gpsWorking = true;
     _fixRetryTimer?.cancel();
     // Saved tracks fit the whole catalog; only the empty map follows the
@@ -744,6 +752,7 @@ class _MapPageState extends State<MapPage> {
       // follow — arm the follow so the next fix takes the camera over.
       if (widget.model.isRecording) _dashboardKey.currentState?.armFollow();
       setState(() => _locatedPosition = pos);
+      _latestFix = pos;
       // A deliberated locate is also evidence the GPS works: it opens the
       // Record button, no silent retry needed.
       _gpsWorking = true;
@@ -762,6 +771,45 @@ class _MapPageState extends State<MapPage> {
       // Also runs when the widget went away mid-flight; the mounted check
       // keeps setState off a disposed element.
       if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  /// The position a photo taken right now would be tagged with: the
+  /// session's live fix while recording (fresher than any cached fix),
+  /// else the latest fix this run obtained. Null when there is none — the
+  /// camera button is hidden then (nothing to tag a photo with).
+  ///
+  /// Deliberately not [_locatedPosition]: that one drops when the user
+  /// pans away (the marker's rule), while a photo still belongs where the
+  /// user is. The capture does not request a fresh fix either — a photo
+  /// press must not wait on a cold GPS; the position is editable from the
+  /// preview afterward.
+  LatLng? get _photoPosition {
+    if (widget.model.isRecording) {
+      final session = widget.model.recording;
+      final lat = session?.currentLat;
+      final lon = session?.currentLon;
+      if (lat != null && lon != null) return LatLng(lat, lon);
+    }
+    return _latestFix;
+  }
+
+  /// Camera action: capture through the model, then say what happened —
+  /// the camera app returns to the map after the shot, so without a toast
+  /// a decline and a save would look identical.
+  Future<void> _takePhoto() async {
+    final strings = AppStrings.ofContext(context);
+    final position = _photoPosition;
+    if (position == null) return; // no fix: the button is not shown
+    final result = await widget.model.takePhoto(position);
+    if (!mounted) return;
+    switch (result) {
+      case PhotoAdded():
+        _toast(strings.photoAdded);
+      case PhotoAddDeclined():
+        _toast(strings.photoDeclined);
+      case PhotoAddFailed():
+        _toast(strings.photoFailed);
     }
   }
 
@@ -1301,6 +1349,11 @@ class _MapPageState extends State<MapPage> {
                   child: RecordCluster(
                     model: widget.model,
                     gpsWorking: _gpsWorking,
+                    // The camera press is offered only with a position to
+                    // tag the photo with; on a replay-less map without a
+                    // fix there is nothing to tag, so the button stays
+                    // off rather than failing.
+                    onTakePhoto: _photoPosition != null ? _takePhoto : null,
                   ),
                 ),
               ),
