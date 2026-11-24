@@ -92,5 +92,12 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- url_launcher: opening the About card's GitHub link goes through
+             ACTION_VIEW on an https URL; the query lets the resolver see
+             browsers under Android 11+ package visibility. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
     </queries>
 </manifest>

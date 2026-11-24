@@ -119,6 +119,10 @@ abstract class AppStrings {
   String get settingsTitle;
   String get aboutDescription;
   String buildDate(String date);
+
+  /// The About card's link to the project repository; the URL is the
+  /// const [repoUrl] in settings_sheet.dart, not a translated string.
+  String get githubRepository;
   String get trackColor;
   String get trackColorSubtitle;
   String get controlSide;
@@ -431,6 +435,8 @@ class EnglishStrings extends AppStrings {
       'map tiles are fetched.';
   @override
   String buildDate(String date) => 'Build date: $date';
+  @override
+  String get githubRepository => 'GitHub repository';
   @override
   String get trackColor => 'Trace color';
   @override
@@ -769,6 +775,8 @@ class ItalianStrings extends AppStrings {
       'dispositivo; solo i riquadri della mappa vengono scaricati.';
   @override
   String buildDate(String date) => 'Data di build: $date';
+  @override
+  String get githubRepository => 'Repository GitHub';
   @override
   String get trackColor => 'Colore della traccia';
   @override

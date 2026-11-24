@@ -9,12 +9,29 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../build_version.dart';
 import '../debug_log.dart';
 import '../l10n/app_strings.dart';
 import 'app_model.dart';
 import 'track_colors.dart';
+
+/// The project's GitHub page, opened from the About card by the link row.
+/// Shown as the row's URL; the localized name is [AppStrings.githubRepository].
+const repoUrl = 'https://github.com/gianfrid/unvisited';
+
+/// Opens [url] in the system browser (`LINKS_AND_TEXT` would prefer an
+/// in-app web view on Android; a repository page reads best in a browser).
+/// A launch failure (no handler configured) is swallowed: the link row is
+/// an aid, not a flow that needs error UI.
+Future<void> _openUrl(String url) async {
+  try {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } on Exception {
+    // No browser/handler available; nothing to fall back to.
+  }
+}
 
 /// Bottom sheet hosting all app settings: an About card (build date), the
 /// map appearance controls and the destructive delete-all entry.
@@ -72,6 +89,12 @@ class SettingsSheet extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodySmall
                             ?.copyWith(color: Theme.of(context).hintColor),
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => _openUrl(repoUrl),
+                      icon: const Icon(Icons.open_in_new, size: 18),
+                      label: Text(strings.githubRepository),
                     ),
                   ],
                 ),

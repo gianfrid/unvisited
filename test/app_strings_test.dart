@@ -53,6 +53,7 @@ Map<String, String> allStrings(AppStrings s) => {
       'rotationModeNorth': s.rotationModeNorth,
       'rotationModeCourse': s.rotationModeCourse,
       'buildDate': s.buildDate('2026-11-12 17:41'),
+      'githubRepository': s.githubRepository,
       'trackColor': s.trackColor,
       'trackColorSubtitle': s.trackColorSubtitle,
       'controlSide': s.controlSide,

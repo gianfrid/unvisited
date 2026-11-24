@@ -2896,6 +2896,7 @@ void main() {
       reason: 'the app-bar title is gone; only the About card names it',
     );
     expect(find.text('Build date: 2026-11-12 17:41'), findsOneWidget);
+    expect(find.text('GitHub repository'), findsOneWidget);
     expect(find.text('Delete all tracks'), findsOneWidget);
     expect(find.text('1 stored'), findsOneWidget);
   });
@@ -3531,7 +3532,10 @@ void main() {
     expect(find.text('Left'), findsOneWidget);
     expect(find.text('Right'), findsOneWidget);
 
-    // A trace tint pick persists in the index...
+    // A trace tint pick persists in the index... (the About card's GitHub
+    // link row grew the sheet; the swatch can land below the fold).
+    await tester.ensureVisible(find.byTooltip('Blue'));
+    await tester.pump();
     await tester.tap(find.byTooltip('Blue'));
     await tester.pump();
     expect(model.recordingTint, 'blue');
