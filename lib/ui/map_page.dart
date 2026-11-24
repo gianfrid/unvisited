@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,35 @@ import 'road_coverage_chip.dart';
 import 'settings_sheet.dart';
 import 'track_colors.dart';
 import 'track_list.dart';
+
+/// The little triangle connecting the member bubble to the tapped point.
+class _LeaderTipPainter extends CustomPainter {
+  _LeaderTipPainter(this.color, {required this.down});
+
+  final Color color;
+  final bool down;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    final path = ui.Path();
+    if (down) {
+      path.moveTo(0, 0);
+      path.lineTo(size.width, 0);
+      path.lineTo(size.width / 2, size.height);
+    } else {
+      path.moveTo(size.width / 2, 0);
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LeaderTipPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.down != down;
+}
 
 /// One member lane in member-picking mode: as drawn and hit-tested —
 /// decimated, segment-split, and offset sideways by its lane index.
@@ -668,10 +698,10 @@ class _MapPageState extends State<MapPage> {
     _lastPickCandidateIds = ids;
     _cycleIndex = index;
     model.pickMember(candidates[index].$1);
-    // The bubble floats fully above the tap point (its fixed height plus
-    // a leader gap), so the spot stays tappable — a repeated tap there
-    // cycles coincident lanes instead of hitting the bubble.
-    _bubbleAt = offset + const Offset(0, -170);
+    // The bubble anchors itself above the tap point (see _memberBubble),
+    // so the spot stays tappable — a repeated tap there cycles coincident
+    // lanes instead of hitting the bubble.
+    _bubbleAt = offset;
     setState(() {});
   }
 
@@ -751,73 +781,101 @@ class _MapPageState extends State<MapPage> {
     final color = exploredAreaColor(
       model.memberAssignments[id]?.tintKey ?? defaultTintKey,
     ).withValues(alpha: 1);
-    // Clamp inside the map's bounds so the bubble never leaves the view.
+    // Clamp horizontally inside the map's bounds; anchor vertically by
+    // the bottom edge 10 px above the tap point (so the card sizes to its
+    // content and the gap is constant), flipping below the tap near the
+    // top edge. The leader tip points at the tap.
     final size = _mapController.camera.size;
-    const bubbleW = 240.0, bubbleH = 170.0;
+    const bubbleW = 240.0;
+    const gap = 10.0;
+    const maxBubbleH = 170.0; // tallest content (two buttons), for the flip
     final dx =
         pos.dx.clamp(4.0, math.max(size.width - bubbleW - 4, 4)).toDouble();
-    final dy =
-        pos.dy.clamp(4.0, math.max(size.height - bubbleH - 4, 4)).toDouble();
+    final above = pos.dy > maxBubbleH + gap;
     return Positioned(
       key: const ValueKey('member-bubble'),
       left: dx,
-      top: dy,
       width: bubbleW,
-      child: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(12),
-        color: scheme.surface,
-        child: SizedBox(
-          height: 158,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-              Row(
+      bottom: above ? size.height - pos.dy + gap : null,
+      top: above ? null : pos.dy + gap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!above) _leaderTip(scheme.surface, pos.dx - dx, down: false),
+          Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(12),
+            color: scheme.surface,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: t.visible ? color : Colors.grey,
-                      shape: BoxShape.circle,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: t.visible ? color : Colors.grey,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          t.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      t.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                  const SizedBox(height: 4),
+                  if (t.visible) ...[
+                    TextButton(
+                      key: const ValueKey('member-bubble-hide'),
+                      onPressed: () => model.hidePickedMember(),
+                      child: Text(strings.memberPickHide),
                     ),
-                  ),
+                    TextButton(
+                      key: const ValueKey('member-bubble-hide-others'),
+                      onPressed: () => model.showOnlyPickedMember(),
+                      child: Text(strings.memberPickHideOthers),
+                    ),
+                  ] else
+                    TextButton(
+                      key: const ValueKey('member-bubble-show'),
+                      onPressed: () => model.showPickedMember(),
+                      child: Text(strings.memberPickShow),
+                    ),
                 ],
               ),
-              const SizedBox(height: 4),
-              if (t.visible) ...[
-                TextButton(
-                  key: const ValueKey('member-bubble-hide'),
-                  onPressed: () => model.hidePickedMember(),
-                  child: Text(strings.memberPickHide),
-                ),
-                TextButton(
-                  key: const ValueKey('member-bubble-hide-others'),
-                  onPressed: () => model.showOnlyPickedMember(),
-                  child: Text(strings.memberPickHideOthers),
-                ),
-              ] else
-                TextButton(
-                  key: const ValueKey('member-bubble-show'),
-                  onPressed: () => model.showPickedMember(),
-                  child: Text(strings.memberPickShow),
-                ),
-              ],
             ),
           ),
-        ),
+          if (above) _leaderTip(scheme.surface, pos.dx - dx, down: true),
+        ],
+      ),
+    );
+  }
+
+  /// The leader triangle under (or above, when flipped) the bubble card,
+  /// its tip at the tap x clamped into the card's width.
+  Widget _leaderTip(Color color, double tipOffsetX, {required bool down}) {
+    const bubbleW = 240.0;
+    return SizedBox(
+      height: 8,
+      child: Row(
+        children: [
+          SizedBox(
+              width: tipOffsetX.clamp(8.0, bubbleW - 24).toDouble() - 8),
+          CustomPaint(
+            size: const Size(16, 8),
+            painter: _LeaderTipPainter(color, down: down),
+          ),
+        ],
       ),
     );
   }
