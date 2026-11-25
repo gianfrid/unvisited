@@ -16,3 +16,14 @@ String formatDuration(Duration d) => d.inHours > 0
           '${d.inSeconds.remainder(60).toString().padLeft(2, '0')}'
     : '${d.inMinutes.remainder(60).toString().padLeft(2, '0')}:'
           '${d.inSeconds.remainder(60).toString().padLeft(2, '0')}';
+
+/// Compact local date-time for the photo preview's caption:
+/// `yyyy-MM-dd HH:mm`. Locale-independent on purpose — the app's own
+/// strings are hand-rolled, and a numeric stamp reads the same in every
+/// supported language.
+String formatDateTime(DateTime d) {
+  final l = d.toLocal();
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${l.year}-${two(l.month)}-${two(l.day)} '
+      '${two(l.hour)}:${two(l.minute)}';
+}

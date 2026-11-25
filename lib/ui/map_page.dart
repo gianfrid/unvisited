@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart';
+import '../storage/track_store.dart' show StoredPhoto;
 import '../recording/recording_session.dart';
 import '../tile_source.dart';
 import 'app_model.dart';
@@ -16,6 +17,7 @@ import 'fog_of_war.dart';
 import 'ink_stroke.dart';
 import 'map_actions.dart';
 import 'map_controls.dart';
+import 'photo_preview.dart';
 import 'playback_dashboard.dart';
 import 'recording_dashboard.dart';
 import 'road_coverage_chip.dart';
@@ -483,11 +485,35 @@ class _MapPageState extends State<MapPage> {
 
   void _onMapTap(LatLng tap) {
     if (widget.model.isRecording) return; // the recording UI owns taps then
+    // A photo pin wins over aggregate selection: its tap opens the
+    // preview (flutter_map's gesture layer sits above marker children,
+    // so pins are not individually tappable — the map tap with the same
+    // tolerance is the pin's tap).
+    final photo = _nearestPhoto(tap);
+    if (photo != null) {
+      _showPhotoPreview(photo);
+      return;
+    }
     widget.model.selectAggregateAt(
       tap,
       toleranceMeters: _hitToleranceMeters(tap),
       clearIfMiss: widget.model.selectedAnchor != null,
     );
+  }
+
+  /// The photo whose pin is within tap tolerance of [tap], nearest first,
+  /// or null. Same tolerance as aggregate selection (~24 screen px).
+  StoredPhoto? _nearestPhoto(LatLng tap) {
+    StoredPhoto? best;
+    var bestDist = _hitToleranceMeters(tap);
+    for (final p in widget.model.photos) {
+      final d = const Distance().distance(tap, LatLng(p.lat, p.lon));
+      if (d <= bestDist) {
+        best = p;
+        bestDist = d;
+      }
+    }
+    return best;
   }
 
   /// The selected aggregate's highlight, in the active fog style so the
@@ -655,6 +681,63 @@ class _MapPageState extends State<MapPage> {
         },
       ),
     ];
+  }
+
+  /// The photo pins: one disc per cataloged photo, in the surface color
+  /// with the primary border (the recording marker's look, smaller),
+  /// above the fog and corridors so they read as annotations of visited
+  /// places. Each pin's tap opens its preview dialog. Photo markers stay
+  /// during recordings and replays — they are catalog state, not session
+  /// state.
+  List<Widget> _photoMarkerLayers() {
+    final photos = widget.model.photos;
+    if (photos.isEmpty) return const [];
+    final scheme = Theme.of(context).colorScheme;
+    return [
+      MarkerLayer(
+        markers: [
+          for (final p in photos)
+            Marker(
+              key: ValueKey('photo-marker-${p.id}'),
+              point: LatLng(p.lat, p.lon),
+              width: 36,
+              height: 36,
+              // Not individually tappable (the map's gesture layer sits
+              // above marker children) — the map tap routes here via
+              // _onMapTap's nearest-photo check.
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: scheme.surface,
+                    border: Border.all(color: scheme.primary, width: 2),
+                    boxShadow: const [
+                      BoxShadow(blurRadius: 4, color: Colors.black38),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.photo_camera_outlined,
+                    size: 22,
+                    color: scheme.primary,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  /// Opens the photo's preview dialog (image, capture time, gallery
+  /// export, share, delete).
+  void _showPhotoPreview(StoredPhoto photo) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => PhotoPreviewDialog(
+        model: widget.model,
+        photo: photo,
+      ),
+    );
   }
 
   /// Re-arms whichever follow-camera is active and re-centers on its
@@ -1237,6 +1320,8 @@ class _MapPageState extends State<MapPage> {
               // selection reads on top of the overlay.
               if (widget.model.selectedAnchor != null)
                 ..._selectionHighlightLayers(),
+              // The photo pins, above the fog and corridors.
+              ..._photoMarkerLayers(),
               // The live recording trace: the session's accepted fixes as
               // polylines, translucent in a fixed recording red — outside
               // the catalog tint family, clearly in-progress. Above the

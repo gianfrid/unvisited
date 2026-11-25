@@ -18,6 +18,7 @@ import '../host_channel.dart' show hostChannel;
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart' show TrackPlayback;
 import '../photos/image_picker_source.dart';
+import '../photos/photo_export.dart';
 import '../photos/photo_source.dart';
 import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_coverage.dart';
@@ -898,6 +899,22 @@ class AppModel extends ChangeNotifier {
     await store.removePhoto(photo);
     notifyListeners();
   }
+
+  /// User-initiated gallery export of a photo (the preview's Save to
+  /// gallery): a MediaStore copy of the app's own file through the host
+  /// channel. True when the gallery accepted it. The stored photo is
+  /// untouched either way.
+  Future<bool> savePhotoToGallery(StoredPhoto photo) =>
+      savePhotoToGalleryFile(
+        store.photoFileFor(photo).path,
+        photo.file,
+      );
+
+  /// Opens the system share sheet for a photo (the preview's Share):
+  /// ACTION_SEND over the app's FileProvider. Fire-and-forget — the
+  /// receiving app's outcome is not reported back.
+  Future<void> sharePhoto(StoredPhoto photo) =>
+      sharePhotoFile(store.photoFileFor(photo).path);
 
   /// Moves a photo to a corrected position (the preview's Reposition
   /// action settled on a map tap) and persists it.

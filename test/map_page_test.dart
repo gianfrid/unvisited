@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/l10n/app_strings.dart';
 import 'package:unvisited/photos/photo_source.dart' show PhotoCaptureSucceeded;
+import 'package:unvisited/ui/photo_preview.dart';
 import 'package:unvisited/recording/position_source.dart' show PositionFix;
 import 'package:unvisited/recording/recording_session.dart' show RecordingState;
 import 'package:unvisited/storage/track_store.dart';
@@ -4348,6 +4349,140 @@ void main() {
     expect(model.photos, isEmpty);
     expect(find.text('No photo taken'), findsOneWidget);
   });
+
+  testWidgets('photo pins show on the map and open the preview on tap', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(11)));
+    final model = await createModel(root, source);
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    // Off the map center: with an empty catalog the EmptyHint card sits
+    // centered on screen and would swallow the pin's tap.
+    final result = await model.takePhoto(
+      const LatLng(52.54, 13.43),
+      takenAt: DateTime.utc(2026, 11, 24, 9, 15),
+    );
+    final photo = (result as PhotoAdded).photo;
+    await tester.pump();
+
+    // The pin mounts off the model's catalog notification.
+    expect(
+      find.byKey(ValueKey('photo-marker-${photo.id}')),
+      findsOneWidget,
+    );
+
+    await _tapMapAt(tester, const LatLng(52.54, 13.43));
+    await tester.pump();
+    await tester.pump();
+
+    // The preview shows the stored image and the capture stamp.
+    expect(find.byType(PhotoPreviewDialog), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.textContaining('Taken 2026-11-24'), findsOneWidget);
+    expect(find.text('Save to gallery'), findsOneWidget);
+    expect(find.text('Share'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+  });
+
+  testWidgets('the preview delete asks first, then removes the photo', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(12)));
+    final model = await createModel(root, source);
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    final photo = (await model.takePhoto(const LatLng(52.54, 13.43),
+            takenAt: DateTime.utc(2026, 11, 24)) as PhotoAdded)
+        .photo;
+    await tester.pump();
+
+    await _tapMapAt(tester, const LatLng(52.54, 13.43));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('photo-delete')));
+    await tester.pump();
+    await tester.pump();
+
+    // The two-step confirm is up; nothing is deleted yet.
+    expect(model.photos, hasLength(1));
+    expect(find.byKey(const ValueKey('photo-delete-confirm')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('photo-delete-confirm')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(model.photos, isEmpty);
+    expect(model.store.photoFileFor(photo).existsSync(), isFalse);
+    // The dialog closed with the deletion and the pin is gone.
+    expect(find.byType(PhotoPreviewDialog), findsNothing);
+    expect(find.byKey(ValueKey('photo-marker-${photo.id}')), findsNothing);
+  });
+
+  testWidgets('save to gallery reports its failure off-Android', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(13)));
+    final model = await createModel(root, source);
+    // The host channel has no native side in a widget test; without a
+    // mock the invokeMethod future never completes in the fake-async zone.
+    // Answer it the way a platform without a gallery would: an error.
+    const host = MethodChannel('unvisited/host');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      host,
+      (call) async => throw PlatformException(
+        code: 'save_failed',
+        message: 'no gallery host in tests',
+      ),
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(host, null);
+    });
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await model.takePhoto(const LatLng(52.54, 13.43),
+        takenAt: DateTime.utc(2026, 11, 24));
+    await tester.pump();
+
+    await _tapMapAt(tester, const LatLng(52.54, 13.43));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('photo-save-to-gallery')));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    // No gallery host on the desktop/test platform: the toast says so,
+    // the stored photo stays.
+    expect(find.text('Could not save to the gallery'), findsOneWidget);
+    expect(model.photos, hasLength(1));
+  });
+}
+
+/// Taps the map at [latLng]'s screen position (photo pins open through
+/// the map tap, not a marker-child gesture). The tap detector waits out
+/// the double-tap window before firing onTap, so pump past it.
+Future<void> _tapMapAt(WidgetTester tester, LatLng latLng) async {
+  final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+  final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+  await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(latLng));
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
 }
 
 /// The map's dashed (unvisited-roads) polylines - every other polyline

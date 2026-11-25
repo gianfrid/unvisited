@@ -68,6 +68,17 @@ abstract class AppStrings {
   String get photoDeclined;
   String get photoFailed;
 
+  /// The photo preview dialog: its caption stamps the capture time, its
+  /// actions offer the gallery export, the share sheet, and deletion —
+  /// deletion asks first, like the recording's discard.
+  String photoTakenAt(String date);
+  String get photoSaveToGallery;
+  String get photoSavedToGallery;
+  String get photoSaveFailed;
+  String get photoShare;
+  String get photoDelete;
+  String get photoDeleteConfirmTitle;
+
   /// The record-mode dashboard's pause action; paired with [recordLabel]'s
   /// slot. Pausing closes the current `<trkseg>` (the session's existing
   /// semantics); resuming opens the next one.
@@ -214,6 +225,7 @@ abstract class AppStrings {
   String get deleteAllTracksQuestion;
   String deleteAllTracksBody(int count);
   String get cancel;
+  String get close;
   String get delete;
   String get allTracksDeleted;
 
@@ -371,6 +383,21 @@ class EnglishStrings extends AppStrings {
   String get photoDeclined => 'No photo taken';
   @override
   String get photoFailed => 'The camera could not be opened';
+  @override
+  String photoTakenAt(String date) => 'Taken $date';
+  @override
+  String get photoSaveToGallery => 'Save to gallery';
+  @override
+  String get photoSavedToGallery => 'Saved to the gallery';
+  @override
+  String get photoSaveFailed => 'Could not save to the gallery';
+  @override
+  String get photoShare => 'Share';
+  @override
+  String get photoDelete => 'Delete';
+  @override
+  String get photoDeleteConfirmTitle =>
+      'Delete this photo? The file is removed from the app.';
   @override
   String get pauseLabel => 'Pause';
   @override
@@ -584,6 +611,8 @@ class EnglishStrings extends AppStrings {
   @override
   String get cancel => 'Cancel';
   @override
+  String get close => 'Close';
+  @override
   String get delete => 'Delete';
   @override
   String get allTracksDeleted => 'All tracks deleted';
@@ -714,6 +743,21 @@ class ItalianStrings extends AppStrings {
   String get photoDeclined => 'Nessuna foto scattata';
   @override
   String get photoFailed => 'Impossibile aprire la fotocamera';
+  @override
+  String photoTakenAt(String date) => 'Scattata il $date';
+  @override
+  String get photoSaveToGallery => 'Salva nella galleria';
+  @override
+  String get photoSavedToGallery => 'Salvata nella galleria';
+  @override
+  String get photoSaveFailed => 'Impossibile salvare nella galleria';
+  @override
+  String get photoShare => 'Condividi';
+  @override
+  String get photoDelete => 'Elimina';
+  @override
+  String get photoDeleteConfirmTitle =>
+      'Eliminare questa foto? Il file viene rimosso dall\'app.';
   @override
   String get pauseLabel => 'Pausa';
   @override
@@ -936,6 +980,8 @@ class ItalianStrings extends AppStrings {
       'I file originali da cui le hai importate non vengono toccati.';
   @override
   String get cancel => 'Annulla';
+  @override
+  String get close => 'Chiudi';
   @override
   String get delete => 'Elimina';
   @override
