@@ -471,6 +471,11 @@ class _MapPageState extends State<MapPage> {
         );
       }
     }
+    // A session starting takes over map taps: cancel any pending
+    // photo reposition rather than leave a mode nothing will answer.
+    if (widget.model.isRecording && _repositioningPhoto != null) {
+      _repositioningPhoto = null;
+    }
     setState(() {});
   }
 
@@ -483,7 +488,21 @@ class _MapPageState extends State<MapPage> {
         latitude: tap.latitude,
       );
 
+  /// The photo currently being repositioned (the preview's Reposition
+  /// action armed this): the next map tap sets its position. Null
+  /// otherwise. Cleared when a recording session starts — the recording
+  /// UI owns map taps then.
+  StoredPhoto? _repositioningPhoto;
+
   void _onMapTap(LatLng tap) {
+    // Reposition mode first: the next tap is the photo's new position,
+    // not an aggregate selection.
+    final repositioning = _repositioningPhoto;
+    if (repositioning != null) {
+      setState(() => _repositioningPhoto = null);
+      unawaited(widget.model.repositionPhoto(repositioning, tap));
+      return;
+    }
     if (widget.model.isRecording) return; // the recording UI owns taps then
     // A photo pin wins over aggregate selection: its tap opens the
     // preview (flutter_map's gesture layer sits above marker children,
@@ -728,16 +747,20 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
-  /// Opens the photo's preview dialog (image, capture time, gallery
-  /// export, share, delete).
-  void _showPhotoPreview(StoredPhoto photo) {
-    showDialog<void>(
+  /// Opens the photo's preview dialog (image, capture time, reposition,
+  /// gallery export, share, delete). A 'reposition' result arms the
+  /// tap-to-move mode: the next map tap lands the photo there.
+  Future<void> _showPhotoPreview(StoredPhoto photo) async {
+    final action = await showDialog<String>(
       context: context,
       builder: (context) => PhotoPreviewDialog(
         model: widget.model,
         photo: photo,
       ),
     );
+    if (action == PhotoPreviewDialog.repositionResult && mounted) {
+      setState(() => _repositioningPhoto = photo);
+    }
   }
 
   /// Re-arms whichever follow-camera is active and re-centers on its
@@ -1463,6 +1486,38 @@ class _MapPageState extends State<MapPage> {
                     onImport: _chooseImport,
                     onOpenSettings: _openSettings,
                   ),
+                  // Reposition mode's banner: below the toolbar, one row —
+                  // the instruction and a Cancel that leaves the photo
+                  // where it was.
+                  if (_repositioningPhoto != null) ...[
+                    const SizedBox(height: 8),
+                    Card(
+                      key: const ValueKey('reposition-banner'),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                strings.photoRepositionHint,
+                                maxLines: 2,
+                              ),
+                            ),
+                            TextButton(
+                              key: const ValueKey('reposition-cancel'),
+                              onPressed: () =>
+                                  setState(() => _repositioningPhoto = null),
+                              child: Text(strings.cancel),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

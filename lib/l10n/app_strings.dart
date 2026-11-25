@@ -79,6 +79,12 @@ abstract class AppStrings {
   String get photoDelete;
   String get photoDeleteConfirmTitle;
 
+  /// Repositioning a photo: the preview's Reposition action arms a
+  /// tap-to-move mode — the banner says where the next map tap lands the
+  /// photo, and Cancel leaves it where it was.
+  String get photoReposition;
+  String get photoRepositionHint;
+
   /// The record-mode dashboard's pause action; paired with [recordLabel]'s
   /// slot. Pausing closes the current `<trkseg>` (the session's existing
   /// semantics); resuming opens the next one.
@@ -398,6 +404,11 @@ class EnglishStrings extends AppStrings {
   @override
   String get photoDeleteConfirmTitle =>
       'Delete this photo? The file is removed from the app.';
+  @override
+  String get photoReposition => 'Reposition';
+  @override
+  String get photoRepositionHint =>
+      'Tap on the map where the photo was taken';
   @override
   String get pauseLabel => 'Pause';
   @override
@@ -758,6 +769,11 @@ class ItalianStrings extends AppStrings {
   @override
   String get photoDeleteConfirmTitle =>
       'Eliminare questa foto? Il file viene rimosso dall\'app.';
+  @override
+  String get photoReposition => 'Riposiziona';
+  @override
+  String get photoRepositionHint =>
+      'Tocca la mappa dove è stata scattata la foto';
   @override
   String get pauseLabel => 'Pausa';
   @override

@@ -4472,6 +4472,85 @@ void main() {
     expect(find.text('Could not save to the gallery'), findsOneWidget);
     expect(model.photos, hasLength(1));
   });
+
+  testWidgets('reposition arms tap-to-move and the next map tap lands the photo', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(14)));
+    final model = await createModel(root, source);
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await model.takePhoto(const LatLng(52.54, 13.43),
+        takenAt: DateTime.utc(2026, 11, 24));
+    await tester.pump();
+
+    // Preview -> Reposition: the dialog closes and the banner arms.
+    await _tapMapAt(tester, const LatLng(52.54, 13.43));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(PhotoPreviewDialog), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('photo-reposition')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(PhotoPreviewDialog), findsNothing);
+    expect(find.byKey(const ValueKey('reposition-banner')), findsOneWidget);
+    expect(
+      find.text('Tap on the map where the photo was taken'),
+      findsOneWidget,
+    );
+
+    // The next map tap moves the pin (and persists through the store).
+    await _tapMapAt(tester, const LatLng(52.53, 13.44));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('reposition-banner')), findsNothing);
+    expect(model.photos.single.lat, closeTo(52.53, 1e-9));
+    expect(model.photos.single.lon, closeTo(13.44, 1e-9));
+    final reopened = await createModel(root, source);
+    expect(reopened.photos.single.lat, closeTo(52.53, 1e-9));
+  });
+
+  testWidgets('reposition cancel leaves the photo where it was', (tester) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(15)));
+    final model = await createModel(root, source);
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await model.takePhoto(const LatLng(52.54, 13.43),
+        takenAt: DateTime.utc(2026, 11, 24));
+    await tester.pump();
+
+    await _tapMapAt(tester, const LatLng(52.54, 13.43));
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('photo-reposition')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('reposition-banner')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('reposition-cancel')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('reposition-banner')), findsNothing);
+    expect(model.photos.single.lat, closeTo(52.54, 1e-9));
+
+    // With the mode cancelled, a map tap no longer repositions (it goes
+    // back to aggregate selection, a no-op on an empty catalog).
+    await _tapMapAt(tester, const LatLng(52.53, 13.44));
+    await tester.pump();
+    expect(model.photos.single.lat, closeTo(52.54, 1e-9));
+  });
 }
 
 /// Taps the map at [latLng]'s screen position (photo pins open through

@@ -26,6 +26,10 @@ class PhotoPreviewDialog extends StatelessWidget {
   final AppModel model;
   final StoredPhoto photo;
 
+  /// The dialog's result: 'reposition' when its Reposition action was
+  /// tapped (the page then arms tap-to-move mode), null otherwise.
+  static const repositionResult = 'reposition';
+
   /// Delete: two-step — the confirm dialog first, then the removal.
   Future<void> _delete(BuildContext context) async {
     final strings = AppStrings.ofContext(context);
@@ -85,6 +89,11 @@ class PhotoPreviewDialog extends StatelessWidget {
         ),
       ),
       actions: [
+        TextButton(
+          key: const ValueKey('photo-reposition'),
+          onPressed: () => Navigator.of(context).pop(repositionResult),
+          child: Text(strings.photoReposition),
+        ),
         TextButton(
           key: const ValueKey('photo-save-to-gallery'),
           onPressed: () => _saveToGallery(context),
