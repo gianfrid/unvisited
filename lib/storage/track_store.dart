@@ -268,6 +268,7 @@ class AppSettings {
     this.keepScreenOn = true,
     this.debugLogging = false,
     this.showUnvisitedRoads = true,
+    this.photos = true,
     this.roadsFile,
     this.aggregateColors = const {},
   });
@@ -318,6 +319,11 @@ class AppSettings {
   /// geometry decode per settle — and both disappear from the map.
   final bool showUnvisitedRoads;
 
+  /// Whether the geotagged-photos feature is on (Settings -> "Photos",
+  /// default on): the camera button and the photo pins. While off both
+  /// hide; stored photos are kept and come back when it is re-enabled.
+  final bool photos;
+
   /// The side-loaded road region file's *name* (relative to `roads/` under
   /// the root), or null when none is set. The app owns a copy of the file;
   /// see `TrackStore.adoptRoadFile`.
@@ -353,6 +359,7 @@ class AppSettings {
         keepScreenOn: (m['keepScreenOn'] as bool?) ?? true,
         debugLogging: (m['debugLogging'] as bool?) ?? false,
         showUnvisitedRoads: (m['showUnvisitedRoads'] as bool?) ?? true,
+        photos: (m['photos'] as bool?) ?? true,
         roadsFile: m['roadsFile'] as String?,
         aggregateColors:
             (m['aggregateColors'] as Map<Object?, Object?>? ?? {})
@@ -371,6 +378,7 @@ class AppSettings {
     bool? keepScreenOn,
     bool? debugLogging,
     bool? showUnvisitedRoads,
+    bool? photos,
     String? roadsFile,
     bool clearRoadsFile = false,
     Map<String, String>? aggregateColors,
@@ -387,6 +395,7 @@ class AppSettings {
         keepScreenOn: keepScreenOn ?? this.keepScreenOn,
         debugLogging: debugLogging ?? this.debugLogging,
         showUnvisitedRoads: showUnvisitedRoads ?? this.showUnvisitedRoads,
+        photos: photos ?? this.photos,
         roadsFile:
             clearRoadsFile ? null : roadsFile ?? this.roadsFile,
         aggregateColors: aggregateColors ?? this.aggregateColors,
@@ -404,6 +413,7 @@ class AppSettings {
         'keepScreenOn': keepScreenOn,
         'debugLogging': debugLogging,
         'showUnvisitedRoads': showUnvisitedRoads,
+        'photos': photos,
         'recordingTint': recordingTint,
         if (roadsFile != null) 'roadsFile': roadsFile,
         if (aggregateColors.isNotEmpty)
@@ -479,6 +489,9 @@ class TrackStore {
 
   /// Whether the dashed unvisited-roads overlay draws (default on).
   bool get showUnvisitedRoads => _settings.showUnvisitedRoads;
+
+  /// Whether the geotagged-photos feature is on (default on).
+  bool get photosEnabled => _settings.photos;
   String? get roadsFile => _settings.roadsFile;
 
   /// Applies a new settings snapshot and persists the index.
@@ -576,6 +589,11 @@ class TrackStore {
   /// on); the coverage chip is not affected.
   Future<void> saveShowUnvisitedRoads(bool on) async =>
       _apply(_settings.copyWith(showUnvisitedRoads: on));
+
+  /// Saves whether the photos feature is enabled (default on): hides
+  /// the camera button and the pins, keeps the stored photos.
+  Future<void> savePhotosEnabled(bool on) async =>
+      _apply(_settings.copyWith(photos: on));
 
   /// Saves the live recording trace's tint key.
   Future<void> saveRecordingTint(String tint) async =>

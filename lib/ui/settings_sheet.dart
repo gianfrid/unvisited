@@ -278,6 +278,26 @@ class SettingsSheet extends StatelessWidget {
                         vertical: 0,
                       ),
                     ),
+                  // Photos: a persistent setting (default on). While off
+                  // the camera button and the photo pins hide; the stored
+                  // photos are kept and come back when re-enabled.
+                  // Android-only — the camera action only exists where a
+                  // location fix can exist, so widget tests on the desktop
+                  // host never build this row (like the battery advisory).
+                  if (Platform.isAndroid)
+                    ListTile(
+                      dense: true,
+                      title: Text(strings.photosSetting),
+                      subtitle: Text(strings.photosSettingSubtitle),
+                      trailing: Switch(
+                        value: model.photosEnabled,
+                        onChanged: (on) => model.setPhotosEnabled(on),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
+                    ),
                   // Battery optimization: Android-only, and soft — the row
                   // only reports the state and its tap opens the system
                   // page; nothing blocks, nothing is requested for the app.

@@ -127,6 +127,20 @@ void main() {
       expect(reopened.photos.map((p) => p.id), [photo.id]);
     });
 
+    test('the photos setting persists (default on)', () async {
+      final root = createRoot();
+      final store = TrackStore(root);
+      await store.load();
+      expect(store.photosEnabled, isTrue);
+
+      await store.savePhotosEnabled(false);
+      final reopened = TrackStore(root);
+      await reopened.load();
+      expect(reopened.photosEnabled, isFalse);
+      // The toggle never touches stored photos.
+      expect(reopened.photos, isEmpty);
+    });
+
     test('clearAll wipes photos and their files', () async {
       final root = createRoot();
       final store = TrackStore(root);

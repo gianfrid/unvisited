@@ -709,6 +709,9 @@ class _MapPageState extends State<MapPage> {
   /// during recordings and replays — they are catalog state, not session
   /// state.
   List<Widget> _photoMarkerLayers() {
+    // The pins hide with the photos setting; the stored photos stay in
+    // the catalog and come back when it is re-enabled.
+    if (!widget.model.photosEnabled) return const [];
     final photos = widget.model.photos;
     if (photos.isEmpty) return const [];
     final scheme = Theme.of(context).colorScheme;
@@ -1458,10 +1461,13 @@ class _MapPageState extends State<MapPage> {
                     model: widget.model,
                     gpsWorking: _gpsWorking,
                     // The camera press is offered only with a position to
-                    // tag the photo with; on a replay-less map without a
-                    // fix there is nothing to tag, so the button stays
-                    // off rather than failing.
-                    onTakePhoto: _photoPosition != null ? _takePhoto : null,
+                    // tag the photo with and the photos feature on; on a
+                    // replay-less map without a fix there is nothing to
+                    // tag, so the button stays off rather than failing.
+                    onTakePhoto: (_photoPosition != null &&
+                            widget.model.photosEnabled)
+                        ? _takePhoto
+                        : null,
                   ),
                 ),
               ),

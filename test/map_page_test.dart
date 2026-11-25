@@ -4473,6 +4473,58 @@ void main() {
     expect(model.photos, hasLength(1));
   });
 
+  testWidgets('the photos setting hides the camera button and the pins', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final source = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(16)));
+    final model = await createModel(root, source);
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
+    await tester.pump();
+    await tester.pump();
+    await model.takePhoto(const LatLng(52.54, 13.43),
+        takenAt: DateTime.utc(2026, 11, 24));
+    await tester.pump();
+
+    // On by default: button and pin are there.
+    expect(find.byKey(const ValueKey('camera-button')), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('photo-marker-${model.photos.single.id}')),
+      findsOneWidget,
+    );
+
+    await model.setPhotosEnabled(false);
+    await tester.pump();
+
+    // Off: both hide, the stored photo stays.
+    expect(find.byKey(const ValueKey('camera-button')), findsNothing);
+    expect(
+      find.byKey(ValueKey('photo-marker-${model.photos.single.id}')),
+      findsNothing,
+    );
+    expect(model.photos, hasLength(1));
+
+    // Back on: both return.
+    await model.setPhotosEnabled(true);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('camera-button')), findsOneWidget);
+    expect(
+      find.byKey(ValueKey('photo-marker-${model.photos.single.id}')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('reposition arms tap-to-move and the next map tap lands the photo', (
     tester,
   ) async {

@@ -85,6 +85,11 @@ abstract class AppStrings {
   String get photoReposition;
   String get photoRepositionHint;
 
+  /// The Settings row for the photos feature (Android-only): while off,
+  /// the camera button and the photo pins hide; stored photos are kept.
+  String get photosSetting;
+  String get photosSettingSubtitle;
+
   /// The record-mode dashboard's pause action; paired with [recordLabel]'s
   /// slot. Pausing closes the current `<trkseg>` (the session's existing
   /// semantics); resuming opens the next one.
@@ -409,6 +414,11 @@ class EnglishStrings extends AppStrings {
   @override
   String get photoRepositionHint =>
       'Tap on the map where the photo was taken';
+  @override
+  String get photosSetting => 'Photos';
+  @override
+  String get photosSettingSubtitle =>
+      'Camera button and photo pins on the map; stored photos are kept when off';
   @override
   String get pauseLabel => 'Pause';
   @override
@@ -774,6 +784,11 @@ class ItalianStrings extends AppStrings {
   @override
   String get photoRepositionHint =>
       'Tocca la mappa dove è stata scattata la foto';
+  @override
+  String get photosSetting => 'Foto';
+  @override
+  String get photosSettingSubtitle =>
+      'Pulsante fotocamera e pin sulla mappa; le foto archiviate restano anche se disattivato';
   @override
   String get pauseLabel => 'Pausa';
   @override

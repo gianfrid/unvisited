@@ -709,6 +709,17 @@ class AppModel extends ChangeNotifier {
   /// wait for the next pan.
   bool get showUnvisitedRoads => store.showUnvisitedRoads;
 
+  /// Whether the geotagged-photos feature is on (the Settings switch):
+  /// gates the camera button and the map pins. Stored photos are kept
+  /// either way.
+  bool get photosEnabled => store.photosEnabled;
+
+  Future<void> setPhotosEnabled(bool value) async {
+    if (value == photosEnabled) return;
+    await store.savePhotosEnabled(value);
+    notifyListeners();
+  }
+
   Future<void> setShowUnvisitedRoads(bool value) async {
     if (value == showUnvisitedRoads) return;
     await store.saveShowUnvisitedRoads(value);

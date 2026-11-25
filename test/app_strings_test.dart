@@ -31,6 +31,8 @@ Map<String, String> allStrings(AppStrings s) => {
       'photoDeleteConfirmTitle': s.photoDeleteConfirmTitle,
       'photoReposition': s.photoReposition,
       'photoRepositionHint': s.photoRepositionHint,
+      'photosSetting': s.photosSetting,
+      'photosSettingSubtitle': s.photosSettingSubtitle,
       'pauseLabel': s.pauseLabel,
       'resumeLabel': s.resumeLabel,
       'statAvgSpeed': s.statAvgSpeed,
