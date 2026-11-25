@@ -12,6 +12,7 @@ import 'package:unvisited/import/tcx_parser.dart';
 import 'package:unvisited/import/gpx_parser.dart';
 import 'package:unvisited/import/fit_parser.dart';
 import 'package:unvisited/models/track.dart';
+import 'package:unvisited/photos/photo_source.dart';
 import 'package:unvisited/recording/position_source.dart'
     show PositionFix, PositionSource;
 import 'package:unvisited/storage/track_store.dart';
@@ -64,12 +65,39 @@ Directory createCache() {
 }
 
 /// A loaded model on a fresh store root (or [root], when the test wants
-/// to reach under it — salvage, delete, file assertions).
-Future<AppModel> createModel([Directory? root]) async {
-  final model = AppModel(TrackStore(root ?? createRoot()));
+/// to reach under it — salvage, delete, file assertions). [photoSource]
+/// replaces the platform capture default so a widget test never touches
+/// the camera plugin.
+Future<AppModel> createModel([Directory? root, PhotoSource? photoSource]) async {
+  final model = AppModel(
+    TrackStore(root ?? createRoot()),
+    photoSource: photoSource,
+  );
   await model.load();
   return model;
 }
+
+/// A capture source the tests drive by hand: set [outcome] before the
+/// tap, count [captures] after.
+class FakePhotoSource implements PhotoSource {
+  FakePhotoSource([PhotoCaptureOutcome outcome = const PhotoCaptureDeclined()])
+      : _outcome = outcome;
+
+  PhotoCaptureOutcome _outcome;
+  int captures = 0;
+
+  set outcome(PhotoCaptureOutcome value) => _outcome = value;
+
+  @override
+  Future<PhotoCaptureOutcome> capture() async {
+    captures++;
+    return _outcome;
+  }
+}
+
+/// JPEG SOI + a blob: enough for the store's content sniff to pick `.jpg`.
+List<int> jpegBytes([int seed = 1]) =>
+    [0xFF, 0xD8, 0xFF, 0xE0, ...List.filled(16, seed)];
 
 /// Pumps the map page the way the widget tests display it: full
 /// MaterialApp in the fixed build time, the standard cache and location

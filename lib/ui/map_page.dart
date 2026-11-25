@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import '../aggregate/member_colors.dart' show MemberColorAssignment;
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart';
+import '../storage/track_store.dart' show StoredPhoto;
 import '../recording/recording_session.dart';
 import '../tile_source.dart';
 import 'app_model.dart';
@@ -19,6 +20,7 @@ import 'ink_stroke.dart';
 import 'lane_offset.dart';
 import 'map_actions.dart';
 import 'map_controls.dart';
+import 'photo_preview.dart';
 import 'playback_dashboard.dart';
 import 'recording_dashboard.dart';
 import 'road_coverage_chip.dart';
@@ -211,6 +213,13 @@ class _MapPageState extends State<MapPage> {
   /// UI state: cleared when the user pans away from it (see the map event
   /// listener) so it never points at a spot the user has left behind.
   LatLng? _locatedPosition;
+
+  /// The freshest fix obtained this run — the silent startup poll or a
+  /// Locate — never cleared by panning. Distinct from [_locatedPosition]
+  /// (whose pan-drop rule keeps the marker honest): a photo taken after
+  /// panning still tags the place the user actually is. A photo's position
+  /// is the session's live fix while recording, else this one.
+  LatLng? _latestFix;
 
   /// How far the map center may drift from [_locatedPosition] before the
   /// marker is dropped. Roughly half a city block at the locate zoom.
@@ -563,6 +572,11 @@ class _MapPageState extends State<MapPage> {
         );
       }
     }
+    // A session starting takes over map taps: cancel any pending
+    // photo reposition rather than leave a mode nothing will answer.
+    if (widget.model.isRecording && _repositioningPhoto != null) {
+      _repositioningPhoto = null;
+    }
     setState(() {});
   }
 
@@ -575,13 +589,36 @@ class _MapPageState extends State<MapPage> {
         latitude: tap.latitude,
       );
 
+  /// The photo currently being repositioned (the preview's Reposition
+  /// action armed this): the next map tap sets its position. Null
+  /// otherwise. Cleared when a recording session starts — the recording
+  /// UI owns map taps then.
+  StoredPhoto? _repositioningPhoto;
+
   void _onMapTap(LatLng tap) {
+    // Reposition mode first: the next tap is the photo's new position,
+    // not an aggregate selection.
+    final repositioning = _repositioningPhoto;
+    if (repositioning != null) {
+      setState(() => _repositioningPhoto = null);
+      unawaited(widget.model.repositionPhoto(repositioning, tap));
+      return;
+    }
     if (widget.model.isRecording) return; // the recording UI owns taps then
     final model = widget.model;
     // In member-picking mode a tap picks one of the colored member lanes
     // instead of (de)selecting the aggregate; a miss exits the mode.
     if (model.memberPicking && model.selectedAnchor != null) {
       _pickMemberAtTap(tap);
+      return;
+    }
+    // A photo pin wins over aggregate selection: its tap opens the
+    // preview (flutter_map's gesture layer sits above marker children,
+    // so pins are not individually tappable — the map tap with the same
+    // tolerance is the pin's tap).
+    final photo = _nearestPhoto(tap);
+    if (photo != null) {
+      _showPhotoPreview(photo);
       return;
     }
     model.selectAggregateAt(
@@ -929,6 +966,21 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
+  /// The photo whose pin is within tap tolerance of [tap], nearest first,
+  /// or null. Same tolerance as aggregate selection (~24 screen px).
+  StoredPhoto? _nearestPhoto(LatLng tap) {
+    StoredPhoto? best;
+    var bestDist = _hitToleranceMeters(tap);
+    for (final p in widget.model.photos) {
+      final d = const Distance().distance(tap, LatLng(p.lat, p.lon));
+      if (d <= bestDist) {
+        best = p;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
   /// The selected aggregate's highlight, in the active fog style so the
   /// selection reads the same language the map is drawn in: boosted-
   /// opacity circles, solid tinted lines, or full-strength ink strokes.
@@ -1096,6 +1148,70 @@ class _MapPageState extends State<MapPage> {
     ];
   }
 
+  /// The photo pins: one disc per cataloged photo, in the surface color
+  /// with the primary border (the recording marker's look, smaller),
+  /// above the fog and corridors so they read as annotations of visited
+  /// places. Each pin's tap opens its preview dialog. Photo markers stay
+  /// during recordings and replays — they are catalog state, not session
+  /// state.
+  List<Widget> _photoMarkerLayers() {
+    // The pins hide with the photos setting; the stored photos stay in
+    // the catalog and come back when it is re-enabled.
+    if (!widget.model.photosEnabled) return const [];
+    final photos = widget.model.photos;
+    if (photos.isEmpty) return const [];
+    final scheme = Theme.of(context).colorScheme;
+    return [
+      MarkerLayer(
+        markers: [
+          for (final p in photos)
+            Marker(
+              key: ValueKey('photo-marker-${p.id}'),
+              point: LatLng(p.lat, p.lon),
+              width: 36,
+              height: 36,
+              // Not individually tappable (the map's gesture layer sits
+              // above marker children) — the map tap routes here via
+              // _onMapTap's nearest-photo check.
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: scheme.surface,
+                    border: Border.all(color: scheme.primary, width: 2),
+                    boxShadow: const [
+                      BoxShadow(blurRadius: 4, color: Colors.black38),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.photo_camera_outlined,
+                    size: 22,
+                    color: scheme.primary,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    ];
+  }
+
+  /// Opens the photo's preview dialog (image, capture time, reposition,
+  /// gallery export, share, delete). A 'reposition' result arms the
+  /// tap-to-move mode: the next map tap lands the photo there.
+  Future<void> _showPhotoPreview(StoredPhoto photo) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => PhotoPreviewDialog(
+        model: widget.model,
+        photo: photo,
+      ),
+    );
+    if (action == PhotoPreviewDialog.repositionResult && mounted) {
+      setState(() => _repositioningPhoto = photo);
+    }
+  }
+
   /// Re-arms whichever follow-camera is active and re-centers on its
   /// fix/cursor — the pill's course-up activation takes the camera along
   /// (a released follow would otherwise leave the panned-away view while
@@ -1124,6 +1240,7 @@ class _MapPageState extends State<MapPage> {
     if (!mounted || pos == null) return;
     // The fix is real: it opens the Record button and shows the marker.
     setState(() => _locatedPosition = pos);
+    _latestFix = pos;
     _gpsWorking = true;
     _fixRetryTimer?.cancel();
     // Saved tracks fit the whole catalog; only the empty map follows the
@@ -1190,6 +1307,7 @@ class _MapPageState extends State<MapPage> {
       // follow — arm the follow so the next fix takes the camera over.
       if (widget.model.isRecording) _dashboardKey.currentState?.armFollow();
       setState(() => _locatedPosition = pos);
+      _latestFix = pos;
       // A deliberated locate is also evidence the GPS works: it opens the
       // Record button, no silent retry needed.
       _gpsWorking = true;
@@ -1208,6 +1326,45 @@ class _MapPageState extends State<MapPage> {
       // Also runs when the widget went away mid-flight; the mounted check
       // keeps setState off a disposed element.
       if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  /// The position a photo taken right now would be tagged with: the
+  /// session's live fix while recording (fresher than any cached fix),
+  /// else the latest fix this run obtained. Null when there is none — the
+  /// camera button is hidden then (nothing to tag a photo with).
+  ///
+  /// Deliberately not [_locatedPosition]: that one drops when the user
+  /// pans away (the marker's rule), while a photo still belongs where the
+  /// user is. The capture does not request a fresh fix either — a photo
+  /// press must not wait on a cold GPS; the position is editable from the
+  /// preview afterward.
+  LatLng? get _photoPosition {
+    if (widget.model.isRecording) {
+      final session = widget.model.recording;
+      final lat = session?.currentLat;
+      final lon = session?.currentLon;
+      if (lat != null && lon != null) return LatLng(lat, lon);
+    }
+    return _latestFix;
+  }
+
+  /// Camera action: capture through the model, then say what happened —
+  /// the camera app returns to the map after the shot, so without a toast
+  /// a decline and a save would look identical.
+  Future<void> _takePhoto() async {
+    final strings = AppStrings.ofContext(context);
+    final position = _photoPosition;
+    if (position == null) return; // no fix: the button is not shown
+    final result = await widget.model.takePhoto(position);
+    if (!mounted) return;
+    switch (result) {
+      case PhotoAdded():
+        _toast(strings.photoAdded);
+      case PhotoAddDeclined():
+        _toast(strings.photoDeclined);
+      case PhotoAddFailed():
+        _toast(strings.photoFailed);
     }
   }
 
@@ -1648,6 +1805,8 @@ class _MapPageState extends State<MapPage> {
                 ..._memberPickLayers()
               else if (widget.model.selectedAnchor != null)
                 ..._selectionHighlightLayers(),
+              // The photo pins, above the fog and corridors.
+              ..._photoMarkerLayers(),
               // The live recording trace: the session's accepted fixes as
               // polylines, translucent in a fixed recording red — outside
               // the catalog tint family, clearly in-progress. Above the
@@ -1761,6 +1920,14 @@ class _MapPageState extends State<MapPage> {
                   child: RecordCluster(
                     model: widget.model,
                     gpsWorking: _gpsWorking,
+                    // The camera press is offered only with a position to
+                    // tag the photo with and the photos feature on; on a
+                    // replay-less map without a fix there is nothing to
+                    // tag, so the button stays off rather than failing.
+                    onTakePhoto: (_photoPosition != null &&
+                            widget.model.photosEnabled)
+                        ? _takePhoto
+                        : null,
                   ),
                 ),
               ),
@@ -1785,6 +1952,38 @@ class _MapPageState extends State<MapPage> {
                     onImport: _chooseImport,
                     onOpenSettings: _openSettings,
                   ),
+                  // Reposition mode's banner: below the toolbar, one row —
+                  // the instruction and a Cancel that leaves the photo
+                  // where it was.
+                  if (_repositioningPhoto != null) ...[
+                    const SizedBox(height: 8),
+                    Card(
+                      key: const ValueKey('reposition-banner'),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                strings.photoRepositionHint,
+                                maxLines: 2,
+                              ),
+                            ),
+                            TextButton(
+                              key: const ValueKey('reposition-cancel'),
+                              onPressed: () =>
+                                  setState(() => _repositioningPhoto = null),
+                              child: Text(strings.cancel),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

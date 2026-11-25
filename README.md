@@ -2,7 +2,7 @@
 
 [![Get it on Obtanium](https://raw.githubusercontent.com/ImranR98/Obtanium/main/assets/get-it-on-obtanium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2520%2522gianfrid.unvisited%2522%252C%2520%2522url%2522%253A%2520%2522https%253A%252F%252Fgithub.com%252Fgianfrid%252Funvisited%2522%252C%2520%2522author%2522%253A%2520%2522gianfrid%2522%252C%2520%2522name%2522%253A%2520%2522Unvisited%2522%252C%2520%2522additionalSettings%2522%253A%2520%2522%257B%255C%2522useLatestAssetDateAsReleaseDate%255C%2522%253A%2520true%252C%255C%2522releaseDateAsVersion%255C%2522%253A%2520true%257D%2522%257D)
 
-A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog. The map stays north-up by default; the map control pill's rotation button (North up / Course up) opts into the course-up follow-camera while recording. Any stored track with timestamps can also be replayed from the track list's ⋮ menu: Playback animates a marker along the track's timeline at a controllable speed (1×–64×), riding the same follow-camera as an active recording.
+A Flutter app that imports GPS tracks from multiple sources — OpenTracks exports, Garmin FIT files, Strava exports — and plots all of them together on one OpenStreetMap-based map, as a fog-of-war exploration overlay: the places your tracks pass through show up as unlocked corridors, the rest of the map stays untouched. Active recording (Android): one Record action turns the map into a ride/walk dashboard — live speed, distance, duration, follow-camera — that pauses, resumes, and on stop asks the track's name before writing an ordinary GPX track into the same catalog. The map stays north-up by default; the map control pill's rotation button (North up / Course up) opts into the course-up follow-camera while recording. Any stored track with timestamps can also be replayed from the track list's ⋮ menu: Playback animates a marker along the track's timeline at a controllable speed (1×–64×), riding the same follow-camera as an active recording. On Android, once a position fix is in hand, the record cluster also offers a **Camera** action: it opens the system camera app (no extra permission prompt), and the photo is stored privately in the app, tagged with your current position. Photos appear as pins on the map — tap one to preview it, reposition it by tapping the map, save a copy to the gallery, share it, or delete it. Settings → Photos turns the whole feature off (stored photos are kept).
 
 Supported track formats: **GPX**, **FIT** (activities only — monitoring files are skipped), **KMZ/KML**, **TCX**. Imports go through one unified, content-based pipeline; extension never decides the format.
 
@@ -38,14 +38,19 @@ lib/
 │   └── road_matcher.dart    #   geometric matching against unlock centers
 ├── l10n/app_strings.dart    # every user-visible string, English + Italian
 ├── models/track.dart        # TrackData model
+├── photos/                  # camera capture seam + photo export paths
+│   ├── photo_source.dart    #   PhotoSource port (sealed capture outcome)
+│   ├── image_picker_source.dart  # system camera app via image_picker (Android)
+│   └── photo_export.dart    #   gallery (MediaStore) + share via host channel
 ├── playback/                # track replay engine (pure Dart)
 │   └── track_playback.dart  #   timeline cursor: speeds, interpolation, finish
 ├── storage/track_store.dart # app-private track files + index.json catalog
+                              # (tracks and geotagged photos)
 └── ui/                      # app_model + its import_coordinator / recording_
                               # controller / playback_controller concerns,
                               # the shared follow_camera, map_page and the
                               # modules it composes (map_actions, map_controls,
-                              # format, stats_panel, settings_sheet,
+                              # photo_preview, format, stats_panel, settings_sheet,
                               # track_list, recording_dashboard,
                               # playback_dashboard, fog_of_war, track_colors)
 test/                        # unit tests, fixtures in test/fixtures/

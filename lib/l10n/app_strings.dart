@@ -56,6 +56,40 @@ abstract class AppStrings {
   /// did nothing.
   String get recordDeclined;
 
+  /// The record cluster's camera action: takes a geotagged photo through
+  /// the system camera app, tagged with the freshest fix in hand. Shown
+  /// only where a location fix exists (and hidden by the photos setting).
+  String get cameraLabel;
+  String get cameraTooltip;
+
+  /// Camera outcomes, toasted on the map: the pin appeared, the user
+  /// backed out of the camera app (not an error), or the capture failed.
+  String get photoAdded;
+  String get photoDeclined;
+  String get photoFailed;
+
+  /// The photo preview dialog: its caption stamps the capture time, its
+  /// actions offer the gallery export, the share sheet, and deletion —
+  /// deletion asks first, like the recording's discard.
+  String photoTakenAt(String date);
+  String get photoSaveToGallery;
+  String get photoSavedToGallery;
+  String get photoSaveFailed;
+  String get photoShare;
+  String get photoDelete;
+  String get photoDeleteConfirmTitle;
+
+  /// Repositioning a photo: the preview's Reposition action arms a
+  /// tap-to-move mode — the banner says where the next map tap lands the
+  /// photo, and Cancel leaves it where it was.
+  String get photoReposition;
+  String get photoRepositionHint;
+
+  /// The Settings row for the photos feature (Android-only): while off,
+  /// the camera button and the photo pins hide; stored photos are kept.
+  String get photosSetting;
+  String get photosSettingSubtitle;
+
   /// The record-mode dashboard's pause action; paired with [recordLabel]'s
   /// slot. Pausing closes the current `<trkseg>` (the session's existing
   /// semantics); resuming opens the next one.
@@ -202,6 +236,7 @@ abstract class AppStrings {
   String get deleteAllTracksQuestion;
   String deleteAllTracksBody(int count);
   String get cancel;
+  String get close;
   String get delete;
   String get allTracksDeleted;
 
@@ -371,6 +406,41 @@ class EnglishStrings extends AppStrings {
   String get stopLabel => 'Stop';
   @override
   String get recordDeclined => 'Recording needs location permission';
+  @override
+  String get cameraLabel => 'Camera';
+  @override
+  String get cameraTooltip => 'Take a photo here';
+  @override
+  String get photoAdded => 'Photo added to the map';
+  @override
+  String get photoDeclined => 'No photo taken';
+  @override
+  String get photoFailed => 'The camera could not be opened';
+  @override
+  String photoTakenAt(String date) => 'Taken $date';
+  @override
+  String get photoSaveToGallery => 'Save to gallery';
+  @override
+  String get photoSavedToGallery => 'Saved to the gallery';
+  @override
+  String get photoSaveFailed => 'Could not save to the gallery';
+  @override
+  String get photoShare => 'Share';
+  @override
+  String get photoDelete => 'Delete';
+  @override
+  String get photoDeleteConfirmTitle =>
+      'Delete this photo? The file is removed from the app.';
+  @override
+  String get photoReposition => 'Reposition';
+  @override
+  String get photoRepositionHint =>
+      'Tap on the map where the photo was taken';
+  @override
+  String get photosSetting => 'Photos';
+  @override
+  String get photosSettingSubtitle =>
+      'Camera button and photo pins on the map; stored photos are kept when off';
   @override
   String get pauseLabel => 'Pause';
   @override
@@ -584,6 +654,8 @@ class EnglishStrings extends AppStrings {
   @override
   String get cancel => 'Cancel';
   @override
+  String get close => 'Close';
+  @override
   String get delete => 'Delete';
   @override
   String get allTracksDeleted => 'All tracks deleted';
@@ -718,6 +790,41 @@ class ItalianStrings extends AppStrings {
   String get stopLabel => 'Ferma';
   @override
   String get recordDeclined => 'La registrazione richiede la posizione';
+  @override
+  String get cameraLabel => 'Foto';
+  @override
+  String get cameraTooltip => 'Scatta una foto qui';
+  @override
+  String get photoAdded => 'Foto aggiunta alla mappa';
+  @override
+  String get photoDeclined => 'Nessuna foto scattata';
+  @override
+  String get photoFailed => 'Impossibile aprire la fotocamera';
+  @override
+  String photoTakenAt(String date) => 'Scattata il $date';
+  @override
+  String get photoSaveToGallery => 'Salva nella galleria';
+  @override
+  String get photoSavedToGallery => 'Salvata nella galleria';
+  @override
+  String get photoSaveFailed => 'Impossibile salvare nella galleria';
+  @override
+  String get photoShare => 'Condividi';
+  @override
+  String get photoDelete => 'Elimina';
+  @override
+  String get photoDeleteConfirmTitle =>
+      'Eliminare questa foto? Il file viene rimosso dall\'app.';
+  @override
+  String get photoReposition => 'Riposiziona';
+  @override
+  String get photoRepositionHint =>
+      'Tocca la mappa dove è stata scattata la foto';
+  @override
+  String get photosSetting => 'Foto';
+  @override
+  String get photosSettingSubtitle =>
+      'Pulsante fotocamera e pin sulla mappa; le foto archiviate restano anche se disattivato';
   @override
   String get pauseLabel => 'Pausa';
   @override
@@ -940,6 +1047,8 @@ class ItalianStrings extends AppStrings {
       'I file originali da cui le hai importate non vengono toccati.';
   @override
   String get cancel => 'Annulla';
+  @override
+  String get close => 'Chiudi';
   @override
   String get delete => 'Elimina';
   @override

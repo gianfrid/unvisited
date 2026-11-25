@@ -19,6 +19,9 @@ import '../geo.dart' show haversineMeters;
 import '../host_channel.dart' show hostChannel;
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart' show TrackPlayback;
+import '../photos/image_picker_source.dart';
+import '../photos/photo_export.dart';
+import '../photos/photo_source.dart';
 import '../road/road_format.dart' show RoadFormatException;
 import '../road/road_coverage.dart';
 import '../road/road_matcher.dart';
@@ -59,6 +62,31 @@ class LocateResult {
   final LocationFailure? failure;
 }
 
+/// Result of a camera press, as the UI needs it: the saved entry, or
+/// which kind of nothing happened — the two read differently to the user
+/// (a deliberate back-out is not an error).
+sealed class PhotoAddResult {
+  const PhotoAddResult();
+}
+
+/// The photo is cataloged at the captured position.
+final class PhotoAdded extends PhotoAddResult {
+  const PhotoAdded(this.photo);
+
+  final StoredPhoto photo;
+}
+
+/// The user backed out of the camera app: nothing changed, nothing to
+/// report as a failure.
+final class PhotoAddDeclined extends PhotoAddResult {
+  const PhotoAddDeclined();
+}
+
+/// The capture could not complete (platform error, unreadable result).
+final class PhotoAddFailed extends PhotoAddResult {
+  const PhotoAddFailed();
+}
+
 /// A track prepared for drawing on the map.
 class MapTrack {
   const MapTrack({required this.meta, required this.points});
@@ -83,7 +111,8 @@ enum RoadFileFailure {
 /// [imports] (every import path) and [recorder] (the recording session) —
 /// as thin delegating members so the UI keeps one access point.
 class AppModel extends ChangeNotifier {
-  AppModel(this.store) {
+  AppModel(this.store, {PhotoSource? photoSource})
+      : photoSource = photoSource ?? defaultPhotoSource() {
     imports = ImportCoordinator(
       store: store,
       roadMatcher: () => _roadMatcher,
@@ -98,6 +127,12 @@ class AppModel extends ChangeNotifier {
   }
 
   final TrackStore store;
+
+  /// The camera-capture seam (`lib/photos/photo_source.dart`): injected
+  /// so tests feed captures fakes; defaults to image_picker on Android
+  /// and a graceful failure everywhere else — only the Android camera
+  /// button can call it.
+  final PhotoSource photoSource;
 
   /// The import concern: every import path collapses onto one helper
   /// (store + roads + point-cache + summary choreography).
@@ -676,6 +711,17 @@ class AppModel extends ChangeNotifier {
   /// wait for the next pan.
   bool get showUnvisitedRoads => store.showUnvisitedRoads;
 
+  /// Whether the geotagged-photos feature is on (the Settings switch):
+  /// gates the camera button and the map pins. Stored photos are kept
+  /// either way.
+  bool get photosEnabled => store.photosEnabled;
+
+  Future<void> setPhotosEnabled(bool value) async {
+    if (value == photosEnabled) return;
+    await store.savePhotosEnabled(value);
+    notifyListeners();
+  }
+
   Future<void> setShowUnvisitedRoads(bool value) async {
     if (value == showUnvisitedRoads) return;
     await store.saveShowUnvisitedRoads(value);
@@ -814,6 +860,84 @@ class AppModel extends ChangeNotifier {
       DebugLog.instance.warn('locate: unavailable (exception)');
       return const LocateResult.failure(LocationFailure.unavailable);
     }
+  }
+
+  // --- Photos -------------------------------------------------------------
+
+  /// The cataloged photos, in capture order — the map's pins and the
+  /// preview read this.
+  List<StoredPhoto> get photos => store.photos;
+
+  /// Takes a photo through the injected [photoSource] and catalogs it at
+  /// [position] — the freshest fix in hand at press time (the session's
+  /// live fix while recording, else the latest located fix): the page
+  /// picks it, the model never requests a second GPS fix for a photo (a
+  /// stale-but-close position is accepted and is editable afterward).
+  ///
+  /// The captured bytes copy into the store's `photos/` directory (the
+  /// app owns the copy) and the catalog notifies once, so the new pin
+  /// mounts like an imported track does. Declined and failed captures
+  /// change nothing.
+  Future<PhotoAddResult> takePhoto(
+    LatLng position, {
+    DateTime? takenAt,
+  }) async {
+    final outcome = await photoSource.capture();
+    switch (outcome) {
+      case PhotoCaptureSucceeded(:final bytes):
+        final photo = store.addPhoto(
+          bytes,
+          lat: position.latitude,
+          lon: position.longitude,
+          takenAt: takenAt ?? DateTime.now(),
+        );
+        DebugLog.instance.info(
+          'photo: saved ${photo.id} at '
+          '${position.latitude.toStringAsFixed(6)},'
+          '${position.longitude.toStringAsFixed(6)}',
+        );
+        notifyListeners();
+        return PhotoAdded(photo);
+      case PhotoCaptureDeclined():
+        DebugLog.instance.info('photo: capture declined');
+        return const PhotoAddDeclined();
+      case PhotoCaptureFailed(:final reason):
+        DebugLog.instance.warn('photo: capture failed: $reason');
+        return const PhotoAddFailed();
+    }
+  }
+
+  /// Removes a photo (its catalog entry and the app's own file copy).
+  Future<void> deletePhoto(StoredPhoto photo) async {
+    await store.removePhoto(photo);
+    notifyListeners();
+  }
+
+  /// User-initiated gallery export of a photo (the preview's Save to
+  /// gallery): a MediaStore copy of the app's own file through the host
+  /// channel. True when the gallery accepted it. The stored photo is
+  /// untouched either way.
+  Future<bool> savePhotoToGallery(StoredPhoto photo) =>
+      savePhotoToGalleryFile(
+        store.photoFileFor(photo).path,
+        photo.file,
+      );
+
+  /// Opens the system share sheet for a photo (the preview's Share):
+  /// ACTION_SEND over the app's FileProvider. Fire-and-forget — the
+  /// receiving app's outcome is not reported back.
+  Future<void> sharePhoto(StoredPhoto photo) =>
+      sharePhotoFile(store.photoFileFor(photo).path);
+
+  /// Moves a photo to a corrected position (the preview's Reposition
+  /// action settled on a map tap) and persists it.
+  Future<void> repositionPhoto(StoredPhoto photo, LatLng position) async {
+    await store.updatePhotoPosition(
+      photo,
+      lat: position.latitude,
+      lon: position.longitude,
+    );
+    notifyListeners();
   }
 
   /// All points of all visible tracks, for fitting the camera.
