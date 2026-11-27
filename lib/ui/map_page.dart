@@ -1761,17 +1761,20 @@ class _MapPageState extends State<MapPage> {
                       coordinates: [for (final t in mapTracks) ...t.points],
                       padding: _fitPadding,
                     ),
-              // While a session's follow-camera is armed, one-finger
-              // drags are peeks: the drag bit stays on (the hand pans
-              // live — never a dead map), but the fling bit goes off
-              // with it — momentum would fight the lift's return glide,
-              // and a fling bit left on ends every one-finger gesture
-              // with a phantom dragEnd-sourced event that reads as the
-              // hand. The follow-camera itself holds the peek: targets
+              // While a followed thing (a session or a replay) rides
+              // with the follow-camera armed, one-finger drags are
+              // peeks: the drag bit stays on (the hand pans live —
+              // never a dead map), but the fling bit goes off —
+              // momentum would fight the lift's return glide, and a
+              // fling bit left on ends every one-finger gesture with a
+              // phantom dragEnd-sourced event that reads as the hand.
+              // The follow-camera itself holds the peek: targets
               // arriving mid-drag are stored, never eased toward, and
-              // the lift glides back to the latest fix framing.
+              // the lift glides back to the latest fix/cursor framing.
               interactionOptions: InteractionOptions(
-                flags: widget.model.isRecording && _followArmed
+                flags: (widget.model.isRecording ||
+                            widget.model.playback != null) &&
+                        _followArmed
                     ? InteractiveFlag.all & ~InteractiveFlag.flingAnimation
                     : InteractiveFlag.all,
                 keyboardOptions: const KeyboardOptions(

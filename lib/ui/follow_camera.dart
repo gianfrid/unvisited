@@ -46,6 +46,7 @@ class FollowCamera {
     required this.screenHeight,
     required Ticker Function(TickerCallback) tickerFactory,
     this.onFollowChanged,
+    this.onFirstPeek,
   }) : _createTicker = tickerFactory {
     // The follow-camera releases on a gesture that moves the map — drags,
     // multi-finger gestures, the fling/double-tap-zoom animations that
@@ -145,6 +146,12 @@ class FollowCamera {
   /// releases, [arm] re-arms); the recording dashboard rebuilds on it.
   final void Function()? onFollowChanged;
 
+  /// Optional host hook, fired once per followed thing on the first
+  /// peek's return ([_endPeek]) — the dashboards teach the two-finger
+  /// escape with it. The latch resets with the followed thing
+  /// ([reset]), so a session or replay teaches once, never nagging.
+  final void Function()? onFirstPeek;
+
   /// The host state's `createTicker`, bound at construction.
   final Ticker Function(TickerCallback) _createTicker;
 
@@ -155,12 +162,13 @@ class FollowCamera {
   bool _follow = false;
   bool get follow => _follow;
 
-  /// Whether the recording's peek policy is on: a one-finger drag while
-  /// [follow] is armed pans the map live and glides back on lift,
-  /// instead of releasing the follow. Set by the recording dashboard at
-  /// its session boundaries ([reset] sites); playback leaves it off (its
-  /// drags release as before), and it only ever matters while the follow
-  /// is armed — released or idle cameras never see a peek.
+  /// Whether the followed thing's peek policy is on: a one-finger drag
+  /// while [follow] is armed pans the map live and glides back on lift,
+  /// instead of releasing the follow. Set by both dashboards at their
+  /// followed-thing boundaries ([reset] sites — the recording and the
+  /// replay alike, so the two hosts peek identically by construction);
+  /// it only ever matters while the follow is armed — released or idle
+  /// cameras never see a peek.
   bool dragPeeks = false;
 
   /// True while the peeking hand owns the camera (a one-finger drag
@@ -174,6 +182,12 @@ class FollowCamera {
   /// peek's home target, so a peek shorter than a fix interval still
   /// returns to the framing the follow was holding when the drag began.
   LatLng? _lastPoint;
+
+  /// Whether [onFirstPeek] has fired for this followed thing: the
+  /// teaching toast shows once per session/replay, never per peek —
+  /// accidental brushes must not nag. Cleared with the followed thing
+  /// ([reset]).
+  bool _taughtPeek = false;
 
   /// The follow-camera glide: each target (see [update]) stores itself
   /// here and the ticker below eases the camera toward it frame by frame
@@ -310,6 +324,7 @@ class FollowCamera {
   void reset({required bool armed}) {
     stopGlide();
     _peeking = false; // a boundary never leaks a peek in flight
+    _taughtPeek = false; // a new followed thing teaches its peek once
     clearHeadingWindow();
     _lastGlideCamera = null; // no earlier glide frame can still be in flight
     _rideZoom = null; // a new followed thing starts under the floor policy
@@ -433,12 +448,17 @@ class FollowCamera {
   /// the freshest held target (the latest fix's framing, rotation
   /// included, the same easing as every follow glide). A session with no
   /// fix yet holds no target: the camera waits where the hand left it
-  /// for the first fix to glide it in.
+  /// for the first fix to glide it in. The first return per followed
+  /// thing teaches: [onFirstPeek] fires once (see [_taughtPeek]).
   void _endPeek() {
     _peeking = false;
     if (_glideTarget != null && _glideTicker == null) {
       _prevGlideElapsed = Duration.zero;
       _glideTicker = _createTicker(_glideTick)..start();
+    }
+    if (!_taughtPeek) {
+      _taughtPeek = true;
+      onFirstPeek?.call();
     }
   }
 

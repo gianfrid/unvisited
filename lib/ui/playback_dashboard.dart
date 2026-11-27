@@ -6,6 +6,7 @@ import '../playback/track_playback.dart';
 import 'app_model.dart';
 import 'follow_camera.dart';
 import 'format.dart';
+import 'map_actions.dart' show showMapToast;
 
 /// The playback dashboard: the replay bar (play/pause/replay, track
 /// name, elapsed/total, the instant speed, the speed chip and close; the
@@ -80,6 +81,12 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
         if (mounted) setState(() {});
         widget.onFollowChanged?.call();
       },
+      // The first peek's return teaches the two-finger escape (once per
+      // replay — the follow-camera latches it), same as the session's.
+      onFirstPeek: () {
+        if (!mounted) return;
+        showMapToast(context, AppStrings.ofContext(context).twoFingerPanHint);
+      },
     );
     widget.model.addListener(_onModelChanged);
     widget.model.player.playbackLive.addListener(_onPlaybackTick);
@@ -107,6 +114,10 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
     final playback = widget.model.playback;
     if (!identical(playback, _served)) {
       _served = playback;
+      // The replay's camera policy rides the boundary with the arm, same
+      // as the session's: one-finger drags peek (pan live, glide back on
+      // lift) rather than release the follow.
+      _follow.dragPeeks = playback != null;
       _follow.reset(armed: playback != null);
     }
   }

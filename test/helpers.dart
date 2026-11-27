@@ -187,3 +187,26 @@ void mockGeolocator(
     );
   });
 }
+
+/// The deliberate look-around while a follow-camera is armed (and
+/// one-finger drags are peeks): two pointers dragged down together,
+/// panning the map like a one-finger drag does elsewhere. The pointers
+/// start a hand-width apart and move in small interleaved steps — big
+/// lockstep jumps read as span/angle noise to flutter_map's pinch
+/// math, which cancels the pan.
+Future<void> twoFingerPan(
+  WidgetTester tester, {
+  required Offset start,
+  Offset by = const Offset(0, 80),
+}) async {
+  final first = await tester.startGesture(start);
+  final second = await tester.startGesture(start + const Offset(120, 0));
+  const steps = 10.0;
+  for (var i = 0; i < steps; i++) {
+    await first.moveBy(by / steps);
+    await second.moveBy(by / steps);
+  }
+  await first.up();
+  await second.up();
+  await tester.pump();
+}

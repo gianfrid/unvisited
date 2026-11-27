@@ -13,6 +13,7 @@ import '../recording/recording_session.dart';
 import 'app_model.dart';
 import 'follow_camera.dart';
 import 'format.dart';
+import 'map_actions.dart' show showMapToast;
 import 'stats_panel.dart';
 
 // The follow-camera lives in `follow_camera.dart` now; the top-level
@@ -144,6 +145,13 @@ class RecordingDashboardState extends State<RecordingDashboard>
       onFollowChanged: () {
         if (mounted) setState(() {});
         widget.onFollowChanged?.call();
+      },
+      // The first peek's return teaches the two-finger escape (once per
+      // session — the follow-camera latches it): the return is the
+      // moment a user wonders how to look around.
+      onFirstPeek: () {
+        if (!mounted) return;
+        showMapToast(context, AppStrings.ofContext(context).twoFingerPanHint);
       },
     );
     _wasRecording = widget.model.isRecording;

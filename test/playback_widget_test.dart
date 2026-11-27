@@ -503,12 +503,12 @@ void main() {
     MapCamera camera() =>
         MapController.of(tester.element(find.byType(TileLayer))).camera;
 
-    // A pan takes the camera (the follow released - exactly the
-    // recording's release-on-gesture semantics).
+    // A two-finger pan takes the camera (the follow released - a
+    // one-finger drag is a peek now, exactly the recording's semantics).
     final size = tester.getSize(find.byType(FlutterMap));
-    await tester.dragFrom(
-      Offset(size.width / 2, size.height * 0.4),
-      const Offset(0, 80),
+    await twoFingerPan(
+      tester,
+      start: Offset(size.width / 2, size.height * 0.4),
     );
     final panned = camera().center;
     await tester.pump(const Duration(milliseconds: 50));
@@ -539,6 +539,68 @@ void main() {
   });
 
   testWidgets(
+    'a one-finger drag during a replay is a peek that returns on lift',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      model.store.importBytes(utf8.encode(eastwardGpx('Morning walk', 30)));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      model.startPlayback(model.tracks.single);
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+      final followed = camera().center;
+
+      // The drag pans the map live — read before the return glide's
+      // first frame.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      final peeked = camera().center;
+      expect(
+        peeked.latitude,
+        greaterThan(followed.latitude),
+        reason: 'the drag panned the map under the hand',
+      );
+
+      // The lift is the return: the camera goes back to riding the
+      // replay cursor, the follow armed all along — and the first
+      // peek return teaches the two-finger escape.
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Two fingers to pan the map freely'),
+        findsOneWidget,
+        reason: 'the first peek return teaches the two-finger escape',
+      );
+      for (var i = 0; i < 80; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final point = model.playback!.position;
+      expect(
+        (camera().center.latitude - point.latitude).abs(),
+        lessThan(1e-3),
+        reason: 'the return re-centered the camera on the replay cursor',
+      );
+      expect(
+        (camera().center.longitude - point.longitude).abs(),
+        lessThan(1e-3),
+      );
+    },
+  );
+
+  testWidgets(
     'on a plugin-less platform the pill follow button re-arms the replay '
     'after a pan',
     (tester) async {
@@ -566,12 +628,14 @@ void main() {
       expect(find.byTooltip('Center on current position'), findsNothing);
       expect(find.byTooltip('Center on the replay cursor'), findsNothing);
 
-      // A pan releases the follow: the camera stays where the pan put it,
-      // and the pill's slot returns — the way back to the replay cursor.
+      // A two-finger pan releases the follow (a one-finger drag is a
+      // peek now): the camera stays where the pan put it, and the
+      // pill's slot returns — the way back to the replay cursor.
       final size = tester.getSize(find.byType(FlutterMap));
-      await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.4),
-        const Offset(0, 120),
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
+        by: const Offset(0, 120),
       );
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pump(const Duration(milliseconds: 50));
@@ -671,11 +735,13 @@ void main() {
           MapController.of(tester.element(find.byType(TileLayer))).camera;
       final rotationButton = find.byKey(const ValueKey('rotation-mode-button'));
 
-      // A pan releases the follow (north mode by default).
+      // A two-finger pan releases the follow (north mode by default; a
+      // one-finger drag is a peek now).
       final size = tester.getSize(find.byType(FlutterMap));
-      await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.4),
-        const Offset(0, 120),
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
+        by: const Offset(0, 120),
       );
       for (var i = 0; i < 10; i++) {
         await tester.pump(const Duration(milliseconds: 50));

@@ -1126,11 +1126,19 @@ void main() {
         greaterThan(followed.latitude),
         reason: 'the drag panned the map under the hand',
       );
-      // The follow never disengaged: no release toast.
+      // The follow never disengaged — no release toast. The first
+      // peek's return instead teaches the two-finger escape.
       expect(
-        find.byType(SnackBar),
+        find.text('Camera free — long-press the map to re-center'),
         findsNothing,
         reason: 'the peek released nothing',
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Two fingers to pan the map freely'),
+        findsOneWidget,
+        reason: 'the first peek return teaches the two-finger escape',
       );
 
       // The lift is the return: the camera glides back to the fix's
@@ -1211,6 +1219,74 @@ void main() {
         camera().center.latitude,
         lessThan(52.5202 + 1e-3),
         reason: 'the return re-centered on the new fix',
+      );
+    },
+  );
+
+  testWidgets(
+    'the peek return teaches the two-finger escape once per session',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201);
+      await pumpGlide(tester);
+      final size = tester.getSize(find.byType(FlutterMap));
+
+      // The first peek's return teaches.
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      await pumpGlide(tester);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Two fingers to pan the map freely'),
+        findsOneWidget,
+        reason: 'the first peek return taught the escape',
+      );
+
+      // The teaching toast expires; the second peek's return must not
+      // teach again — accidental brushes never nag.
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.text('Two fingers to pan the map freely'),
+        findsNothing,
+        reason: 'the toast expired',
+      );
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      await pumpGlide(tester);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Two fingers to pan the map freely'),
+        findsNothing,
+        reason: 'the latch held: the second peek taught nothing',
+      );
+      // The follow rode both peeks and still frames the fix.
+      expect(
+        camera().center.latitude,
+        greaterThan(52.5201),
+        reason: 'the follow still frames the fix after two peeks',
       );
     },
   );
@@ -1418,14 +1494,15 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await pumpGlide(tester);
 
-      // Release the follow with a drag, so a long-press outside the
-      // banner mode would visibly re-center on the replay cursor.
+      // Release the follow with the deliberate two-finger pan (a
+      // one-finger drag is a peek during a replay too), so a long-press
+      // outside the banner mode would visibly re-center on the replay
+      // cursor.
       final size = tester.getSize(find.byType(FlutterMap));
-      await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.4),
-        const Offset(0, 80),
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
       );
-      await tester.pump();
       final panned = camera().center;
 
       // The long-press belongs to the banner mode: no re-arm, no
@@ -5314,33 +5391,14 @@ class _TestCupertinoDelegate
 /// Pumps the follow-camera's glide ticker to convergence: 50 ms fake-time
 /// frames, ~4 s total ≈ 11 glide time constants, after which the camera
 /// has settled and the ticker is idle.
+/// The deliberate look-around while a follow-camera is armed (and
+/// one-finger drags are peeks): two pointers dragged down together,
+/// panning the map like a one-finger drag does elsewhere. Lives in
+/// `helpers.dart` (shared with the playback tests).
 Future<void> pumpGlide(WidgetTester tester, {int frames = 80}) async {
   for (var i = 0; i < frames; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
-}
-
-/// The deliberate look-around while the recording's follow-camera is
-/// armed (and one-finger drags are inert): two pointers dragged down
-/// together, panning the map like a one-finger drag does elsewhere.
-/// The pointers start a hand-width apart and move in small interleaved
-/// steps — big lockstep jumps read as span/angle noise to the pinch
-/// math, which cancels the pan.
-Future<void> twoFingerPan(
-  WidgetTester tester, {
-  required Offset start,
-  Offset by = const Offset(0, 80),
-}) async {
-  final first = await tester.startGesture(start);
-  final second = await tester.startGesture(start + const Offset(120, 0));
-  const steps = 10.0;
-  for (var i = 0; i < steps; i++) {
-    await first.moveBy(by / steps);
-    await second.moveBy(by / steps);
-  }
-  await first.up();
-  await second.up();
-  await tester.pump();
 }
 
 /// An eastward timed GPX with [n] points, 10 s apart — a replays-with-a-

@@ -60,6 +60,10 @@ abstract class AppStrings {
   /// follow-camera during a recording: teaches the way back.
   String get followReleasedHint;
 
+  /// Toast shown on the first peek's return (once per session/replay):
+  /// teaches that two fingers pan away freely while the follow is armed.
+  String get twoFingerPanHint;
+
   /// The record cluster's camera action: takes a geotagged photo through
   /// the system camera app, tagged with the freshest fix in hand. Shown
   /// only where a location fix exists (and hidden by the photos setting).
@@ -413,6 +417,9 @@ class EnglishStrings extends AppStrings {
   @override
   String get followReleasedHint =>
       'Camera free — long-press the map to re-center';
+  @override
+  String get twoFingerPanHint =>
+      'Two fingers to pan the map freely';
   @override
   String get cameraLabel => 'Camera';
   @override
@@ -800,6 +807,9 @@ class ItalianStrings extends AppStrings {
   @override
   String get followReleasedHint =>
       'Camera libera — tieni premuta la mappa per ricentrare';
+  @override
+  String get twoFingerPanHint =>
+      'Due dita per muovere liberamente la mappa';
   @override
   String get cameraLabel => 'Foto';
   @override
