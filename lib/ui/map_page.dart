@@ -1922,20 +1922,18 @@ class _MapPageState extends State<MapPage> {
           // The edge control pill (rotation mode, zoom in/out, locate) on
           // the configured edge (settings), vertically centered in the
           // free band between the toolbar and the bottom. SafeArea keeps
-          // the band inset-aware; the right side still starts below the
-          // toolbar band, so the two never overlap on narrow screens (the
-          // toolbar is centered and can reach the edges) — the left side
-          // has no toolbar there.
+          // the band inset-aware; both edges start below the toolbar band,
+          // so the centered toolbar never overlaps either bar on narrow
+          // screens — and both bars share the same band, so the pill and
+          // its mirror (the record cluster below) stay specular.
           Positioned(
             top: 0,
             bottom: 0,
             left: widget.model.zoomSliderSide == 'left' ? 12 : null,
             right: widget.model.zoomSliderSide == 'left' ? null : 12,
             child: SafeArea(
-              minimum: EdgeInsets.only(
-                top: widget.model.zoomSliderSide == 'left'
-                    ? 16
-                    : kToolbarHeight + 24,
+              minimum: const EdgeInsets.only(
+                top: kToolbarHeight + 24,
                 bottom: 16,
               ),
               child: Center(
@@ -1953,11 +1951,12 @@ class _MapPageState extends State<MapPage> {
           ),
           // The record cluster (record / pause / resume, with Stop above
           // once the session runs) on the edge *opposite* the pill,
-          // vertically centered — big labeled buttons away from the other
-          // controls, sized for a handlebar mount. Only where the platform
-          // has a location plugin: a record button on a GPS-less platform
-          // would be a dead button (its slot also stays hidden until a real
-          // fix arrived, see `RecordCluster`).
+          // vertically centered in the same band as the pill — an exact
+          // mirror of it, not anchored differently. Big labeled buttons
+          // away from the other controls, sized for a handlebar mount.
+          // Only where the platform has a location plugin: a record button
+          // on a GPS-less platform would be a dead button (its slot also
+          // stays hidden until a real fix arrived, see `RecordCluster`).
           if (widget.locationSupported && widget.model.playback == null)
             Positioned(
               top: 0,
@@ -1965,10 +1964,8 @@ class _MapPageState extends State<MapPage> {
               left: widget.model.zoomSliderSide == 'left' ? null : 12,
               right: widget.model.zoomSliderSide == 'left' ? 12 : null,
               child: SafeArea(
-                minimum: EdgeInsets.only(
-                  top: widget.model.zoomSliderSide == 'left'
-                      ? kToolbarHeight + 24
-                      : 16,
+                minimum: const EdgeInsets.only(
+                  top: kToolbarHeight + 24,
                   bottom: 16,
                 ),
                 child: Center(

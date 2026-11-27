@@ -354,9 +354,10 @@ class RecordClusterState extends State<RecordCluster> {
       elevation: 2,
       borderRadius: BorderRadius.circular(24),
       color: Theme.of(context).colorScheme.surface,
-      // Horizontal padding keeps the captions clear of the rounded border.
+      // Same padding as the control pill's container, so the cluster is
+      // the pill's exact mirror in size as well as position.
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
