@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 import 'package:flutter/services.dart' show MissingPluginException;
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:flutter/widgets.dart' show Locale, WidgetsBinding;
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';

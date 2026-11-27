@@ -22,6 +22,8 @@ dependencies:
   url_launcher: ^6.3.1
   image_picker: ^1.2.4
 
+  cupertino_ui: any
+  material_ui: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

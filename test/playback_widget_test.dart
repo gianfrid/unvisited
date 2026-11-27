@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerScrollEvent;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:unvisited/playback/track_playback.dart';

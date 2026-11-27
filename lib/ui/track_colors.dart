@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Named tints for the map overlay colors. Keys persist in the app
 /// settings (index.json); the values are the translucent overlay colors

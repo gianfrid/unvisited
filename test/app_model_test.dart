@@ -13,7 +13,7 @@ import 'package:file_picker/file_picker.dart'
         PlatformFile,
         WebOptions,
         WindowsOptions;
-import 'package:flutter/material.dart' show ThemeMode;
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter/foundation.dart' show Uint8List;
