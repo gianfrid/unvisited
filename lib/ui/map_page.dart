@@ -1231,6 +1231,42 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
+  /// The long-press re-arms whichever follow-camera is active (the
+  /// recording's or the replay's) and re-centers on its point — the
+  /// deliberate, one-gesture way back after a pan released the follow.
+  /// In the photo reposition mode the map's taps belong to placing the
+  /// pin: a re-centering camera would fight the very next tap, so the
+  /// press does nothing there.
+  void _onMapLongPress() {
+    if (_repositioningPhoto != null) return;
+    _rearmActiveFollow();
+  }
+
+  /// The armed state as of the previous follow flip — the edge detector
+  /// for the release toast below. Null before the first flip: nothing
+  /// is known, nothing is compared.
+  bool? _followArmedAtLastFlip;
+
+  /// The page's shared follow-flip hook (both dashboards' onFollowChanged
+  /// callbacks): rebuilds the page — the drag lock and the pill's locate
+  /// slot read the armed state — and, on the arm→release edge while a
+  /// session runs, toasts the way back. The session-end reset
+  /// (armed→false from the dashboard's boundary detection) is naturally
+  /// silent: `isRecording` is already false when that flip lands.
+  void _onFollowFlip() {
+    final armed = _followArmed;
+    if (_followArmedAtLastFlip == true &&
+        !armed &&
+        widget.model.isRecording) {
+      showMapToast(
+        context,
+        AppStrings.ofContext(context).followReleasedHint,
+      );
+    }
+    _followArmedAtLastFlip = armed;
+    setState(() {});
+  }
+
   /// Centers the map on the last saved position while waiting for a live
   /// fix (and moves onto the fix once it arrives). Never asks for
   /// permission; when none is granted or the platform has no location
@@ -1725,9 +1761,24 @@ class _MapPageState extends State<MapPage> {
                       coordinates: [for (final t in mapTracks) ...t.points],
                       padding: _fitPadding,
                     ),
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
-                keyboardOptions: KeyboardOptions(
+              // While a session's follow-camera is armed, one-finger drags
+              // are inert (the drag bit is off, and the fling bit with it
+              // — flutter_map ends every one-finger gesture by emitting a
+              // fling-not-started event sourced `dragEnd`, which must not
+              // read as the hand): an accidental touch — glove, handlebar
+              // mount, pocket — can neither move the camera nor disengage
+              // the follow. Deliberate look-around stays one gesture away
+              // (two fingers pan and release the follow; a long-press
+              // re-arms it), so the flags ride the armed state, flipping
+              // live — flutter_map recreates its gesture recognizers on
+              // the change.
+              interactionOptions: InteractionOptions(
+                flags: widget.model.isRecording && _followArmed
+                    ? InteractiveFlag.all &
+                          ~InteractiveFlag.drag &
+                          ~InteractiveFlag.flingAnimation
+                    : InteractiveFlag.all,
+                keyboardOptions: const KeyboardOptions(
                   enableArrowKeysPanning: true,
                   enableRFZooming: true, // Enable R/F keys for zoom
                   autofocus: true,
@@ -1737,6 +1788,10 @@ class _MapPageState extends State<MapPage> {
               // (the selection bar appears below); a tap on empty map
               // deselects, which is the bar's way away too.
               onTap: (tapDetail, tap) => _onMapTap(tap),
+              // Long-press is the way back to an armed follow after a
+              // deliberate pan away — a gesture that cannot move the
+              // camera, so it can never be the accidental one.
+              onLongPress: (tapDetail, latLng) => _onMapLongPress(),
             ),
             children: [
               TileLayer(
@@ -2047,7 +2102,7 @@ class _MapPageState extends State<MapPage> {
                     model: widget.model,
                     mapController: _mapController,
                     bottomOverlap: bottomOverlap,
-                    onFollowChanged: () => setState(() {}),
+                    onFollowChanged: _onFollowFlip,
                   ),
                   // The playback bar ends the column: like the recording
                   // chip it is measured into [bottomOverlap], so the
@@ -2060,7 +2115,7 @@ class _MapPageState extends State<MapPage> {
                     model: widget.model,
                     mapController: _mapController,
                     bottomOverlap: bottomOverlap,
-                    onFollowChanged: () => setState(() {}),
+                    onFollowChanged: _onFollowFlip,
                   ),
                 ],
               ),

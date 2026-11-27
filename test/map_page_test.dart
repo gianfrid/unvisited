@@ -618,16 +618,16 @@ void main() {
     // The course-up marker rides the fix.
     expect(find.byIcon(Icons.navigation), findsOneWidget);
 
-    // A user pan releases the follow: the next fix stays where it is on
-    // the map, the marker takes the new position without recentering.
-    // Drag from the map's free middle — the bottom column holds the
-    // dashboard and the action stack while recording.
+    // A deliberate two-finger pan releases the follow (one-finger drags
+    // are inert while the follow is armed): the next fix stays where the
+    // pan put it on the map, the marker takes the new position without
+    // recentering. From the map's free middle — the bottom column holds
+    // the dashboard and the action stack while recording.
     final size = tester.getSize(find.byType(FlutterMap));
-    await tester.dragFrom(
-      Offset(size.width / 2, size.height * 0.4),
-      const Offset(0, 80),
+    await twoFingerPan(
+      tester,
+      start: Offset(size.width / 2, size.height * 0.4),
     );
-    await tester.pump();
     final panned = cameraCenter();
     expect(
       panned.latitude,
@@ -895,13 +895,14 @@ void main() {
       );
       expect(markerAngle(), closeTo(math.pi / 2, 0.05));
 
-      // A user pan releases the follow — and the rotation with it: the next
-      // fix re-centers nothing and leaves the rotation where the pan put it.
-      // (Drag from the free middle; the bottom column is occupied.)
+      // A deliberate two-finger pan releases the follow — and the rotation
+      // with it: the next fix re-centers nothing and leaves the rotation
+      // where the pan put it. (One-finger drags are inert while the follow
+      // is armed; from the free middle — the bottom column is occupied.)
       final size = tester.getSize(find.byType(FlutterMap));
-      await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.4),
-        const Offset(0, 80),
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
       );
       final panned = camera().center;
       // Continue forward from the last fix (a backward jump would be
@@ -1007,11 +1008,12 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // A user pan releases the follow: the next fix does not re-center.
+      // A deliberate two-finger pan releases the follow (one-finger drags
+      // are inert while it is armed): the next fix does not re-center.
       final size = tester.getSize(find.byType(FlutterMap));
-      await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.4),
-        const Offset(0, 80),
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
       );
       final panned = camera().center;
       fakeFix(source, 1, lat: 52.5202, heading: 90, speed: 5.0);
@@ -1083,6 +1085,298 @@ void main() {
         camera().center.latitude,
         closeTo(52.5202, 1e-3),
         reason: 'the follow re-centered on the new fix',
+      );
+    },
+  );
+
+  testWidgets(
+    'while the follow is armed, a one-finger drag is inert during a recording',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201);
+      await pumpGlide(tester);
+      final followed = camera().center;
+
+      // The accidental case — a one-finger drag of any size, the glove or
+      // handlebar-mount brush — can neither move the camera nor disengage
+      // the follow while it is armed: the drag bit is off.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      await tester.pump();
+      expect(
+        camera().center,
+        sameCameraAs(followed),
+        reason: 'the one-finger drag moved nothing',
+      );
+      expect(
+        find.byType(SnackBar),
+        findsNothing,
+        reason: 'nothing released, so no toast',
+      );
+
+      // The follow is still armed: the next fix re-centers on it.
+      fakeFix(source, 1, lat: 52.5202);
+      await pumpGlide(tester);
+      expect(
+        camera().center.latitude,
+        greaterThan(52.5202),
+        reason: 'the follow still frames the fix (center north of it)',
+      );
+      expect(
+        camera().center.latitude,
+        lessThan(52.5202 + 1e-3),
+        reason: 'the follow re-centered on the new fix',
+      );
+    },
+  );
+
+  testWidgets(
+    'after a two-finger release, one-finger panning works again',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201);
+      await pumpGlide(tester);
+
+      // The deliberate two-finger pan releases the follow — and the lock
+      // goes with it: the map is free again.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
+      );
+      final panned = camera().center;
+
+      // One finger pans freely now (the lock follows the armed state).
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 60),
+      );
+      await tester.pump();
+      expect(
+        camera().center.latitude,
+        greaterThan(panned.latitude),
+        reason: 'the one-finger drag moved the released camera',
+      );
+
+      // And the follow stays released: the next fix does not re-center.
+      final moved = camera().center;
+      fakeFix(source, 1, lat: 52.5202);
+      await tester.pump();
+      expect(
+        camera().center,
+        sameCameraAs(moved),
+        reason: 'the follow stays released',
+      );
+    },
+  );
+
+  testWidgets(
+    'a long-press re-arms a released follow and re-centers on the fix',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201);
+      await pumpGlide(tester);
+
+      // Release with a deliberate two-finger pan; the next fix must not
+      // re-center.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
+      );
+      final panned = camera().center;
+      fakeFix(source, 1, lat: 52.5202);
+      await tester.pump();
+      expect(camera().center, sameCameraAs(panned));
+
+      // The long-press is the way back: re-arms the follow and re-centers
+      // on the session's fix on the spot.
+      await tester.longPressAt(Offset(size.width / 2, size.height * 0.4));
+      await tester.pump();
+      expect(
+        camera().center.latitude,
+        closeTo(52.5202, 1e-6),
+        reason: 'the long-press re-centered on the session fix',
+      );
+
+      // The follow is armed again: the next fix rides the camera.
+      fakeFix(source, 2, lat: 52.5203);
+      await pumpGlide(tester);
+      expect(
+        camera().center.latitude,
+        greaterThan(52.5203),
+        reason: 'the follow re-centered on the new fix',
+      );
+      expect(
+        camera().center.latitude,
+        lessThan(52.5203 + 1e-3),
+        reason: 'the follow frames the fix (center north of it)',
+      );
+    },
+  );
+
+  testWidgets(
+    'releasing the follow during a recording toasts the way back',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201);
+      await pumpGlide(tester);
+
+      // The session start armed the follow without a toast: the arm is
+      // not something to announce.
+      expect(find.byType(SnackBar), findsNothing);
+
+      final size = tester.getSize(find.byType(FlutterMap));
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Camera free — long-press the map to re-center'),
+        findsOneWidget,
+        reason: 'the release during a recording toasts the way back',
+      );
+    },
+  );
+
+  testWidgets(
+    'a long-press during photo reposition does not re-center the camera',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final photoSource = FakePhotoSource(PhotoCaptureSucceeded(jpegBytes(16)));
+      final model = await createModel(root, photoSource);
+      model.store.importBytes(
+        utf8.encode(eastwardTimedGpx('Replay walk', 4)),
+      );
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      // Arm the banner mode, then start a replay with it armed: the
+      // reachable combination (a session start would cancel the banner,
+      // a replay start does not — the banner's taps still place the
+      // pin during a replay).
+      // The photo lands at the fitted track's center so its pin tap is
+      // well inside the map, clear of the top chrome.
+      await model.takePhoto(
+        const LatLng(45.0, 9.0006),
+        takenAt: DateTime.utc(2026, 11, 24),
+      );
+      await tester.pump();
+      await _tapMapAt(tester, const LatLng(45.0, 9.0006));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(PhotoPreviewDialog), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('photo-reposition')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('reposition-banner')), findsOneWidget);
+
+      // The replay's follow-camera rides the cursor.
+      model.startPlayback(model.tracks.single);
+      await tester.pump(const Duration(milliseconds: 300));
+      await pumpGlide(tester);
+
+      // Release the follow with a drag, so a long-press outside the
+      // banner mode would visibly re-center on the replay cursor.
+      final size = tester.getSize(find.byType(FlutterMap));
+      await tester.dragFrom(
+        Offset(size.width / 2, size.height * 0.4),
+        const Offset(0, 80),
+      );
+      await tester.pump();
+      final panned = camera().center;
+
+      // The long-press belongs to the banner mode: no re-arm, no
+      // re-center, and the banner survives (the press never became a
+      // pin-placing tap).
+      await tester.longPressAt(Offset(size.width / 2, size.height * 0.4));
+      await tester.pump();
+      expect(
+        camera().center,
+        sameCameraAs(panned),
+        reason: 'reposition mode swallowed the long-press',
+      );
+      expect(find.byKey(const ValueKey('reposition-banner')), findsOneWidget);
+      expect(
+        model.photos.single.lat,
+        closeTo(45.0, 1e-9),
+        reason: 'the long-press never placed the pin',
       );
     },
   );
@@ -1535,13 +1829,14 @@ void main() {
     fakeFix(source, 1, lat: 52.5201);
     await pumpGlide(tester);
 
-    // A user pan releases the follow: the next fix stays where the pan put
-    // it, and the toolbar keeps the Locate action to come back. (Drag from
-    // the free middle; the bottom column is occupied while recording.)
+    // A deliberate two-finger pan releases the follow (one-finger drags
+    // are inert while it is armed): the next fix stays where the pan put
+    // it, and the toolbar keeps the Locate action to come back. (From the
+    // free middle; the bottom column is occupied while recording.)
     final size = tester.getSize(find.byType(FlutterMap));
-    await tester.dragFrom(
-      Offset(size.width / 2, size.height * 0.4),
-      const Offset(0, 80),
+    await twoFingerPan(
+      tester,
+      start: Offset(size.width / 2, size.height * 0.4),
     );
     fakeFix(source, 2, lat: 52.5202);
     await pumpGlide(tester);
@@ -1594,12 +1889,13 @@ void main() {
       fakeFix(source, 1, lat: 52.5201, speed: 5.0, heading: 90);
       await pumpGlide(tester);
 
-      // Pan: the follow releases and the camera stays where the hand left
-      // it; the next fix must not pull it back.
+      // A deliberate two-finger pan (one-finger drags are inert while the
+      // follow is armed): the follow releases and the camera stays where
+      // the hand left it; the next fix must not pull it back.
       final size = tester.getSize(find.byType(FlutterMap));
-      await tester.dragFrom(
-        Offset(size.width / 2, size.height * 0.4),
-        const Offset(0, 80),
+      await twoFingerPan(
+        tester,
+        start: Offset(size.width / 2, size.height * 0.4),
       );
       fakeFix(source, 2, lat: 52.5202, speed: 5.0, heading: 90);
       await pumpGlide(tester);
@@ -4956,6 +5252,52 @@ Future<void> pumpGlide(WidgetTester tester, {int frames = 80}) async {
   for (var i = 0; i < frames; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
+}
+
+/// The deliberate look-around while the recording's follow-camera is
+/// armed (and one-finger drags are inert): two pointers dragged down
+/// together, panning the map like a one-finger drag does elsewhere.
+/// The pointers start a hand-width apart and move in small interleaved
+/// steps — big lockstep jumps read as span/angle noise to the pinch
+/// math, which cancels the pan.
+Future<void> twoFingerPan(
+  WidgetTester tester, {
+  required Offset start,
+  Offset by = const Offset(0, 80),
+}) async {
+  final first = await tester.startGesture(start);
+  final second = await tester.startGesture(start + const Offset(120, 0));
+  const steps = 10.0;
+  for (var i = 0; i < steps; i++) {
+    await first.moveBy(by / steps);
+    await second.moveBy(by / steps);
+  }
+  await first.up();
+  await second.up();
+  await tester.pump();
+}
+
+/// An eastward timed GPX with [n] points, 10 s apart — a replays-with-a-
+/// timeline track around lat 45, lon 9 (the reposition-during-replay
+/// test's fixture).
+String eastwardTimedGpx(String name, int n) {
+  final t0 = DateTime.utc(2026, 11, 13, 12);
+  final points = [
+    for (var i = 0; i < n; i++)
+      '      <trkpt lat="45.0" lon="${(9.0 + i * 0.0004).toStringAsFixed(6)}">'
+      '<time>${t0.add(Duration(seconds: 10 * i)).toIso8601String()}</time>'
+      '</trkpt>',
+  ];
+  return '''
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test">
+  <trk><name>$name</name>
+    <trkseg>
+${points.join('\n')}
+    </trkseg>
+  </trk>
+</gpx>
+''';
 }
 
 void fakeFix(

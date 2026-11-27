@@ -56,6 +56,10 @@ abstract class AppStrings {
   /// did nothing.
   String get recordDeclined;
 
+  /// Toast shown when a deliberate gesture releases the armed
+  /// follow-camera during a recording: teaches the way back.
+  String get followReleasedHint;
+
   /// The record cluster's camera action: takes a geotagged photo through
   /// the system camera app, tagged with the freshest fix in hand. Shown
   /// only where a location fix exists (and hidden by the photos setting).
@@ -406,6 +410,9 @@ class EnglishStrings extends AppStrings {
   String get stopLabel => 'Stop';
   @override
   String get recordDeclined => 'Recording needs location permission';
+  @override
+  String get followReleasedHint =>
+      'Camera free — long-press the map to re-center';
   @override
   String get cameraLabel => 'Camera';
   @override
@@ -790,6 +797,9 @@ class ItalianStrings extends AppStrings {
   String get stopLabel => 'Ferma';
   @override
   String get recordDeclined => 'La registrazione richiede la posizione';
+  @override
+  String get followReleasedHint =>
+      'Camera libera — tieni premuta la mappa per ricentrare';
   @override
   String get cameraLabel => 'Foto';
   @override

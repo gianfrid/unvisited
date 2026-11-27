@@ -17,6 +17,7 @@ Map<String, String> allStrings(AppStrings s) => {
       'recordLabel': s.recordLabel,
       'stopLabel': s.stopLabel,
       'recordDeclined': s.recordDeclined,
+      'followReleasedHint': s.followReleasedHint,
       'cameraLabel': s.cameraLabel,
       'cameraTooltip': s.cameraTooltip,
       'photoAdded': s.photoAdded,
