@@ -147,6 +147,9 @@ class RecordingDashboardState extends State<RecordingDashboard>
       },
     );
     _wasRecording = widget.model.isRecording;
+    // The session's camera policy: one-finger drags peek (pan live,
+    // glide back on lift) rather than release the follow.
+    follow.dragPeeks = _wasRecording;
     follow.reset(armed: _wasRecording); // A destroyed-and-rebuilt widget re-arms.
     widget.model.addListener(_onModelChanged);
     widget.model.recordingLive.addListener(_onRecordingFix);
@@ -219,6 +222,10 @@ class RecordingDashboardState extends State<RecordingDashboard>
         _wasRecording = recording;
         _panelOpen = false;
       });
+      // The session's camera policy rides the boundary with the arm: a
+      // running session's one-finger drags peek (pan live, glide back
+      // on lift), an ended one's release as always.
+      follow.dragPeeks = recording;
       follow.reset(armed: recording);
       _lastFixAt = null;
       _compassMode = false;

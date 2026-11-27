@@ -1761,22 +1761,18 @@ class _MapPageState extends State<MapPage> {
                       coordinates: [for (final t in mapTracks) ...t.points],
                       padding: _fitPadding,
                     ),
-              // While a session's follow-camera is armed, one-finger drags
-              // are inert (the drag bit is off, and the fling bit with it
-              // — flutter_map ends every one-finger gesture by emitting a
-              // fling-not-started event sourced `dragEnd`, which must not
-              // read as the hand): an accidental touch — glove, handlebar
-              // mount, pocket — can neither move the camera nor disengage
-              // the follow. Deliberate look-around stays one gesture away
-              // (two fingers pan and release the follow; a long-press
-              // re-arms it), so the flags ride the armed state, flipping
-              // live — flutter_map recreates its gesture recognizers on
-              // the change.
+              // While a session's follow-camera is armed, one-finger
+              // drags are peeks: the drag bit stays on (the hand pans
+              // live — never a dead map), but the fling bit goes off
+              // with it — momentum would fight the lift's return glide,
+              // and a fling bit left on ends every one-finger gesture
+              // with a phantom dragEnd-sourced event that reads as the
+              // hand. The follow-camera itself holds the peek: targets
+              // arriving mid-drag are stored, never eased toward, and
+              // the lift glides back to the latest fix framing.
               interactionOptions: InteractionOptions(
                 flags: widget.model.isRecording && _followArmed
-                    ? InteractiveFlag.all &
-                          ~InteractiveFlag.drag &
-                          ~InteractiveFlag.flingAnimation
+                    ? InteractiveFlag.all & ~InteractiveFlag.flingAnimation
                     : InteractiveFlag.all,
                 keyboardOptions: const KeyboardOptions(
                   enableArrowKeysPanning: true,

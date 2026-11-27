@@ -1090,7 +1090,7 @@ void main() {
   );
 
   testWidgets(
-    'while the follow is armed, a one-finger drag is inert during a recording',
+    'while the follow is armed, a one-finger drag pans as a peek and returns on lift',
     (tester) async {
       final root = createRoot();
       final cache = createCache();
@@ -1113,38 +1113,104 @@ void main() {
       await pumpGlide(tester);
       final followed = camera().center;
 
-      // The accidental case — a one-finger drag of any size, the glove or
-      // handlebar-mount brush — can neither move the camera nor disengage
-      // the follow while it is armed: the drag bit is off.
+      // The one-finger drag pans the map live — feedback, never a dead
+      // map — read before the return glide can run its first frame.
       final size = tester.getSize(find.byType(FlutterMap));
       await tester.dragFrom(
         Offset(size.width / 2, size.height * 0.4),
         const Offset(0, 80),
       );
-      await tester.pump();
+      final peeked = camera().center;
       expect(
-        camera().center,
-        sameCameraAs(followed),
-        reason: 'the one-finger drag moved nothing',
+        peeked.latitude,
+        greaterThan(followed.latitude),
+        reason: 'the drag panned the map under the hand',
       );
+      // The follow never disengaged: no release toast.
       expect(
         find.byType(SnackBar),
         findsNothing,
-        reason: 'nothing released, so no toast',
+        reason: 'the peek released nothing',
       );
 
-      // The follow is still armed: the next fix re-centers on it.
+      // The lift is the return: the camera glides back to the fix's
+      // framing, the follow armed all along.
+      await pumpGlide(tester);
+      expect(
+        camera().center.latitude,
+        greaterThan(52.5201),
+        reason: 'the return frames the fix (center north of it)',
+      );
+      expect(
+        camera().center.latitude,
+        lessThan(52.5201 + 1e-3),
+        reason: 'the return re-centered on the fix',
+      );
+      // And the follow still rides: the next fix moves the camera.
       fakeFix(source, 1, lat: 52.5202);
       await pumpGlide(tester);
       expect(
         camera().center.latitude,
         greaterThan(52.5202),
-        reason: 'the follow still frames the fix (center north of it)',
+        reason: 'the follow still frames the new fix after the peek',
+      );
+    },
+  );
+
+  testWidgets(
+    'a fix arriving mid-peek is held; the lift returns to the new fix',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = await createModel(root);
+      final source = FakePositionSource();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: true,
+      );
+      await tester.pump();
+
+      MapCamera camera() =>
+          MapController.of(tester.element(find.byType(TileLayer))).camera;
+
+      await model.startRecording(source: source, permissionGate: false);
+      fakeFix(source, 0, lat: 52.5201);
+      await pumpGlide(tester);
+
+      // The peeking hand holds the camera: finger down, dragged, kept
+      // down.
+      final size = tester.getSize(find.byType(FlutterMap));
+      final gesture = await tester.startGesture(
+        Offset(size.width / 2, size.height * 0.4),
+      );
+      await gesture.moveBy(const Offset(0, 80));
+      final peeked = camera().center;
+
+      // A fix arrives while the finger is still down: its target is
+      // stored, never eased toward — nothing may pull against the hand.
+      fakeFix(source, 1, lat: 52.5202);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(
+        camera().center,
+        sameCameraAs(peeked),
+        reason: 'the held target never pulled the camera mid-peek',
+      );
+
+      // The lift returns to the NEW fix's framing, not the old one.
+      await gesture.up();
+      await pumpGlide(tester);
+      expect(
+        camera().center.latitude,
+        greaterThan(52.5202),
+        reason: 'the return frames the new fix (center north of it)',
       );
       expect(
         camera().center.latitude,
         lessThan(52.5202 + 1e-3),
-        reason: 'the follow re-centered on the new fix',
+        reason: 'the return re-centered on the new fix',
       );
     },
   );

@@ -28,6 +28,13 @@ double nearestEquivalentRotation(double course, double reference) =>
 /// framing, the release-on-gesture, the rotation math — lives here once,
 /// so both hosts move the camera identically by construction.
 ///
+/// One escape from the release-on-gesture: with [dragPeeks] on (the
+/// recording's policy), a one-finger drag is a *peek* — the hand pans
+/// the map live (never a dead map), the follow stays armed, targets
+/// arriving mid-peek are held, and on lift the camera glides back to
+/// the latest fix framing. A gesture with more intent (two fingers,
+/// double-tap, wheel) still releases.
+///
 /// This is deliberately not a widget: it needs the host's `createTicker`
 /// (a `TickerProvider` mixin belongs to a state) and glides the camera
 /// through the [MapController] it is handed, so a per-fix or per-tick
@@ -45,7 +52,8 @@ class FollowCamera {
     // report through their own sources after the gesture ends, and the
     // desktop scroll wheel (a zoom hand, not a pan, but it moves the
     // camera just the same). Plain taps don't release it. Only a re-arm
-    // ([arm]/[rearm]) or a fresh session or playback arms it again.
+    // ([arm]/[rearm]) or a fresh session or playback arms it again —
+    // except the one-finger peek below, which never releases at all.
     _mapEvents = mapController.mapEventStream.listen((event) {
       // A gesture that changed the zoom adopts it as the ride's zoom —
       // even on the very event that releases the follow (the releasing
@@ -62,6 +70,24 @@ class FollowCamera {
       }
       if (!follow) return;
       if (_moveGestures.contains(event.source)) {
+        // The peek policy: a one-finger drag while [dragPeeks] is on
+        // takes the camera without disengaging the follow — the hand
+        // pans live, and on lift ([_endPeek]) the camera glides back to
+        // the latest held target. Any other move gesture (or a second
+        // finger joining the drag, which re-sources the gesture as
+        // multi-finger) cancels the peek and releases as always.
+        if (dragPeeks) {
+          if (event.source == MapEventSource.dragStart) {
+            _startPeek();
+            return;
+          }
+          if (event.source == MapEventSource.onDrag && _peeking) return;
+          if (event.source == MapEventSource.dragEnd && _peeking) {
+            _endPeek();
+            return;
+          }
+        }
+        _peeking = false;
         release(event.source);
         return;
       }
@@ -128,6 +154,26 @@ class FollowCamera {
   /// user's hand.
   bool _follow = false;
   bool get follow => _follow;
+
+  /// Whether the recording's peek policy is on: a one-finger drag while
+  /// [follow] is armed pans the map live and glides back on lift,
+  /// instead of releasing the follow. Set by the recording dashboard at
+  /// its session boundaries ([reset] sites); playback leaves it off (its
+  /// drags release as before), and it only ever matters while the follow
+  /// is armed — released or idle cameras never see a peek.
+  bool dragPeeks = false;
+
+  /// True while the peeking hand owns the camera (a one-finger drag
+  /// started, the finger not yet lifted): targets arriving per fix are
+  /// stored but never eased toward — nothing pulls against the hand —
+  /// and the dragEnd ends the peek and glides back. Any other move
+  /// gesture cancels it and releases.
+  bool _peeking = false;
+
+  /// The last point fed to [update], whatever the follow's state: the
+  /// peek's home target, so a peek shorter than a fix interval still
+  /// returns to the framing the follow was holding when the drag began.
+  LatLng? _lastPoint;
 
   /// The follow-camera glide: each target (see [update]) stores itself
   /// here and the ticker below eases the camera toward it frame by frame
@@ -257,11 +303,13 @@ class FollowCamera {
 
   /// The followed thing's boundary (a session or playback starts or
   /// ends): forces the follow state — [armed] arms it, otherwise it
-  /// drops — stops any in-flight glide and forgets the smoothed
-  /// headings, so stale state never leaks across the boundary. Unlike
-  /// [release] this is not a gesture: nothing is logged as one.
+  /// drops — stops any in-flight glide, forgets the smoothed headings
+  /// and any peek in flight, so stale state never leaks across the
+  /// boundary. Unlike [release] this is not a gesture: nothing is
+  /// logged as one.
   void reset({required bool armed}) {
     stopGlide();
+    _peeking = false; // a boundary never leaks a peek in flight
     clearHeadingWindow();
     _lastGlideCamera = null; // no earlier glide frame can still be in flight
     _rideZoom = null; // a new followed thing starts under the floor policy
@@ -307,6 +355,9 @@ class FollowCamera {
   /// [_framedCenter]). Call this per fix (the session) or per tick
   /// (playback) — the glide smooths whatever cadence arrives.
   void update(LatLng point, double? heading) {
+    // The peek's home: remembered on every fix so a drag that starts
+    // between fixes still has somewhere to return.
+    _lastPoint = point;
     // The ride's zoom: the user's slider zoom once one was set, else
     // never below the floor.
     final zoom = _rideZoom ?? math.max(mapController.camera.zoom, followZoomFloor);
@@ -348,9 +399,12 @@ class FollowCamera {
   }
 
   /// Stores the next camera target and starts the glide ticker if it is
-  /// not running.
+  /// not running — unless the peeking hand owns the camera: then the
+  /// freshest target is only stored (nothing may pull against the
+  /// hand), and the lift ([_endPeek]) starts the glide.
   void _setGlideTarget(LatLng center, double zoom, double rotation) {
     _glideTarget = (center: center, zoom: zoom, rotation: rotation);
+    if (_peeking) return;
     // A fresh ticker starts its clock at zero — its first tick measures a
     // one-frame dt. A ticker that is *still running* keeps its monotonic
     // elapsed: resetting the clock here would make its next tick read the
@@ -358,6 +412,31 @@ class FollowCamera {
     // jump most of the remaining distance in a single frame — the visible
     // snap a target arrives mid-glide.
     if (_glideTicker == null) {
+      _prevGlideElapsed = Duration.zero;
+      _glideTicker = _createTicker(_glideTick)..start();
+    }
+  }
+
+  /// The peek begins (a one-finger dragStart while [dragPeeks] is on and
+  /// the follow armed): the hand owns the camera now — any in-flight
+  /// glide stops, and a home target from the last fix is stored without
+  /// a ticker, so a peek with no fix inside still returns to the
+  /// framing the follow was holding when the drag began.
+  void _startPeek() {
+    _peeking = true;
+    stopGlide();
+    final point = _lastPoint;
+    if (point != null) update(point, null);
+  }
+
+  /// The finger lifted: the follow was armed all along — glide back to
+  /// the freshest held target (the latest fix's framing, rotation
+  /// included, the same easing as every follow glide). A session with no
+  /// fix yet holds no target: the camera waits where the hand left it
+  /// for the first fix to glide it in.
+  void _endPeek() {
+    _peeking = false;
+    if (_glideTarget != null && _glideTicker == null) {
       _prevGlideElapsed = Duration.zero;
       _glideTicker = _createTicker(_glideTick)..start();
     }
