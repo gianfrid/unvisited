@@ -138,10 +138,10 @@ class _MapPageState extends State<MapPage> {
       final zoomStep = (event.camera.zoom * 2).roundToDouble() / 2;
       _cameraZoom = event.camera.zoom;
       if (!dirty && zoomStep != _fogZoomStep) {
-        // Ink strokes and the picking-mode lanes both convert ground
-        // meters to pixels per zoom half-step.
-        dirty =
-            widget.model.fogStyle == 'ink' || widget.model.memberPicking;
+        // The picking-mode lanes convert ground meters to pixels per zoom
+        // half-step. The ink style does not: its strokes are meter-sized
+        // and flutter_map converts them at paint time.
+        dirty = widget.model.memberPicking;
       }
       _fogZoomStep = zoomStep;
       if (!dirty && _locatedPosition != null) {
@@ -198,10 +198,9 @@ class _MapPageState extends State<MapPage> {
   /// events in initState and read when the circles are built.
   double _fogCellSize = baseCellSizeMeters;
 
-  /// The camera zoom quantized to half-steps, for the meter-sized ink
-  /// style: its stroke widths convert from ground meters to pixels with
-  /// the current zoom, so the width refreshes twice per zoom level
-  /// without redrawing the (cached) stroke geometry per frame.
+  /// The camera zoom quantized to half-steps, for the member-picking
+  /// lanes: their lane spacing converts from ground meters to pixels with
+  /// the current zoom, so it refreshes twice per zoom level.
   double _fogZoomStep = 0.0;
 
   /// True while a locate attempt is in flight. Acquiring a fix takes
@@ -1017,9 +1016,12 @@ class _MapPageState extends State<MapPage> {
                 for (final s in pass.strips)
                   Polyline(
                     points: s.run,
-                    strokeWidth: inkWidthMeters * pass.width * _pxPerMeter(),
-              color: inkColorFor(key ?? defaultTintKey)
-                  .withValues(alpha: 1),
+                    // Meter-sized: flutter_map converts to pixels at paint
+                    // time, so no rebuild is needed when the zoom changes.
+                    strokeWidth: inkWidthMeters * pass.width,
+                    useStrokeWidthInMeter: true,
+                    color: inkColorFor(key ?? defaultTintKey)
+                        .withValues(alpha: 1),
                   ),
           ]),
         ];
@@ -1589,14 +1591,13 @@ class _MapPageState extends State<MapPage> {
   List<Polyline> _buildFogLines(List<MapTrack> tracks) {
     final tintKeys = widget.model.aggregateTintKeys;
     final ink = widget.model.fogStyle == 'ink';
-    // Ground meters to screen pixels at the current camera: the ink
-    // strokes are sized in meters (like the fog circles), the polyline
-    // style stays a fixed screen-space width.
-    final pxPerMeter = _pxPerMeter();
     final out = <Polyline>[];
     for (final a in widget.model.aggregates) {
       final tint = exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
-      final key = '${a.anchorId}@$_fogCellSize';
+      // Keyed by the member ids, like the circle-centers cache: the anchor
+      // alone is stable across membership changes and would serve stale
+      // strokes at the same fog band.
+      final key = '${[for (final t in a.members) t.id].join('|')}@$_fogCellSize';
       var passes = _inkPassesCache[key];
       if (passes == null) {
         passes = [
@@ -1622,7 +1623,10 @@ class _MapPageState extends State<MapPage> {
           for (final s in pass.strips) {
             out.add(Polyline(
               points: s.run,
-              strokeWidth: inkWidthMeters * pass.width * pxPerMeter,
+              // Meter-sized like the fog circles: flutter_map converts to
+              // pixels at paint time, so zoom changes need no rebuild.
+              strokeWidth: inkWidthMeters * pass.width,
+              useStrokeWidthInMeter: true,
               color: inkColorFor(tintKeys[a.anchorId] ?? defaultTintKey)
                   .withValues(alpha: pass.alpha),
             ));
@@ -1633,26 +1637,40 @@ class _MapPageState extends State<MapPage> {
     return out;
   }
 
-  /// Cache of ink stroke passes per aggregate @ fog band: recomputed only
-  /// on band crossings (like the circle centers), reused across pans and
-  /// same-band zooms. Pass widths are in meters and converted to pixels
-  /// at paint time, so a 0.5-zoom-step refresh needs no recompute.
-  final _inkPassesCache = <String, List<InkPass>>{};
+  /// The fog overlay as one memoized [PolylineLayer] for the two line
+  /// styles. The key covers everything the built polylines depend on —
+  /// style, fog band, aggregate membership, tints — so on unrelated page
+  /// rebuilds the identical widget instance is returned and Flutter skips
+  /// the layer's didUpdateWidget: flutter_map then keeps its projection
+  /// and simplification caches instead of re-projecting every strip on
+  /// every model notification (the gesture-settle one included).
+  PolylineLayer? _fogLineLayerCache;
+  String? _fogLineLayerKey;
 
-  /// Ground meters to screen pixels at the current camera (1.0 when the
-  /// camera has no size yet, e.g. first layout).
-  double _pxPerMeter() {
-    final zoom = _cameraZoom;
-    if (zoom == null) return 1.0;
-    return 1.0 /
-        groundResolution(
-          zoom: zoom,
-          latitude: _mapController.camera.center.latitude,
-        );
+  PolylineLayer _fogLineLayer(List<MapTrack> tracks) {
+    final model = widget.model;
+    final tintKeys = model.aggregateTintKeys;
+    final key = [
+      model.fogStyle,
+      _fogCellSize,
+      for (final a in model.aggregates)
+        '${a.anchorId}{${[for (final t in a.members) t.id].join('|')}}${tintKeys[a.anchorId]}',
+    ].join(';');
+    final cached = _fogLineLayerCache;
+    if (cached != null && key == _fogLineLayerKey) return cached;
+    _fogLineLayerKey = key;
+    return _fogLineLayerCache =
+        PolylineLayer(polylines: _buildFogLines(tracks));
   }
 
+  /// Cache of ink stroke passes per aggregate @ fog band: recomputed only
+  /// on band crossings or catalog changes (like the circle centers), reused
+  /// across pans and zooms. Pass widths stay in meters — the layer converts
+  /// them to pixels at paint time — so no refresh is needed per zoom step.
+  final _inkPassesCache = <String, List<InkPass>>{};
+
   /// The camera zoom at the last map event, or null before the first
-  /// one; drives the meter-to-pixel conversion of the ink style.
+  /// one; drives the member-picking lanes' meter-to-pixel lane spacing.
   double? _cameraZoom;
 
   /// Band-aware decimation for the fog line styles: keep every k-th
@@ -1840,12 +1858,7 @@ class _MapPageState extends State<MapPage> {
               // way.
               if (widget.model.playback == null)
                 switch (widget.model.fogStyle) {
-                  'polyline' => PolylineLayer(
-                      polylines: _buildFogLines(mapTracks),
-                    ),
-                  'ink' => PolylineLayer(
-                      polylines: _buildFogLines(mapTracks),
-                    ),
+                  'polyline' || 'ink' => _fogLineLayer(mapTracks),
                   _ => CircleLayer(circles: _buildFogCircles(mapTracks)),
                 },
               // Unlocked road corridors (fog-of-war for streets), above

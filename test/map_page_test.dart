@@ -3523,16 +3523,16 @@ void main() {
     final layers = tester.widgetList<PolylineLayer>(find.byType(PolylineLayer));
     final inkPolylines = layers.expand((l) => l.polylines).toList();
     expect(inkPolylines, isNotEmpty);
-    // The core pass is sized in ground meters: at the test camera the
-    // stroke width must match 10 m converted to pixels (plus wobble).
+    // The core pass is sized in ground meters: the thinnest stroke is the
+    // 10 m base times the core pass factor, flagged meter-sized so
+    // flutter_map converts it to pixels at paint time (no per-zoom rebuild).
     final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
-    final pxPerMeter =
-        1 / groundResolution(zoom: camera.zoom, latitude: camera.center.latitude);
-    final coreWidth = inkWidthMeters * 0.7 * pxPerMeter;
+    final coreWidth = inkWidthMeters * 0.7;
     expect(
       inkPolylines.map((p) => p.strokeWidth).reduce((a, b) => a < b ? a : b),
-      closeTo(coreWidth * 0.8, coreWidth * 0.25),
+      coreWidth,
     );
+    expect(inkPolylines.every((p) => p.useStrokeWidthInMeter), isTrue);
     // Layered passes, not one flat stroke.
     expect(inkPolylines.map((p) => p.strokeWidth).toSet().length, greaterThan(1));
 
