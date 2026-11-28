@@ -235,18 +235,17 @@ class AppModel extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  /// All *visible* tracks' unlock corridors merged by way id - the
-  /// coverage input. Visible only on purpose: the corridor layer also
-  /// draws visible tracks only, so hiding a track must return its
-  /// roads to the unvisited overlay (and to the chip's share) rather
-  /// than leave grey roads the chip still counts as walked. Matching
-  /// and persistence stay unconditional; visibility is presentation.
-  /// Corridors from other regions' way ids simply do not intersect the
-  /// active store's buckets and contribute nothing.
+  /// All stored tracks' unlock corridors merged by way id - the
+  /// coverage input. Visibility plays no part on purpose: hiding a
+  /// track declutters the map (its circles, corridors and trace stop
+  /// drawing) but does not un-walk its roads - the glow and the chip
+  /// answer accumulated unlock state, and only deleting a track
+  /// returns its roads to the unvisited picture. Corridors from other
+  /// regions' way ids simply do not intersect the active store's
+  /// buckets and contribute nothing.
   Map<String, List<List<LatLng>>> mergedCorridors() {
     final merged = <String, List<List<LatLng>>>{};
     for (final t in store.tracks) {
-      if (!t.visible) continue;
       t.unlockedWays.forEach((wayId, corridors) {
         merged.putIfAbsent(wayId, () => []).addAll(corridors);
       });

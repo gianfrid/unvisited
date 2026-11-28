@@ -690,8 +690,7 @@ void main() {
           containsAll(['1001', '1002', '1003', '1004']));
     });
 
-    test('hiding a track returns its roads to the overlay and the chip',
-        () async {
+    test('hiding a track keeps its roads out of the glow', () async {
       activateRoad();
       final dir = stageDir();
       File('${dir.path}${Platform.pathSeparator}main_street_walk.gpx')
@@ -702,18 +701,17 @@ void main() {
       final walkedBefore = model.viewportReport!.matchedMeters;
       expect(model.viewportOverlay.map((w) => w.$1), isNot(contains('1001')));
 
-      // Hiding the track is a presentation change: its corridors stop
-      // counting, even at the unchanged camera.
+      // Hiding declutters the map, it does not un-walk the roads: the
+      // glow and the chip keep answering accumulated unlock state.
       await model.setAllVisible(false);
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
       expect(
         model.viewportOverlay.map((w) => w.$1),
-        contains('1001'),
-        reason: 'hidden track: its roads are unvisited again',
+        isNot(contains('1001')),
+        reason: 'hidden track: its roads stay out of the glow',
       );
-      expect(model.viewportReport!.matchedMeters,
-          lessThan(walkedBefore));
+      expect(model.viewportReport!.matchedMeters, walkedBefore);
     });
 
     test('below the zoom floor there is no report', () async {
