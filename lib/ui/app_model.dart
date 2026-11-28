@@ -11,7 +11,11 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../aggregate/aggregate_tracks.dart'
-    show AggregateInput, AggregateTrack, AggregateIndex, UnionFindAggregateIndex;
+    show
+        AggregateInput,
+        AggregateTrack,
+        AggregateIndex,
+        UnionFindAggregateIndex;
 import '../aggregate/member_colors.dart'
     show MemberColorAssignment, assignMemberColors;
 import '../debug_log.dart';
@@ -112,7 +116,7 @@ enum RoadFileFailure {
 /// as thin delegating members so the UI keeps one access point.
 class AppModel extends ChangeNotifier {
   AppModel(this.store, {PhotoSource? photoSource})
-      : photoSource = photoSource ?? defaultPhotoSource() {
+    : photoSource = photoSource ?? defaultPhotoSource() {
     imports = ImportCoordinator(
       store: store,
       roadMatcher: () => _roadMatcher,
@@ -212,16 +216,19 @@ class AppModel extends ChangeNotifier {
       return;
     }
     final corridors = mergedCorridors();
-    final report =
-        await coverage.coverage(corners.$1, corners.$2, corridors);
+    final report = await coverage.coverage(corners.$1, corners.$2, corridors);
     // A later settle, or switching the feature off, superseded this
     // pass while it awaited: its answer would arrive out of order (and
     // must not re-populate a switched-off chip).
     if (_viewportCorners != corners || !showUnvisitedRoads) return;
-    final overlay =
-        await coverage.unvisitedIn(corners.$1, corners.$2, corridors);
+    final overlay = await coverage.unvisitedIn(
+      corners.$1,
+      corners.$2,
+      corridors,
+    );
     if (_viewportCorners != corners || !showUnvisitedRoads) return;
-    final changed = !identical(report, _viewportReport) ||
+    final changed =
+        !identical(report, _viewportReport) ||
         !identical(overlay, _viewportOverlay);
     _viewportReport = report;
     _viewportOverlay = overlay;
@@ -417,14 +424,20 @@ class AppModel extends ChangeNotifier {
   RecordingLiveState get recordingLive => recorder.recordingLive;
   List<String> get salvagedRecordingNames => recorder.salvagedRecordingNames;
   void notifyRecordingFix() => recorder.notifyRecordingFix();
-  Future<String?> startRecording(
-          {PositionSource? source, bool permissionGate = true}) async {
+  Future<String?> startRecording({
+    PositionSource? source,
+    bool permissionGate = true,
+  }) async {
     // A session and a replay would fight over the one follow-camera;
     // the menu gates starting a replay during a session, this rules
     // the reverse — the live session wins, the replay yields.
     player.stop();
-    return recorder.startRecording(source: source, permissionGate: permissionGate);
+    return recorder.startRecording(
+      source: source,
+      permissionGate: permissionGate,
+    );
   }
+
   Future<void> stopRecording({String? name}) =>
       recorder.stopRecording(name: name);
   Future<void> discardRecording() => recorder.discardRecording();
@@ -605,17 +618,20 @@ class AppModel extends ChangeNotifier {
   /// following palette colors in anchor-start order, cycling.
   Map<String, String> get aggregateTintKeys {
     final keys = <String, String>{};
-    final ordered = [
-      for (final a in aggregates)
-        (anchor: a.anchorId, start: _anchorStart(a)),
-    ]..sort((x, y) {
-      final xs = x.start, ys = y.start;
-      if (xs == null && ys == null) return x.anchor.compareTo(y.anchor);
-      if (xs == null) return 1;
-      if (ys == null) return -1;
-      return xs.compareTo(ys);
-    });
-    final palette = explorationTints.keys.where((k) => k != defaultTintKey).toList();
+    final ordered =
+        [
+          for (final a in aggregates)
+            (anchor: a.anchorId, start: _anchorStart(a)),
+        ]..sort((x, y) {
+          final xs = x.start, ys = y.start;
+          if (xs == null && ys == null) return x.anchor.compareTo(y.anchor);
+          if (xs == null) return 1;
+          if (ys == null) return -1;
+          return xs.compareTo(ys);
+        });
+    final palette = explorationTints.keys
+        .where((k) => k != defaultTintKey)
+        .toList();
     for (var i = 0; i < ordered.length; i++) {
       final anchor = ordered[i].anchor;
       keys[anchor] = i == 0
@@ -628,7 +644,10 @@ class AppModel extends ChangeNotifier {
   DateTime? _anchorStart(AggregateTrack a) => a.members
       .map((m) => m.startTimeUtc)
       .whereType<DateTime>()
-      .fold<DateTime?>(null, (min, t) => min == null || t.isBefore(min) ? t : min);
+      .fold<DateTime?>(
+        null,
+        (min, t) => min == null || t.isBefore(min) ? t : min,
+      );
 
   /// Which screen edge the control pill hugs: 'left' or 'right'.
   String get zoomSliderSide => store.zoomSliderSide;
@@ -746,6 +765,16 @@ class AppModel extends ChangeNotifier {
   /// Saves the exploration overlay's display style.
   Future<void> setFogStyle(String style) async {
     await store.saveFogStyle(style);
+    notifyListeners();
+  }
+
+  /// The chrome's button visual style ('standard' or 'cassette'),
+  /// normalized in the store.
+  String get buttonStyle => store.buttonStyle;
+
+  /// Saves the chrome's button visual style.
+  Future<void> setButtonStyle(String style) async {
+    await store.saveButtonStyle(style);
     notifyListeners();
   }
 
@@ -878,10 +907,7 @@ class AppModel extends ChangeNotifier {
   /// app owns the copy) and the catalog notifies once, so the new pin
   /// mounts like an imported track does. Declined and failed captures
   /// change nothing.
-  Future<PhotoAddResult> takePhoto(
-    LatLng position, {
-    DateTime? takenAt,
-  }) async {
+  Future<PhotoAddResult> takePhoto(LatLng position, {DateTime? takenAt}) async {
     final outcome = await photoSource.capture();
     switch (outcome) {
       case PhotoCaptureSucceeded(:final bytes):
@@ -918,10 +944,7 @@ class AppModel extends ChangeNotifier {
   /// channel. True when the gallery accepted it. The stored photo is
   /// untouched either way.
   Future<bool> savePhotoToGallery(StoredPhoto photo) =>
-      savePhotoToGalleryFile(
-        store.photoFileFor(photo).path,
-        photo.file,
-      );
+      savePhotoToGalleryFile(store.photoFileFor(photo).path, photo.file);
 
   /// Opens the system share sheet for a photo (the preview's Share):
   /// ACTION_SEND over the app's FileProvider. Fire-and-forget — the
@@ -1000,8 +1023,10 @@ class AppModel extends ChangeNotifier {
   /// Drops the selection: anchor, captured member list, and picking state
   /// all go.
   void clearSelection() {
-    if (selectedAnchor == null && selectedMemberIds == null &&
-        !memberPicking && pickedMemberId == null) {
+    if (selectedAnchor == null &&
+        selectedMemberIds == null &&
+        !memberPicking &&
+        pickedMemberId == null) {
       return;
     }
     _clearSelectionState();
@@ -1029,8 +1054,12 @@ class AppModel extends ChangeNotifier {
   }) {
     for (final a in aggregates) {
       for (final p in a.points) {
-        if (haversineMeters(tap.latitude, tap.longitude, p.latitude,
-                p.longitude) <=
+        if (haversineMeters(
+              tap.latitude,
+              tap.longitude,
+              p.latitude,
+              p.longitude,
+            ) <=
             toleranceMeters) {
           selectedAnchor = a.anchorId;
           selectedMemberIds = a.trackIds;
@@ -1095,18 +1124,15 @@ class AppModel extends ChangeNotifier {
     if (source != _memberAssignmentsSource) {
       _memberAssignmentsSource = source;
       final byId = {for (final t in store.tracks) t.id: t};
-      _memberAssignments = assignMemberColors(
-        [
-          for (final id in ids)
-            if (byId[id] != null)
-              AggregateInput(
-                id: id,
-                points: pointsOf(byId[id]!),
-                startTimeUtc: byId[id]!.startTimeUtc,
-              ),
-        ],
-        palette: explorationTints.keys.toList(),
-      );
+      _memberAssignments = assignMemberColors([
+        for (final id in ids)
+          if (byId[id] != null)
+            AggregateInput(
+              id: id,
+              points: pointsOf(byId[id]!),
+              startTimeUtc: byId[id]!.startTimeUtc,
+            ),
+      ], palette: explorationTints.keys.toList());
     }
     return _memberAssignments!;
   }

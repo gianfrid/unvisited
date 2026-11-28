@@ -14,6 +14,7 @@ import 'package:flutter_map/flutter_map.dart';
 import '../l10n/app_strings.dart';
 import '../recording/recording_session.dart';
 import 'app_model.dart';
+import 'cassette_key.dart';
 import 'map_actions.dart';
 
 /// OSM standard tiles exist between zoom 0 and 19; 3 is a world view that
@@ -25,18 +26,18 @@ const mapMaxZoom = 19.0;
 /// The display name of a rotation mode, for the pill button's tooltip and
 /// the Settings segments.
 String rotationModeName(AppStrings strings, String mode) => switch (mode) {
-      'course' => strings.rotationModeCourse,
-      _ => strings.rotationModeNorth,
-    };
+  'course' => strings.rotationModeCourse,
+  _ => strings.rotationModeNorth,
+};
 
 /// The pill button's icon for a rotation mode: a compass rose while the
 /// map is locked north-up, the travel arrow (the position marker's glyph)
 /// while the camera rides the course. The mode's name rides as the
 /// button's caption (see [rotationModeName]).
 IconData rotationModeIcon(String mode) => switch (mode) {
-      'course' => Icons.navigation,
-      _ => Icons.explore,
-    };
+  'course' => Icons.navigation,
+  _ => Icons.explore,
+};
 
 /// The edge control pill pinned to the map's configured edge: the
 /// north/course rotation toggle on top, then the zoom-in and zoom-out
@@ -103,6 +104,104 @@ class MapControlPill extends StatelessWidget {
     // already locked on the thing the button would re-center on.
     final followReplay = model.playback != null;
     final showLastSlot = !followArmed && (showLocate || model.playback != null);
+    final cassette = model.buttonStyle == 'cassette';
+    final keys = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The rotation-mode toggle: one global control for the shared
+        // setting — the follow-camera (recording and playback alike)
+        // reads it. Labelled like the zoom buttons: the mode's name as
+        // the caption ("North up" / "Course up").
+        HeaderAction(
+          key: const ValueKey('rotation-mode-button'),
+          icon: Icon(rotationModeIcon(model.mapRotation)),
+          label: rotationModeName(strings, model.mapRotation),
+          tooltip: rotationModeName(strings, model.mapRotation),
+          width: 56,
+          iconSize: 24,
+          cassette: cassette,
+          onTap: () {
+            void snapNorth() {
+              // A programmatic move: it never releases an armed follow.
+              final camera = controller.camera;
+              controller.moveAndRotate(camera.center, camera.zoom, 0.0);
+            }
+
+            if (model.isRecording || model.playback != null) {
+              // A follow-camera exists: toggle north/course, and make
+              // the tap do something visible either way — course
+              // re-arms a released follow so the camera comes along,
+              // north snaps the map north on the spot, since a
+              // released follow would never turn it back on its own.
+              final modes = AppModel.rotationModes;
+              final next =
+                  modes[(modes.indexOf(model.mapRotation) + 1) % modes.length];
+              model.setMapRotation(next);
+              if (next == 'course') {
+                onRearmFollow();
+              } else {
+                snapNorth();
+              }
+            } else {
+              // Idle: the tap just sets north — and snaps the camera
+              // to rotation 0, so the button visibly orients the map
+              // even after a manual two-finger rotate (course-up has
+              // no meaning with nothing moving).
+              model.setMapRotation('north');
+              snapNorth();
+            }
+          },
+        ),
+        HeaderAction(
+          key: const ValueKey('zoom-in-button'),
+          icon: const Icon(Icons.add),
+          label: strings.zoomIn,
+          tooltip: strings.zoomIn,
+          onTap: () => _moveTo(controller.camera.zoom + 1),
+          width: 56,
+          iconSize: 24,
+          cassette: cassette,
+        ),
+        HeaderAction(
+          key: const ValueKey('zoom-out-button'),
+          icon: const Icon(Icons.remove),
+          label: strings.zoomOut,
+          tooltip: strings.zoomOut,
+          onTap: () => _moveTo(controller.camera.zoom - 1),
+          width: 56,
+          iconSize: 24,
+          cassette: cassette,
+        ),
+        if (showLastSlot)
+          HeaderAction(
+            key: const ValueKey('locate-button'),
+            icon: followReplay
+                ? const Icon(Icons.center_focus_strong)
+                : locating
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location),
+            label: followReplay
+                ? strings.followReplayLabel
+                : (locating ? strings.locating : strings.locateLabel),
+            tooltip: followReplay
+                ? strings.followReplayTooltip
+                : strings.locateTooltip,
+            onTap: (locating && !followReplay) ? null : onLocate,
+            width: 56,
+            iconSize: 24,
+            cassette: cassette,
+          ),
+      ],
+    );
+    // The floating deck: no panel behind the keys — each cap carries its
+    // own throw shadow over the map (the flat style keeps its pill).
+    if (cassette) {
+      return KeyedSubtree(key: const ValueKey('control-pill'), child: keys);
+    }
     return Container(
       key: const ValueKey('control-pill'),
       // Horizontal padding keeps the captions clear of the rounded border.
@@ -114,95 +213,7 @@ class MapControlPill extends StatelessWidget {
           BoxShadow(blurRadius: 6, color: Colors.black26, offset: Offset(0, 2)),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // The rotation-mode toggle: one global control for the shared
-          // setting — the follow-camera (recording and playback alike)
-          // reads it. Labelled like the zoom buttons: the mode's name as
-          // the caption ("North up" / "Course up").
-          HeaderAction(
-            key: const ValueKey('rotation-mode-button'),
-            icon: Icon(rotationModeIcon(model.mapRotation)),
-            label: rotationModeName(strings, model.mapRotation),
-            tooltip: rotationModeName(strings, model.mapRotation),
-            width: 56,
-            iconSize: 24,
-            onTap: () {
-              void snapNorth() {
-                // A programmatic move: it never releases an armed follow.
-                final camera = controller.camera;
-                controller.moveAndRotate(camera.center, camera.zoom, 0.0);
-              }
-
-              if (model.isRecording || model.playback != null) {
-                // A follow-camera exists: toggle north/course, and make
-                // the tap do something visible either way — course
-                // re-arms a released follow so the camera comes along,
-                // north snaps the map north on the spot, since a
-                // released follow would never turn it back on its own.
-                final modes = AppModel.rotationModes;
-                final next =
-                    modes[(modes.indexOf(model.mapRotation) + 1) %
-                        modes.length];
-                model.setMapRotation(next);
-                if (next == 'course') {
-                  onRearmFollow();
-                } else {
-                  snapNorth();
-                }
-              } else {
-                // Idle: the tap just sets north — and snaps the camera
-                // to rotation 0, so the button visibly orients the map
-                // even after a manual two-finger rotate (course-up has
-                // no meaning with nothing moving).
-                model.setMapRotation('north');
-                snapNorth();
-              }
-            },
-          ),
-          HeaderAction(
-            key: const ValueKey('zoom-in-button'),
-            icon: const Icon(Icons.add),
-            label: strings.zoomIn,
-            tooltip: strings.zoomIn,
-            onTap: () => _moveTo(controller.camera.zoom + 1),
-            width: 56,
-            iconSize: 24,
-          ),
-          HeaderAction(
-            key: const ValueKey('zoom-out-button'),
-            icon: const Icon(Icons.remove),
-            label: strings.zoomOut,
-            tooltip: strings.zoomOut,
-            onTap: () => _moveTo(controller.camera.zoom - 1),
-            width: 56,
-            iconSize: 24,
-          ),
-          if (showLastSlot)
-            HeaderAction(
-              key: const ValueKey('locate-button'),
-              icon: followReplay
-                  ? const Icon(Icons.center_focus_strong)
-                  : locating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.my_location),
-              label: followReplay
-                  ? strings.followReplayLabel
-                  : (locating ? strings.locating : strings.locateLabel),
-              tooltip: followReplay
-                  ? strings.followReplayTooltip
-                  : strings.locateTooltip,
-              onTap: (locating && !followReplay) ? null : onLocate,
-              width: 56,
-              iconSize: 24,
-            ),
-        ],
-      ),
+      child: keys,
     );
   }
 }
@@ -349,6 +360,73 @@ class RecordClusterState extends State<RecordCluster> {
     final model = widget.model;
     final recording = model.isRecording;
     final paused = model.recording?.state == RecordingState.paused;
+    // The deck keys need the same slots the flat style shows, but as
+    // separate latching keys while a session runs: REC stays latched with
+    // its LED (blinking while recording, steady while paused), and
+    // pausing/resuming moves to its own key — the flat style keeps the
+    // one record slot that toggles.
+    final cassette = model.buttonStyle == 'cassette';
+    final children = <Widget>[
+      if (widget.onTakePhoto != null)
+        HeaderAction(
+          key: const ValueKey('camera-button'),
+          icon: const Icon(Icons.photo_camera_outlined),
+          label: strings.cameraLabel,
+          tooltip: strings.cameraTooltip,
+          onTap: widget.onTakePhoto,
+          width: 56,
+          iconSize: 24,
+          cassette: cassette,
+        ),
+      if (recording)
+        HeaderAction(
+          icon: const Icon(Icons.stop),
+          label: strings.stopLabel,
+          tooltip: strings.stopLabel,
+          onTap: _stopRecording,
+          width: 56,
+          iconSize: 24,
+          cassette: cassette,
+        ),
+      if (widget.gpsWorking || recording)
+        // The one record slot (either style): REC raised while idle,
+        // then Pause/Resume through the session. In the cassette style
+        // it carries the deck's clues: the cap stays latched down for
+        // the whole session — LED blinking while recording, steady
+        // while paused — and the glyph is the red REC only while idle.
+        HeaderAction(
+          icon: Icon(
+            recording
+                ? (paused ? Icons.play_arrow : Icons.pause)
+                : Icons.fiber_manual_record,
+          ),
+          label: recording
+              ? (paused ? strings.resumeLabel : strings.pauseLabel)
+              : strings.recordLabel,
+          tooltip: recording
+              ? (paused ? strings.resumeLabel : strings.pauseLabel)
+              : strings.recordLabel,
+          onTap: recording
+              ? (paused ? model.resumeRecording : model.pauseRecording)
+              : _startRecording,
+          width: 56,
+          iconSize: 24,
+          cassette: cassette,
+          latched: recording,
+          rec: !recording,
+          led: !recording
+              ? CassetteLed.off
+              : (paused ? CassetteLed.steady : CassetteLed.blink),
+        ),
+    ];
+    // The floating deck: no panel behind the keys — each cap carries its
+    // own throw shadow over the map (the flat style keeps its pill).
+    if (cassette) {
+      return KeyedSubtree(
+        key: const ValueKey('record-cluster'),
+        child: Column(mainAxisSize: MainAxisSize.min, children: children),
+      );
+    }
     return Material(
       key: const ValueKey('record-cluster'),
       elevation: 2,
@@ -358,49 +436,7 @@ class RecordClusterState extends State<RecordCluster> {
       // the pill's exact mirror in size as well as position.
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (widget.onTakePhoto != null)
-              HeaderAction(
-                key: const ValueKey('camera-button'),
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: strings.cameraLabel,
-                tooltip: strings.cameraTooltip,
-                onTap: widget.onTakePhoto,
-                width: 56,
-                iconSize: 24,
-              ),
-            if (recording)
-              HeaderAction(
-                icon: const Icon(Icons.stop),
-                label: strings.stopLabel,
-                tooltip: strings.stopLabel,
-                onTap: _stopRecording,
-                width: 56,
-                iconSize: 24,
-              ),
-            if (widget.gpsWorking || recording)
-              HeaderAction(
-                icon: Icon(
-                  recording
-                      ? (paused ? Icons.play_arrow : Icons.pause)
-                      : Icons.fiber_manual_record,
-                ),
-                label: recording
-                    ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                    : strings.recordLabel,
-                tooltip: recording
-                    ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                    : strings.recordLabel,
-                onTap: recording
-                    ? (paused ? model.resumeRecording : model.pauseRecording)
-                    : _startRecording,
-                width: 56,
-                iconSize: 24,
-              ),
-          ],
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: children),
       ),
     );
   }

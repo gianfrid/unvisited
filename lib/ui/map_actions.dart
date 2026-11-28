@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../l10n/app_strings.dart';
 import 'app_model.dart';
+import 'cassette_key.dart';
 import 'track_colors.dart';
 
 /// One shared snackbar for the map-layer chrome: hide-then-show, so a
@@ -88,6 +89,10 @@ class HeaderAction extends StatelessWidget {
     this.onTap,
     this.width = 48,
     this.iconSize = 20,
+    this.cassette = false,
+    this.latched = false,
+    this.rec = false,
+    this.led = CassetteLed.off,
   });
 
   final Widget icon;
@@ -104,8 +109,36 @@ class HeaderAction extends StatelessWidget {
   /// Icon size; the edge clusters pass a bigger one for handlebar taps.
   final double iconSize;
 
+  /// True while the model's button style is cassette: the action renders
+  /// as a cassette-deck transport key (see cassette_key.dart) instead of
+  /// the flat action. The extra state below drives the deck's visual
+  /// clues and is ignored by the flat style.
+  final bool cassette;
+
+  /// True while the action's function is engaged (the deck key latches).
+  final bool latched;
+
+  /// True for the record action: its glyph wears the error red.
+  final bool rec;
+
+  /// The REC light's mode on the deck key.
+  final CassetteLed led;
+
   @override
   Widget build(BuildContext context) {
+    if (cassette) {
+      return CassetteKey(
+        icon: icon,
+        label: label,
+        tooltip: tooltip,
+        onTap: onTap,
+        width: width,
+        iconSize: iconSize,
+        latched: latched,
+        rec: rec,
+        led: led,
+      );
+    }
     final scheme = Theme.of(context).colorScheme;
     final enabled = onTap != null;
     final color = scheme.onSurface.withValues(alpha: enabled ? 1 : 0.38);
@@ -165,32 +198,40 @@ class TopToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
-    return FloatingToolbar(
-      children: [
-        if (!model.isRecording)
-          HeaderAction(
-            icon: const Icon(Icons.add),
-            label: strings.importLabel,
-            tooltip: strings.importTooltip,
-            onTap: onImport,
-          ),
-        Builder(
-          builder: (context) => HeaderAction(
-            icon: const BadgeIcon(),
-            label: strings.tracksLabel,
-            tooltip: strings.tracksLabel,
-            onTap: () => Scaffold.of(context).openEndDrawer(),
-          ),
-        ),
-        if (model.isRecording) RecordingSpeedSegment(model: model),
+    final cassette = model.buttonStyle == 'cassette';
+    final children = [
+      if (!model.isRecording)
         HeaderAction(
-          icon: const Icon(Icons.settings_outlined),
-          label: strings.settingsLabel,
-          tooltip: strings.settingsLabel,
-          onTap: onOpenSettings,
+          icon: const Icon(Icons.add),
+          label: strings.importLabel,
+          tooltip: strings.importTooltip,
+          onTap: onImport,
+          cassette: cassette,
         ),
-      ],
-    );
+      Builder(
+        builder: (context) => HeaderAction(
+          icon: const BadgeIcon(),
+          label: strings.tracksLabel,
+          tooltip: strings.tracksLabel,
+          onTap: () => Scaffold.of(context).openEndDrawer(),
+          cassette: cassette,
+        ),
+      ),
+      if (model.isRecording) RecordingSpeedSegment(model: model),
+      HeaderAction(
+        icon: const Icon(Icons.settings_outlined),
+        label: strings.settingsLabel,
+        tooltip: strings.settingsLabel,
+        onTap: onOpenSettings,
+        cassette: cassette,
+      ),
+    ];
+    // The floating deck: no pill behind the keys — each cap carries its
+    // own throw shadow over the map (the flat style keeps its pill).
+    if (cassette) {
+      return Row(mainAxisSize: MainAxisSize.min, children: children);
+    }
+    return FloatingToolbar(children: children);
   }
 }
 
@@ -225,19 +266,14 @@ class RecordingSpeedSegment extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  speed == null
-                      ? '—'
-                      : (speed * 3.6).toStringAsFixed(1),
+                  speed == null ? '—' : (speed * 3.6).toStringAsFixed(1),
                   key: const ValueKey('recording-speed'),
                   maxLines: 1,
-                  style: Theme.of(context)
-                      .textTheme
-                      .displaySmall
-                      ?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        height: 1.0,
-                        color: scheme.onSurface,
-                      ),
+                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    height: 1.0,
+                    color: scheme.onSurface,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -316,9 +352,11 @@ class SelectionBar extends StatelessWidget {
                         value: entry.key,
                         child: Row(
                           children: [
-                            Icon(Icons.circle,
-                                color: entry.value.withValues(alpha: 1),
-                                size: 18),
+                            Icon(
+                              Icons.circle,
+                              color: entry.value.withValues(alpha: 1),
+                              size: 18,
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               AppStrings.ofContext(context).tintName(entry.key),

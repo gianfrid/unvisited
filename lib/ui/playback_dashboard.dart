@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart';
 import 'app_model.dart';
+import 'cassette_key.dart';
 import 'follow_camera.dart';
 import 'format.dart';
 import 'map_actions.dart' show showMapToast;
@@ -134,7 +135,9 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
     // North mode feeds 0.0, not null: null means "hold the current
     // rotation" (stale course), while north-up must actively glide the
     // rotation back to 0.
-    final heading = widget.model.mapRotation == 'course' ? playback.course : 0.0;
+    final heading = widget.model.mapRotation == 'course'
+        ? playback.course
+        : 0.0;
     _follow.update(playback.position, heading);
   }
 
@@ -198,22 +201,52 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
             children: [
               Row(
                 children: [
-                  IconButton(
-                    key: const ValueKey('playback-play'),
-                    tooltip: tooltip,
-                    icon: Icon(icon),
-                    iconSize: 24,
-                    onPressed: () {
-                      if (playing) {
-                        widget.model.player.pause();
-                      } else {
-                        widget.model.player.play();
-                        // The play (re)arms the follow-camera — the
-                        // replay button's behavior after the finish.
-                        _armAndFeed();
-                      }
-                    },
-                  ),
+                  // The transport keys: deck keys while the cassette style
+                  // is on — the single play/pause key mirrors the record
+                  // key's pattern: latched down reading Pause while the
+                  // replay runs, raised reading Play/Replay otherwise;
+                  // EJECT closes the bar. The flat style keeps its own
+                  // one IconButton toggle.
+                  if (widget.model.buttonStyle == 'cassette')
+                    CassetteKey(
+                      key: const ValueKey('playback-play'),
+                      icon: Icon(icon),
+                      label: playing
+                          ? strings.pauseLabel
+                          : (playback.finished
+                                ? strings.playbackReplay
+                                : strings.playbackPlay),
+                      tooltip: tooltip,
+                      width: 56,
+                      latched: playing,
+                      onTap: () {
+                        if (playing) {
+                          widget.model.player.pause();
+                        } else {
+                          widget.model.player.play();
+                          // The play (re)arms the follow-camera — the
+                          // replay button's behavior after the finish.
+                          _armAndFeed();
+                        }
+                      },
+                    )
+                  else
+                    IconButton(
+                      key: const ValueKey('playback-play'),
+                      tooltip: tooltip,
+                      icon: Icon(icon),
+                      iconSize: 24,
+                      onPressed: () {
+                        if (playing) {
+                          widget.model.player.pause();
+                        } else {
+                          widget.model.player.play();
+                          // The play (re)arms the follow-camera — the
+                          // replay button's behavior after the finish.
+                          _armAndFeed();
+                        }
+                      },
+                    ),
                   const SizedBox(width: 8),
                   // The position scrubber with the timer centered under
                   // it: a drag jumps the cursor to any point of the
@@ -222,22 +255,37 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                   // marker and trace along while scrubbing. A slider drag
                   // is not a map gesture, so it never releases the
                   // follow-camera — the camera glides to each scrubbed
-                  // position through the same per-tick feed.
+                  // position through the same per-tick feed. The cassette
+                  // style dresses the same drag as a transport scrubber
+                  // (groove + capstan); the behavior is one Slider's.
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Slider(
-                          key: const ValueKey('playback-scrubber'),
-                          value: playback.progressFraction,
-                          onChanged: (fraction) => widget.model.player.seekTo(
-                            Duration(
-                              milliseconds:
-                                  (playback.total.inMilliseconds * fraction)
-                                      .round(),
+                        if (widget.model.buttonStyle == 'cassette')
+                          CassetteScrubber(
+                            key: const ValueKey('playback-scrubber'),
+                            value: playback.progressFraction,
+                            onChanged: (fraction) => widget.model.player.seekTo(
+                              Duration(
+                                milliseconds:
+                                    (playback.total.inMilliseconds * fraction)
+                                        .round(),
+                              ),
+                            ),
+                          )
+                        else
+                          Slider(
+                            key: const ValueKey('playback-scrubber'),
+                            value: playback.progressFraction,
+                            onChanged: (fraction) => widget.model.player.seekTo(
+                              Duration(
+                                milliseconds:
+                                    (playback.total.inMilliseconds * fraction)
+                                        .round(),
+                              ),
                             ),
                           ),
-                        ),
                         // The timer, centered with the seek bar above it:
                         // muted and smaller than the title, tabular figures
                         // so the ticking seconds don't jitter its width.
@@ -245,24 +293,37 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                           '${formatDuration(playback.elapsed)} / '
                           '${formatDuration(playback.total)}',
                           key: const ValueKey('playback-timer'),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: Theme.of(context)
                                     .colorScheme
                                     .onSurfaceVariant,
-                                fontFeatures: const [FontFeature.tabularFigures()],
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
                               ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    key: const ValueKey('playback-close'),
-                    tooltip: strings.playbackClose,
-                    icon: const Icon(Icons.close),
-                    iconSize: 24,
-                    onPressed: () => widget.model.stopPlayback(),
-                  ),
+                  if (widget.model.buttonStyle == 'cassette')
+                    CassetteKey(
+                      key: const ValueKey('playback-close'),
+                      icon: const Icon(Icons.eject),
+                      label: strings.playbackEject,
+                      tooltip: strings.playbackClose,
+                      width: 56,
+                      onTap: () => widget.model.stopPlayback(),
+                    )
+                  else
+                    IconButton(
+                      key: const ValueKey('playback-close'),
+                      tooltip: strings.playbackClose,
+                      icon: const Icon(Icons.close),
+                      iconSize: 24,
+                      onPressed: () => widget.model.stopPlayback(),
+                    ),
                 ],
               ),
               Row(
@@ -273,9 +334,8 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                       playback.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                      style: Theme.of(context).textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                   const Spacer(),
@@ -294,11 +354,9 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                         : '—',
                     key: const ValueKey('playback-instant-speed'),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                   const SizedBox(width: 4),
                   TextButton(
