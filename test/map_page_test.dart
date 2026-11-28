@@ -3458,6 +3458,173 @@ void main() {
     );
   });
 
+  // A 150-point northward corridor (~330 m — longer than the 100 m
+  // segment gap, so two members always split into their own segments).
+  // The same geometry twice, with different names and start times, is
+  // two catalog tracks in one aggregate riding identical ground.
+  String corridorGpx(String name, DateTime start) {
+    final sink = StringBuffer()
+      ..write('<?xml version="1.0" encoding="UTF-8"?>\n')
+      ..write(
+        '<gpx version="1.1" creator="unvisited" '
+        'xmlns="http://www.topografix.com/GPX/1/1">\n',
+      )
+      ..write('<trk><name>$name</name>\n<trkseg>\n');
+    for (var i = 0; i < 150; i++) {
+      final t = start.add(Duration(seconds: 2 * i));
+      sink.write(
+        '<trkpt lat="${(52.52 + i * 0.00002).toStringAsFixed(6)}" '
+        'lon="13.405000">\n'
+        '<ele>42.00</ele>\n<time>${t.toIso8601String()}</time>\n</trkpt>\n',
+      );
+    }
+    sink.write('</trkseg>\n</trk>\n</gpx>\n');
+    return sink.toString();
+  }
+
+  testWidgets('overlapping member tracks draw the union once, not twice', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(
+      corridorGpx('Ride A', DateTime.utc(2024, 5, 1, 7)).codeUnits,
+    );
+    model.store.importBytes(
+      corridorGpx('Ride B', DateTime.utc(2024, 5, 1, 9)).codeUnits,
+    );
+    expect(model.tracks.length, 2);
+    await model.setFogStyle('polyline');
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    // One aggregate, two members riding the same corridor.
+    expect(model.aggregates, hasLength(1));
+    expect(model.aggregates.single.members, hasLength(2));
+    expect(find.byType(PolylineLayer), findsOneWidget);
+    final doubled = tester
+        .widget<PolylineLayer>(find.byType(PolylineLayer))
+        .polylines;
+
+    // The same catalog with a single member: identical fog lines — the
+    // second member's ground was already claimed, so it added nothing.
+    final single = await () async {
+      final model2 = AppModel(TrackStore(createRoot()));
+      model2.store.importBytes(
+        corridorGpx('Ride A', DateTime.utc(2024, 5, 1, 7)).codeUnits,
+      );
+      await model2.setFogStyle('polyline');
+      await pumpMapPage(
+        tester,
+        model: model2,
+        cache: createCache(),
+        locationSupported: false,
+      );
+      await tester.pump();
+      return tester
+          .widget<PolylineLayer>(find.byType(PolylineLayer))
+          .polylines;
+    }();
+    expect(doubled, hasLength(single.length));
+    expect(
+      [for (final p in doubled) ...p.points],
+      [for (final p in single) ...p.points],
+      reason: 'the union is drawn once — not once per member',
+    );
+  });
+
+  testWidgets('overlapping member tracks unlock each cell exactly once', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(
+      corridorGpx('Ride A', DateTime.utc(2024, 5, 1, 7)).codeUnits,
+    );
+    model.store.importBytes(
+      corridorGpx('Ride B', DateTime.utc(2024, 5, 1, 9)).codeUnits,
+    );
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+    final doubled = tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
+
+    final model2 = AppModel(TrackStore(createRoot()));
+    model2.store.importBytes(
+      corridorGpx('Ride A', DateTime.utc(2024, 5, 1, 7)).codeUnits,
+    );
+    await pumpMapPage(
+      tester,
+      model: model2,
+      cache: createCache(),
+      locationSupported: false,
+    );
+    await tester.pump();
+    final single =
+        tester.widget<CircleLayer>(find.byType(CircleLayer)).circles;
+
+    expect(doubled.length, single.length,
+        reason: 'a cell already unlocked is not unlocked again');
+  });
+
+  testWidgets('the selection highlight dedups its own overlapping members', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(
+      corridorGpx('Ride A', DateTime.utc(2024, 5, 1, 7)).codeUnits,
+    );
+    model.store.importBytes(
+      corridorGpx('Ride B', DateTime.utc(2024, 5, 1, 9)).codeUnits,
+    );
+    await model.setFogStyle('polyline');
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+
+    // Tap a corridor point to select the aggregate.
+    final camera = MapCamera.of(tester.element(find.byType(TileLayer)));
+    final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+    final point = model.visibleTracks.first.points.first;
+    await tester.tapAt(mapOrigin + camera.latLngToScreenOffset(point));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(model.selectedAggregate, isNotNull);
+
+    // The highlight layer (stroke 4.5) draws the union once — both
+    // members, 150 shared points, not 300.
+    final highlight = tester
+        .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+        .expand((l) => l.polylines)
+        .where((p) => p.strokeWidth == 4.5)
+        .toList();
+    expect(highlight, isNotEmpty);
+    expect(
+      [for (final p in highlight) ...p.points],
+      hasLength(150),
+      reason: 'member overlap inside the selection is not overdrawn',
+    );
+  });
+
   testWidgets('the fog style setting swaps circles for lines on the map', (
     tester,
   ) async {

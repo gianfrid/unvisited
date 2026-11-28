@@ -94,4 +94,107 @@ void main() {
     expect(ratio, ratio.roundToDouble(),
         reason: 'steps must be exact doublings of the base cell');
   });
+
+  // --- Cross-track claim dedup ------------------------------------------
+  //
+  // The base cell is 12 m; offset() steps are chosen so consecutive
+  // points cross cell boundaries where the test needs them to.
+
+  test('a shared seen map unlocks shared ground exactly once', () {
+    const base = LatLng(52.52, 13.405);
+    final seen = <(int, int), LatLng>{};
+    final first = claimUnlockCenters([
+      for (var i = 0; i < 30; i++) offset(base, north: i * 2.0),
+    ], seen: seen);
+    final second = claimUnlockCenters([
+      // The same corridor, ridden again: every cell is already claimed.
+      for (var i = 0; i < 30; i++) offset(base, north: i * 2.0, east: 0.5),
+    ], seen: seen);
+    expect(first, isNotEmpty);
+    expect(
+        second, isEmpty, reason: 'ground already unlocked is not re-unlocked');
+
+    // A fresh detour east of the corridor still unlocks its own cells.
+    final third = claimUnlockCenters([
+      offset(base, north: 30 * 2.0, east: 40.0), // ~44 m off the corridor
+    ], seen: seen);
+    expect(third, hasLength(1));
+  });
+
+  test('dedupeSegments drops a fully covered segment', () {
+    const base = LatLng(52.52, 13.405);
+    final seen = <(int, int), LatLng>{};
+    claimUnlockCenters([
+      for (var i = 0; i < 30; i++) offset(base, north: i * 2.0),
+    ], seen: seen);
+    final out = dedupeSegments([
+      [for (var i = 0; i < 30; i++) offset(base, north: i * 2.0, east: 0.5)],
+    ], seen: seen);
+    expect(out, isEmpty);
+  });
+
+  test('dedupeSegments splits at covered runs with one-point handoffs', () {
+    const base = LatLng(52.52, 13.405);
+    // Cell boundaries fall at absolute grid positions, so the test
+    // asserts on cells, not point indexes.
+    final degLat = baseCellSizeMeters / 111320.0;
+    int latCell(LatLng p) => (p.latitude / degLat).floor();
+    // Track A claims the middle stretch of a northward corridor.
+    final covered = [
+      for (var i = 10; i < 20; i++) offset(base, north: i * 2.0),
+    ];
+    final seen = <(int, int), LatLng>{};
+    claimUnlockCenters(covered, seen: seen);
+    // Track B rides the whole corridor: the middle is A's, the ends are
+    // B's — kept as two runs reaching one point into the covered part.
+    final out = dedupeSegments([
+      [for (var i = 0; i < 30; i++) offset(base, north: i * 2.0)],
+    ], seen: seen);
+    expect(out, hasLength(2));
+    final south = out.first, north = out.last;
+    expect(latCell(south.last), latCell(covered.first),
+        reason: 'the run ends one point into the covered stretch');
+    expect(latCell(south[south.length - 2]), lessThan(latCell(covered.first)));
+    expect(latCell(north.first), latCell(covered.last),
+        reason: 'the next run starts one point back inside it');
+    expect(latCell(north[1]), greaterThan(latCell(covered.last)));
+    expect(south.length, greaterThan(2));
+    expect(north.length, greaterThan(2));
+  });
+
+  test('dedupeSegments keeps a unique detour intact', () {
+    const base = LatLng(52.52, 13.405);
+    final seen = <(int, int), LatLng>{};
+    // Track A: a northward corridor.
+    claimUnlockCenters([
+      for (var i = 0; i < 20; i++) offset(base, north: i * 6.0),
+    ], seen: seen);
+    // Track B: the corridor's claimed start, then a wide eastward
+    // detour of points no other track covers.
+    final out = dedupeSegments([
+      [
+        base,
+        for (var i = 1; i <= 6; i++) offset(base, east: i * 20.0),
+      ],
+    ], seen: seen);
+    expect(out, hasLength(1));
+    final run = out.single;
+    expect(run.first, base,
+        reason: 'the handoff keeps the last dropped point');
+    expect(run, hasLength(7), reason: 'handoff point + the whole detour');
+  });
+
+  test('kept points in dedupeSegments claim their cells for later segments',
+      () {
+    const base = LatLng(52.52, 13.405);
+    final seen = <(int, int), LatLng>{};
+    final first = dedupeSegments([
+      [for (var i = 0; i < 10; i++) offset(base, north: i * 4.0)],
+    ], seen: seen);
+    expect(first, isNotEmpty);
+    final second = dedupeSegments([
+      [for (var i = 0; i < 10; i++) offset(base, north: i * 4.0, east: 0.5)],
+    ], seen: seen);
+    expect(second, isEmpty, reason: 'the first segment claimed the cells');
+  });
 }

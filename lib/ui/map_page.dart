@@ -433,13 +433,6 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   /// bump — the fitRequestEpoch pattern).
   int _seenAggregateHideEpoch = 0;
 
-  /// Cached unlock centers keyed to the current overlay inputs (visible
-  /// track ids + cell size), so pans and transient item rebuilds do not
-  /// re-walk every track point.
-  /// Per-aggregate unlock centers cache: aggregate cache key (anchor +
-  /// member ids + fog cell size) -> its grid centers.
-  final _fogCentersByAnchor = <String, List<LatLng>>{};
-
   /// Creates the provider's `fm_cache` subdirectory synchronously; fails
   /// fast when the location is unwritable.
   static bool _probeCacheDirectory(Directory cacheDir) {
@@ -986,6 +979,10 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   /// The selected aggregate's highlight, in the active fog style so the
   /// selection reads the same language the map is drawn in: boosted-
   /// opacity circles, solid tinted lines, or full-strength ink strokes.
+  /// Line styles dedup across the aggregate's own members (a fresh
+  /// claim grid — the highlight shows the full selected extent over
+  /// *other* aggregates' fog, so it never drops ground they cover);
+  /// the circles already coalesce the whole selection per cell.
   List<Widget> _selectionHighlightLayers() {
     final selected = widget.model.selectedAggregate;
     if (selected == null) return const [];
@@ -993,12 +990,17 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final tint = exploredAreaColor(key ?? defaultTintKey);
     switch (widget.model.fogStyle) {
       case 'polyline':
+        final seen = <(int, int), LatLng>{};
         return [
           PolylineLayer(polylines: [
-            for (final seg in splitTrackSegments(selected.points))
-              if (decimate(seg, _fogLineDecimation()).length >= 2)
+            for (final run in dedupeSegments(
+              splitTrackSegments(selected.points),
+              seen: seen,
+              cellSizeMeters: _fogCellSize,
+            ))
+              if (decimate(run, _fogLineDecimation()).length >= 2)
                 Polyline(
-                  points: decimate(seg, _fogLineDecimation()),
+                  points: decimate(run, _fogLineDecimation()),
                   strokeWidth: 4.5,
                   color: tint.withValues(alpha: 1),
                   borderStrokeWidth: 1,
@@ -1007,11 +1009,16 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
           ]),
         ];
       case 'ink':
+        final seen = <(int, int), LatLng>{};
         return [
           PolylineLayer(polylines: [
-            for (final seg in splitTrackSegments(selected.points))
+            for (final run in dedupeSegments(
+              splitTrackSegments(selected.points),
+              seen: seen,
+              cellSizeMeters: _fogCellSize,
+            ))
               for (final pass in inkStrokes(
-                decimate(seg, _fogLineDecimation()),
+                decimate(run, _fogLineDecimation()),
                 passCount: inkPassWidthFactors.length,
                 minRunLength: inkBaseRunLength,
                 maxStripsPerTrack: inkMaxStripsPerTrack,
@@ -1564,14 +1571,17 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final tintKeys = widget.model.aggregateTintKeys;
     final out = <CircleMarker>[];
     final radius = unlockRadiusForCell(_fogCellSize);
+    // One claim grid across every aggregate, in model order: a cell an
+    // earlier aggregate already unlocked is not unlocked again, so with
+    // many overlapping tracks the layer's cost stays the union's, not
+    // the sum over tracks.
+    final seen = <(int, int), LatLng>{};
     for (final a in widget.model.aggregates) {
-      final key =
-          '${[for (final t in a.members) t.id].join('|')}@$_fogCellSize';
-      var centers = _fogCentersByAnchor[key];
-      if (centers == null) {
-        centers = unlockCenters(a.points, cellSizeMeters: _fogCellSize);
-        _fogCentersByAnchor[key] = centers;
-      }
+      final centers = claimUnlockCenters(
+        a.points,
+        seen: seen,
+        cellSizeMeters: _fogCellSize,
+      );
       final tint = exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
       out.addAll([
         for (final c in centers)
@@ -1586,53 +1596,80 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     return out;
   }
 
-  /// The fog overlay in the two line styles: per aggregate, its decimated
-  /// track segments as uniform polylines in the aggregate tint — raised
-  /// alpha, since a thin line needs more opacity than the circles to read.
-  /// The ink style draws the same geometry as layered meter-sized ink
-  /// passes (bleed under core), converted to pixels via the current zoom.
+  /// The fog overlay as one memoized [CircleLayer]: the shared claim
+  /// grid makes a cell's circle depend on every earlier aggregate, so
+  /// the built layer — not per-aggregate centers — is what gets cached,
+  /// under [_fogOverlayKey] (the `_fogLineLayer` pattern).
+  CircleLayer? _fogCircleLayerCache;
+  String? _fogCircleLayerKey;
+
+  CircleLayer _fogCircleLayer(List<MapTrack> tracks) {
+    final key = _fogOverlayKey();
+    final cached = _fogCircleLayerCache;
+    if (cached != null && key == _fogCircleLayerKey) return cached;
+    _fogCircleLayerKey = key;
+    return _fogCircleLayerCache =
+        CircleLayer(circles: _buildFogCircles(tracks));
+  }
+
+  /// Everything the built fog layers depend on besides the style: the
+  /// fog band plus every aggregate's membership and tint. One key for
+  /// the circle and line layers alike.
+  String _fogOverlayKey() {
+    final model = widget.model;
+    final tintKeys = model.aggregateTintKeys;
+    return [
+      _fogCellSize,
+      for (final a in model.aggregates)
+        '${a.anchorId}{${[for (final t in a.members) t.id].join('|')}}${tintKeys[a.anchorId]}',
+    ].join(';');
+  }
+
+  /// The fog overlay in the two line styles: per aggregate, its
+  /// deduped track segments as uniform polylines in the aggregate tint —
+  /// raised alpha, since a thin line needs more opacity than the
+  /// circles to read. The ink style draws the same deduped geometry as
+  /// layered meter-sized ink passes (bleed under core). One claim grid
+  /// is shared across the aggregates in model order (see
+  /// [_buildFogCircles]): ground an earlier track already covers is
+  /// never drawn again, with one-point handoffs keeping the lines
+  /// continuous where a run resumes at covered ground's edge.
   List<Polyline> _buildFogLines(List<MapTrack> tracks) {
-    final tintKeys = widget.model.aggregateTintKeys;
-    final ink = widget.model.fogStyle == 'ink';
+    final model = widget.model;
+    final tintKeys = model.aggregateTintKeys;
+    final ink = model.fogStyle == 'ink';
     final out = <Polyline>[];
-    for (final a in widget.model.aggregates) {
+    final seen = <(int, int), LatLng>{};
+    for (final a in model.aggregates) {
       final tint = exploredAreaColor(tintKeys[a.anchorId] ?? defaultTintKey);
-      // Keyed by the member ids, like the circle-centers cache: the anchor
-      // alone is stable across membership changes and would serve stale
-      // strokes at the same fog band.
-      final key = '${[for (final t in a.members) t.id].join('|')}@$_fogCellSize';
-      var passes = _inkPassesCache[key];
-      if (passes == null) {
-        passes = [
-          for (final seg in splitTrackSegments(a.points))
-            ...inkStrokes(
-              decimate(seg, _fogLineDecimation()),
-              passCount: inkPassWidthFactors.length,
-              minRunLength: inkBaseRunLength,
-              maxStripsPerTrack: inkMaxStripsPerTrack,
-            ),
-        ];
-        _inkPassesCache[key] = passes;
-      }
-      if (!ink) {
-        for (final seg in splitTrackSegments(a.points)) {
-          final pts = decimate(seg, _fogLineDecimation());
-          if (pts.length >= 2) {
-            out.add(Polyline(points: pts, strokeWidth: 3.5, color: tint));
-          }
-        }
-      } else {
-        for (final pass in passes) {
-          for (final s in pass.strips) {
-            out.add(Polyline(
-              points: s.run,
-              // Meter-sized like the fog circles: flutter_map converts to
-              // pixels at paint time, so zoom changes need no rebuild.
-              strokeWidth: inkWidthMeters * pass.width,
-              useStrokeWidthInMeter: true,
-              color: inkColorFor(tintKeys[a.anchorId] ?? defaultTintKey)
-                  .withValues(alpha: pass.alpha),
-            ));
+      final runs = dedupeSegments(
+        splitTrackSegments(a.points),
+        seen: seen,
+        cellSizeMeters: _fogCellSize,
+      );
+      for (final run in runs) {
+        final pts = decimate(run, _fogLineDecimation());
+        if (pts.length < 2) continue;
+        if (!ink) {
+          out.add(Polyline(points: pts, strokeWidth: 3.5, color: tint));
+        } else {
+          for (final pass in inkStrokes(
+            pts,
+            passCount: inkPassWidthFactors.length,
+            minRunLength: inkBaseRunLength,
+            maxStripsPerTrack: inkMaxStripsPerTrack,
+          )) {
+            for (final s in pass.strips) {
+              out.add(Polyline(
+                points: s.run,
+                // Meter-sized like the fog circles: flutter_map converts to
+                // pixels at paint time, so zoom changes need no rebuild.
+                strokeWidth: inkWidthMeters * pass.width,
+                useStrokeWidthInMeter: true,
+                color: inkColorFor(tintKeys[a.anchorId] ?? defaultTintKey)
+                    .withValues(alpha: pass.alpha),
+              ));
+            }
           }
         }
       }
@@ -1641,36 +1678,25 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   }
 
   /// The fog overlay as one memoized [PolylineLayer] for the two line
-  /// styles. The key covers everything the built polylines depend on —
-  /// style, fog band, aggregate membership, tints — so on unrelated page
-  /// rebuilds the identical widget instance is returned and Flutter skips
-  /// the layer's didUpdateWidget: flutter_map then keeps its projection
+  /// styles, under the shared [_fogOverlayKey] (prepended with the
+  /// style): the key covers everything the built polylines depend on —
+  /// style, fog band, aggregate membership, tints, and through those
+  /// the cross-aggregate claims — so on unrelated page rebuilds the
+  /// identical widget instance is returned and Flutter skips the
+  /// layer's didUpdateWidget: flutter_map then keeps its projection
   /// and simplification caches instead of re-projecting every strip on
   /// every model notification (the gesture-settle one included).
   PolylineLayer? _fogLineLayerCache;
   String? _fogLineLayerKey;
 
   PolylineLayer _fogLineLayer(List<MapTrack> tracks) {
-    final model = widget.model;
-    final tintKeys = model.aggregateTintKeys;
-    final key = [
-      model.fogStyle,
-      _fogCellSize,
-      for (final a in model.aggregates)
-        '${a.anchorId}{${[for (final t in a.members) t.id].join('|')}}${tintKeys[a.anchorId]}',
-    ].join(';');
+    final key = '${widget.model.fogStyle};${_fogOverlayKey()}';
     final cached = _fogLineLayerCache;
     if (cached != null && key == _fogLineLayerKey) return cached;
     _fogLineLayerKey = key;
     return _fogLineLayerCache =
         PolylineLayer(polylines: _buildFogLines(tracks));
   }
-
-  /// Cache of ink stroke passes per aggregate @ fog band: recomputed only
-  /// on band crossings or catalog changes (like the circle centers), reused
-  /// across pans and zooms. Pass widths stay in meters — the layer converts
-  /// them to pixels at paint time — so no refresh is needed per zoom step.
-  final _inkPassesCache = <String, List<InkPass>>{};
 
   /// The camera zoom at the last map event, or null before the first
   /// one; drives the member-picking lanes' meter-to-pixel lane spacing.
@@ -1862,7 +1888,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
               if (widget.model.playback == null)
                 switch (widget.model.fogStyle) {
                   'polyline' || 'ink' => _fogLineLayer(mapTracks),
-                  _ => CircleLayer(circles: _buildFogCircles(mapTracks)),
+                  _ => _fogCircleLayer(mapTracks),
                 },
               // Unlocked road corridors (fog-of-war for streets), above
               // the circles so the corridor reads on top of the blobs.
