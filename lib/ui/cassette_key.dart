@@ -12,6 +12,14 @@
 /// behind them, their own throw shadows carry the depth — and
 /// [CassetteScrubber] is the retro replay scrubber (recessed groove,
 /// capstan thumb) that rides with the style.
+///
+/// Every color the style paints flows through [CassetteTones] and
+/// [CassetteScrubberTones] — the single place a future tweak can break
+/// the measured contrast, which test/cassette_contrast_test.dart pins
+/// in both of the app's themes (WCAG: captions/glyphs ≥ 4.5:1 against
+/// every cap stop, borders/LED/thumb ≥ 3:1). Contrast against the map's
+/// tiles is imagery-dependent and untestable in principle; the ≥ 3:1
+/// border plus the throw shadow is the deterministic guarantee.
 library;
 
 import 'package:material_ui/material_ui.dart';
@@ -20,6 +28,101 @@ import 'package:material_ui/material_ui.dart';
 /// idle, lit steady while engaged-but-held (a paused recording — the
 /// deck-standby convention), blinking while active (recording).
 enum CassetteLed { off, steady, blink }
+
+/// The keycaps' palette, derived from one [ColorScheme]. The cap faces
+/// are gradient *pairs* ([raisedTop]/[raisedBottom] top-lit while the
+/// cap is up, [latchedTop]/[latchedBottom] flipped when it is sunk) so
+/// the contrast tests cover every stop the face actually paints.
+class CassetteTones {
+  const CassetteTones({
+    required this.raisedTop,
+    required this.raisedBottom,
+    required this.latchedTop,
+    required this.latchedBottom,
+    required this.border,
+    required this.glyph,
+    required this.led,
+  });
+
+  factory CassetteTones.of(ColorScheme scheme) => CassetteTones(
+    raisedTop: scheme.surfaceContainerLow,
+    raisedBottom: scheme.surfaceContainer,
+    latchedTop: scheme.surfaceContainerHigh,
+    latchedBottom: scheme.surfaceContainerHighest,
+    // The full-strength outline, not outlineVariant: it keeps ≥ 3:1
+    // against every cap stop, so the key keeps a visible boundary even
+    // over tiles matching the face tone (3.5–5.9:1 measured).
+    border: scheme.outline,
+    glyph: scheme.onSurface,
+    // The REC lamp: the scheme's error red (5.0–10.9:1 vs every stop).
+    led: scheme.error,
+  );
+
+  final Color raisedTop;
+  final Color raisedBottom;
+  final Color latchedTop;
+  final Color latchedBottom;
+  final Color border;
+  final Color glyph;
+  final Color led;
+
+  /// Every gradient stop a cap's face can paint, raised or latched.
+  List<Color> get stops => [
+    raisedTop,
+    raisedBottom,
+    latchedTop,
+    latchedBottom,
+  ];
+
+  /// The cap's face: top-lit while raised; latched, the gradient flips
+  /// so the cap reads as recessed.
+  LinearGradient face(bool sunk) => sunk
+      ? LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [latchedTop, latchedBottom],
+        )
+      : LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [raisedTop, raisedBottom],
+        );
+}
+
+/// The scrubber's palette, same contract as [CassetteTones].
+class CassetteScrubberTones {
+  const CassetteScrubberTones({
+    required this.groove,
+    required this.grooveBorder,
+    required this.played,
+    required this.thumbFace,
+    required this.thumbFaceShade,
+    required this.thumbEdge,
+  });
+
+  factory CassetteScrubberTones.of(ColorScheme scheme) =>
+      CassetteScrubberTones(
+        // The recessed channel; its own fill is < 3:1 against the card,
+        // so the channel's edge is drawn (see [grooveBorder]).
+        groove: scheme.surfaceContainerHighest,
+        grooveBorder: scheme.outline,
+        // The played length carries the tint (5.0–7.3:1 vs the groove).
+        played: scheme.primary,
+        // The capstan: the scheme's ink, not a hardcoded light cap — a
+        // hardcoded one measured 1.09:1 against the light card (invisible).
+        // The ink reads 9.6–13.3:1 against the groove in both themes.
+        thumbFace: scheme.onSurface,
+        thumbFaceShade: Color.lerp(scheme.onSurface, scheme.surface, 0.3)!,
+        thumbEdge: scheme.outline,
+      );
+
+  final Color groove;
+  final Color grooveBorder;
+  final Color played;
+  final Color thumbFace;
+  final Color thumbFaceShade;
+  final Color thumbEdge;
+}
 
 /// One transport key: a raised keycap (icon over caption, like
 /// [HeaderAction]) that animates down while [latched] or tapped. A
@@ -111,27 +214,10 @@ class CassetteKeyState extends State<CassetteKey>
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tones = CassetteTones.of(Theme.of(context).colorScheme);
     final enabled = widget.onTap != null;
     final sunk = widget.latched || _pressed;
-    final base = scheme.onSurface.withValues(alpha: enabled ? 1 : 0.38);
-    // The cap's face: a top-lit gradient while raised; latched, the
-    // gradient flips and the drop shadow collapses to a top edge — the
-    // cap then reads as recessed into the deck.
-    final face = sunk
-        ? LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              scheme.surfaceContainerHigh,
-              scheme.surfaceContainerHighest,
-            ],
-          )
-        : LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [scheme.surfaceContainerLow, scheme.surfaceContainer],
-          );
+    final base = tones.glyph.withValues(alpha: enabled ? 1 : 0.38);
     return Tooltip(
       message: widget.tooltip,
       child: SizedBox(
@@ -139,21 +225,16 @@ class CassetteKeyState extends State<CassetteKey>
         height: kToolbarHeight,
         child: InkWell(
           onTap: widget.onTap,
-          onHighlightChanged: enabled
-              ? (pressed) => setState(() => _pressed = pressed)
-              : null,
+          onHighlightChanged:
+              enabled ? (pressed) => setState(() => _pressed = pressed) : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 90),
               transform: Matrix4.translationValues(0, sunk ? 3 : 0, 0),
               decoration: BoxDecoration(
-                gradient: face,
-                border: Border.all(
-                  color: sunk
-                      ? scheme.outlineVariant
-                      : scheme.outlineVariant.withValues(alpha: 0.7),
-                ),
+                gradient: tones.face(sunk),
+                border: Border.all(color: tones.border),
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: sunk
                     ? const []
@@ -177,9 +258,7 @@ class CassetteKeyState extends State<CassetteKey>
                           data: IconThemeData(
                             size: widget.iconSize,
                             color: widget.rec
-                                ? scheme.error.withValues(
-                                    alpha: enabled ? 1 : 0.38,
-                                  )
+                                ? tones.led.withValues(alpha: enabled ? 1 : 0.38)
                                 : base,
                           ),
                           child: widget.icon,
@@ -206,7 +285,7 @@ class CassetteKeyState extends State<CassetteKey>
                       child: _RecLight(
                         controller: _blink,
                         mode: widget.led,
-                        color: scheme.error,
+                        color: tones.led,
                       ),
                     ),
                 ],
@@ -271,29 +350,95 @@ class CassetteScrubber extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final tones = CassetteScrubberTones.of(Theme.of(context).colorScheme);
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
         trackHeight: 10,
-        trackShape: const RoundedRectSliderTrackShape(),
-        // One dark groove: the played length carries the tint color so
-        // the progress reads without the Material glow.
-        activeTrackColor: scheme.primary.withValues(alpha: 0.9),
-        inactiveTrackColor: scheme.surfaceContainerHighest,
-        thumbShape: const _CapstanThumbShape(),
+        // The recessed groove, its edge drawn (the fill alone is < 3:1
+        // against the playback card).
+        trackShape: _GrooveTrackShape(edge: tones.grooveBorder),
+        activeTrackColor: tones.played,
+        inactiveTrackColor: tones.groove,
+        thumbShape: _CapstanThumbShape(
+          face: tones.thumbFace,
+          faceShade: tones.thumbFaceShade,
+          edge: tones.thumbEdge,
+        ),
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
-        thumbColor: scheme.surfaceContainerLow,
       ),
       child: Slider(value: value, onChanged: onChanged),
     );
   }
 }
 
+/// The groove: the standard rounded track, plus a one-pixel outline so
+/// the recessed channel keeps a visible edge against the card in both
+/// themes.
+class _GrooveTrackShape extends RoundedRectSliderTrackShape {
+  const _GrooveTrackShape({required this.edge});
+
+  final Color edge;
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required TextDirection textDirection,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2,
+  }) {
+    super.paint(
+      context,
+      offset,
+      parentBox: parentBox,
+      sliderTheme: sliderTheme,
+      enableAnimation: enableAnimation,
+      textDirection: textDirection,
+      thumbCenter: thumbCenter,
+      secondaryOffset: secondaryOffset,
+      isDiscrete: isDiscrete,
+      isEnabled: isEnabled,
+      additionalActiveTrackHeight: additionalActiveTrackHeight,
+    );
+    final height = sliderTheme.trackHeight;
+    if (height == null || height <= 0) return;
+    final rect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+    context.canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(rect.height / 2)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = edge,
+    );
+  }
+}
+
 /// The scrubber's thumb: a vertical capstan — a tall rounded cap raised
 /// off the groove, drawn like the keys' caps (top-lit face, one-pixel
-/// throw below).
+/// throw below). Its colors come from the tones, never hardcoded: a
+/// hardcoded light cap measured 1.09:1 on the light playback card.
 class _CapstanThumbShape extends SliderComponentShape {
-  const _CapstanThumbShape();
+  const _CapstanThumbShape({
+    required this.face,
+    required this.faceShade,
+    required this.edge,
+  });
+
+  final Color face;
+  final Color faceShade;
+  final Color edge;
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) => const Size(12, 22);
@@ -326,10 +471,10 @@ class _CapstanThumbShape extends SliderComponentShape {
     canvas.drawRRect(
       cap,
       Paint()
-        ..shader = const LinearGradient(
+        ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFFF0F0EC), Color(0xFFC2C2BC)],
+          colors: [face, faceShade],
         ).createShader(cap.outerRect),
     );
     canvas.drawRRect(
@@ -337,7 +482,7 @@ class _CapstanThumbShape extends SliderComponentShape {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
-        ..color = const Color(0xFF8F8F88),
+        ..color = edge,
     );
   }
 }
