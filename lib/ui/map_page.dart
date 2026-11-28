@@ -700,6 +700,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final zoom = _cameraZoom ?? _mapController.camera.zoom;
     final key = [
       '$_fogZoomStep',
+      '$_fogCellSize',
       tap.latitude,
       tap.longitude,
       _revealIds.join(','),
@@ -715,9 +716,11 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         if (byId[id] != null && assignments[id] != null) id,
     ]..sort((x, y) => assignments[x]!.lane.compareTo(assignments[y]!.lane));
     // Each involved member's local stretch: the segment whose nearest
-    // point is closest to the tap, windowed ±500 m along it.
+    // point is closest to the tap, windowed ±500 m along it. Paired by
+    // id (not a parallel list) so a member missing from the plain lanes
+    // cannot shift another member's window.
     final plainById = {for (final l in _plainMemberLanes()) l.id: l};
-    final windows = <List<LatLng>>[];
+    final windowsById = <String, List<LatLng>>{};
     for (final id in orderedIds) {
       final lane = plainById[id];
       if (lane == null) continue;
@@ -733,9 +736,9 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
           }
         }
       }
-      windows.add(bestSeg == null
+      windowsById[id] = bestSeg == null
           ? const <LatLng>[]
-          : laneWindow(bestSeg, tap, windowMeters: _revealWindowMeters));
+          : laneWindow(bestSeg, tap, windowMeters: _revealWindowMeters);
     }
     // Lane spacing: 3 screen px at the current zoom. Offsets are adaptive
     // per vertex (laneOffsetsPerVertex): a track alone at a vertex stays
@@ -750,7 +753,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final lanes = <_MemberLane>[];
     for (var i = 0; i < orderedIds.length; i++) {
       final id = orderedIds[i];
-      final win = windows[i];
+      final win = windowsById[id] ?? const <LatLng>[];
       final plain = plainById[id]!;
       if (win.length < 2) {
         // A stub window has nothing to spread; the member stays as its
@@ -762,7 +765,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       final offsets = laneOffsetsPerVertex(
         win,
         selfIndex: i,
-        membersPoints: windows,
+        membersPoints: [for (final id in orderedIds) windowsById[id] ?? const <LatLng>[]],
         laneMeters: laneMeters,
         overlapMeters: overlapMeters,
       );
@@ -907,7 +910,14 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
         }
         return;
       }
-      final hot = revealedWindow && (lane.id == picked || lane.id == hovered);
+      // The picked member glows exactly once: in its reveal window when
+      // the tap revealed one, on its plain line otherwise (a direct
+      // single-member pick must not look identical to an unpicked lane).
+      // Hover glows only revealed windows — plain overlaps are not
+      // spread, so a hover there would glow an ambiguous spot.
+      final hot = revealedWindow
+          ? (lane.id == picked || lane.id == hovered)
+          : (lane.id == picked && !_revealIds.contains(lane.id));
       for (final seg in lane.segments) {
         if (hot) {
           glow.add(Polyline(

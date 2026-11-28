@@ -1065,9 +1065,9 @@ class AppModel extends ChangeNotifier {
   }
 
   /// Picks a member track of the current selection. The page resolves the
-  /// tapped lane in screen space (hit-testing the same offset geometry it
-  /// draws — see MapPage) and hands the id over; the model only owns the
-  /// pick state.
+  /// tapped member in screen space (hit-testing the same plain geometry
+  /// it draws — see MapPage) and hands the id over; the model only owns
+  /// the pick state.
   void pickMember(String id) {
     if (pickedMemberId == id) return;
     pickedMemberId = id;

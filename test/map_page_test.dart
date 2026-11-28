@@ -2880,15 +2880,20 @@ void main() {
       final before = memberPolylines(tester);
       expect(before, hasLength(2), reason: 'one plain line per member');
 
-      // Alpha's east end: only Alpha passes there — the pick is direct,
-      // no reveal lanes appear on top of the plain pair.
+      // Alpha's far end: only Alpha passes there — the pick is direct,
+      // no reveal window appears, and the picked lane still glows (a
+      // direct pick must not look like an unpicked lane).
       final eastEnd = model
           .pointsOf(model.store.tracks.singleWhere((t) => t.id == aId))
           .last;
       await tapAtMapPoint(tester, model, eastEnd);
       expect(model.pickedMemberId, aId);
-      expect(memberPolylines(tester), hasLength(2),
-          reason: 'a single-member spot reveals nothing');
+      final after = memberPolylines(tester);
+      expect(after, hasLength(3),
+          reason: 'the plain pair plus the pick glow — no reveal lanes');
+      final widths = after.map((p) => p.strokeWidth).toList();
+      expect(widths.where((w) => w == 11), hasLength(1));
+      expect(widths.where((w) => w == 4.5), hasLength(1));
     },
   );
 
@@ -3751,6 +3756,39 @@ void main() {
       hasLength(150),
       reason: 'member overlap inside the selection is not overdrawn',
     );
+  });
+
+  testWidgets('hiding an aggregate drops its fog circles (layer cache invalidates)', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = AppModel(TrackStore(root));
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    model.store.importBytes(fixture('eiffel_ride.tcx'));
+    expect(model.aggregates, hasLength(2));
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: false,
+    );
+    await tester.pump();
+    int circleCount() =>
+        tester.widget<CircleLayer>(find.byType(CircleLayer)).circles.length;
+    final before = circleCount();
+    expect(before, greaterThan(0));
+
+    // Hide the first aggregate through the model (the selection bar's
+    // hide path): its members leave visibleTracks, so the rebuilt layer
+    // must not serve the stale cached circles.
+    model.selectedAnchor = model.aggregates.first.anchorId;
+    model.notifyListeners();
+    await model.hideSelectedAggregate();
+    await tester.pump();
+    expect(model.aggregates, hasLength(1));
+    expect(circleCount(), lessThan(before));
   });
 
   testWidgets('the fog style setting swaps circles for lines on the map', (
