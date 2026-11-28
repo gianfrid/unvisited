@@ -93,7 +93,7 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
   StreamSubscription<MapEvent>? _mapEvents;
   int _seenImportEpoch = 0;
@@ -268,41 +268,44 @@ class _MapPageState extends State<MapPage> {
   /// [_onModelChanged].
   TrackPlayback? _seenPlayback;
 
-  /// The replay tick. Page-owned on purpose (the same rule as the
-  /// coverage debounce: the model outlives pages and must never hold a
-  /// timer no page listens to): while the engine plays, it advances the
-  /// engine with wall-clock deltas and fires the per-tick repaint
-  /// channel (`playbackLive`) — the bar, the marker, the trace and the
-  /// playback dashboard's follow-camera feed rebuild off it, never the
-  /// model.
-  Timer? _playbackTimer;
+  /// The replay tick, vsync-driven. Page-owned on purpose (the same rule
+  /// as the coverage debounce: the model outlives pages and must never
+  /// hold a timer no page listens to): while the engine plays, the ticker
+  /// fires once per frame and advances the engine with wall-clock deltas,
+  /// then fires the per-tick repaint channel (`playbackLive`) — the bar,
+  /// the marker, the trace and the playback dashboard's follow-camera
+  /// feed rebuild off it, never the model. A ticker rather than a fixed
+  /// `Timer.periodic`: at 32x/64x a 20 fps timer moved the cursor 1.6–3.2
+  /// s of timeline per frame, so the marker visibly jumped segment to
+  /// segment; at display refresh the steps stay small and even.
+  late final AnimationController _playbackTicker = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
+  )..addListener(_playbackTick);
   DateTime? _playbackLastTick;
 
   /// The largest wall delta one tick may advance the timeline by: a
-  /// backgrounded app resumes with hours of unmeasured time, and a
-  /// replay must not jump its state as if hours of watching happened.
+  /// backgrounded app resumes with hours of unmeasured time (and vsync
+  /// stops while backgrounded), and a replay must not jump its state as
+  /// if hours of watching happened.
   static const _playbackTickMaxDelta = Duration(milliseconds: 500);
 
-  void _updatePlaybackTimer() {
+  void _updatePlaybackTicker() {
     final playing = widget.model.playback?.status == PlaybackStatus.playing;
     if (!playing) {
-      _playbackTimer?.cancel();
-      _playbackTimer = null;
+      if (_playbackTicker.isAnimating) _playbackTicker.stop();
       _playbackLastTick = null;
       return;
     }
-    if (_playbackTimer == null) {
+    if (!_playbackTicker.isAnimating) {
       _playbackLastTick = DateTime.now();
-      _playbackTimer = Timer.periodic(
-        const Duration(milliseconds: 50),
-        _playbackTick,
-      );
+      _playbackTicker.repeat();
     }
   }
 
-  void _playbackTick(Timer timer) {
+  void _playbackTick() {
     final playback = widget.model.playback;
-    if (playback == null) return; // stop path cancels the timer anyway
+    if (playback == null) return; // stop path stops the ticker anyway
     final now = DateTime.now();
     final delta = now.difference(_playbackLastTick ?? now);
     _playbackLastTick = now;
@@ -312,11 +315,11 @@ class _MapPageState extends State<MapPage> {
   }
 
   /// The play/pause/speed state lives on the live channel (per-tick
-  /// concerns never notify the whole model), so the tick timer tracks
+  /// concerns never notify the whole model), so the tick ticker tracks
   /// the engine's state through it.
   void _onPlaybackLive() {
     if (!mounted) return;
-    _updatePlaybackTimer();
+    _updatePlaybackTicker();
   }
 
   /// The replay's layers, in the recording layers' twin pattern:
@@ -454,7 +457,7 @@ class _MapPageState extends State<MapPage> {
     _mapEvents?.cancel();
     _fixRetryTimer?.cancel();
     _coverageDebounce?.cancel();
-    _playbackTimer?.cancel();
+    _playbackTicker.dispose();
     widget.model.removeListener(_onModelChanged);
     widget.model.player.playbackLive.removeListener(_onPlaybackLive);
     super.dispose();
@@ -556,12 +559,12 @@ class _MapPageState extends State<MapPage> {
     // A new replay (the controller replaces the engine instance) fits
     // the whole track once, so the replay starts visible wherever the
     // camera was; the follow-camera takes over from the next tick. The
-    // tick timer follows the state here and through the live channel
+    // tick ticker follows the state here and through the live channel
     // (play/pause ride on it, see [_onPlaybackLive]).
     final playback = widget.model.playback;
     if (!identical(playback, _seenPlayback)) {
       _seenPlayback = playback;
-      _updatePlaybackTimer();
+      _updatePlaybackTicker();
       if (playback != null && playback.positions.isNotEmpty) {
         _fitWhenSized(
           CameraFit.coordinates(

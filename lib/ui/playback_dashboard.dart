@@ -172,11 +172,12 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
 
   /// The replay bar: one compact Card with two rows — transport (play,
   /// scrubber, close) over identity — so the scrubber keeps a real width
-  /// on a phone-sized screen where one row overflowed. The identity row
-  /// divides its two labels onto one baseline: track name and duration on
-  /// the left, instant speed next to the speed chip on the right. The
-  /// values (times, speed) are plain formats; the tooltips are the only
-  /// localizable text.
+  /// on a phone-sized screen where one row overflowed. The transport row
+  /// carries the timer (elapsed / total) centered directly under the
+  /// scrubber, so the two read as one control; the identity row divides
+  /// its two labels onto one baseline: track name on the left, instant
+  /// speed next to the speed chip on the right. The values (times, speed)
+  /// are plain formats; the tooltips are the only localizable text.
   Widget _bar(TrackPlayback playback) {
     final strings = AppStrings.ofContext(context);
     final playing = playback.status == PlaybackStatus.playing;
@@ -214,24 +215,44 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                     },
                   ),
                   const SizedBox(width: 8),
-                  // The position scrubber: a drag jumps the cursor to any
-                  // point of the timeline (the engine clamps and keeps the
-                  // play state), and the seek's playbackLive notification
-                  // moves the marker and trace along while scrubbing. A
-                  // slider drag is not a map gesture, so it never releases
-                  // the follow-camera — the camera glides to each scrubbed
+                  // The position scrubber with the timer centered under
+                  // it: a drag jumps the cursor to any point of the
+                  // timeline (the engine clamps and keeps the play state),
+                  // and the seek's playbackLive notification moves the
+                  // marker and trace along while scrubbing. A slider drag
+                  // is not a map gesture, so it never releases the
+                  // follow-camera — the camera glides to each scrubbed
                   // position through the same per-tick feed.
                   Expanded(
-                    child: Slider(
-                      key: const ValueKey('playback-scrubber'),
-                      value: playback.progressFraction,
-                      onChanged: (fraction) => widget.model.player.seekTo(
-                        Duration(
-                          milliseconds:
-                              (playback.total.inMilliseconds * fraction)
-                                  .round(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Slider(
+                          key: const ValueKey('playback-scrubber'),
+                          value: playback.progressFraction,
+                          onChanged: (fraction) => widget.model.player.seekTo(
+                            Duration(
+                              milliseconds:
+                                  (playback.total.inMilliseconds * fraction)
+                                      .round(),
+                            ),
+                          ),
                         ),
-                      ),
+                        // The timer, centered with the seek bar above it:
+                        // muted and smaller than the title, tabular figures
+                        // so the ticking seconds don't jitter its width.
+                        Text(
+                          '${formatDuration(playback.elapsed)} / '
+                          '${formatDuration(playback.total)}',
+                          key: const ValueKey('playback-timer'),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -256,20 +277,6 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                             fontWeight: FontWeight.w600,
                           ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  // The duration next to the name: muted and smaller than
-                  // the title, tabular figures so the ticking seconds don't
-                  // jitter the row's width.
-                  Text(
-                    '${formatDuration(playback.elapsed)} / '
-                    '${formatDuration(playback.total)}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
                   ),
                   const Spacer(),
                   // The instant speed, divided from the duration label and

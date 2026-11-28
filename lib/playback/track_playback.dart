@@ -90,10 +90,14 @@ class TrackPlayback {
   /// Whether [advance] deltas currently move the cursor.
   PlaybackStatus get status => _status;
 
-  int _progressMs = 0;
+  /// The cursor's progress in timeline milliseconds, kept as a double:
+  /// at 64x a whole-millisecond accumulator would wobble the cursor by up
+  /// to 64 ms of timeline per tick (the wall delta's sub-millisecond part
+  /// is amplified by the speed).
+  double _progressMs = 0;
 
   /// How far along the track's timeline the cursor sits.
-  Duration get elapsed => Duration(milliseconds: _progressMs);
+  Duration get elapsed => Duration(milliseconds: _progressMs.round());
 
   /// The track's full timeline span.
   Duration get total => Duration(milliseconds: offsetsMs.last);
@@ -132,13 +136,13 @@ class TrackPlayback {
   /// position, a paused one stays put. Seeking to the end lands on
   /// [finished]; seeking away from it clears it.
   void seekTo(Duration position) {
-    _progressMs = position.inMilliseconds.clamp(0, offsetsMs.last).toInt();
+    _progressMs = position.inMilliseconds.clamp(0, offsetsMs.last).toDouble();
     _index = _indexOfAtOrBefore(_progressMs);
   }
 
   /// The index of the last point at or before [progressMs] — binary
   /// search over [offsetsMs] (strictly increasing, first element 0).
-  int _indexOfAtOrBefore(int progressMs) {
+  int _indexOfAtOrBefore(double progressMs) {
     var lo = 0;
     var hi = offsetsMs.length - 1;
     while (lo < hi) {
@@ -158,11 +162,14 @@ class TrackPlayback {
   /// must never wrap or stop mid-air.
   void advance(Duration wallDelta) {
     if (_status != PlaybackStatus.playing) return;
-    final scaled = wallDelta.inMilliseconds * speed;
-    _progressMs = (scaled.isFinite
-            ? (_progressMs + scaled).clamp(0, offsetsMs.last)
-            : offsetsMs.last)
-        .toInt();
+    // Microsecond wall precision, scaled to timeline milliseconds: at 64x
+    // truncating the wall delta to whole ms first would lose up to ~64 ms
+    // of timeline per tick, unevenly — the cursor's visible jiggle.
+    final scaled = wallDelta.inMicroseconds * speed / 1000;
+    final next = _progressMs + scaled;
+    _progressMs =
+        (next.isFinite ? next.clamp(0, offsetsMs.last) : offsetsMs.last)
+            .toDouble();
     if (_progressMs >= offsetsMs.last) pause();
   }
 
