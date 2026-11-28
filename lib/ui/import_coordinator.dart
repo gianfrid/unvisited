@@ -208,9 +208,9 @@ class ImportCoordinator {
     } on MissingPluginException {
       // Desktop run: no host-side implementation, fall through to
       // file_picker's platform portal directory picker.
-      final dir = await FilePicker.getDirectoryPath();
+      final dir = await FilePicker.pickDirectory();
       if (dir == null) return null;
-      return importFromDirectory(dir);
+      return importFromDirectory(dir.toFilePath());
     }
     if (treeUri == null) return null; // user cancelled
     return _importSafTree(treeUri);
