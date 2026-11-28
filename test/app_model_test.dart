@@ -673,6 +673,23 @@ void main() {
       expect(overlayIds, isNot(contains('1001')));
     });
 
+    test('a pan inside the same tiles refreshes report and overlay', () async {
+      activateRoad();
+
+      // Two settled views inside one z12 tile rectangle: the first cuts
+      // Main Street and Service Road out, the pan brings them in. Both
+      // answers must follow the view actually on screen, not the view
+      // that first computed the shared tile rectangle.
+      await settle(const LatLng(52.5202, 13.400), const LatLng(52.525, 13.415));
+      expect(model.viewportReport!.wayCount, 2,
+          reason: 'only Cross Avenue and Parallel Lane are on screen');
+
+      await settle(const LatLng(52.515, 13.400), const LatLng(52.5248, 13.415));
+      expect(model.viewportReport!.wayCount, 4);
+      expect(model.viewportOverlay.map((w) => w.$1),
+          containsAll(['1001', '1002', '1003', '1004']));
+    });
+
     test('hiding a track returns its roads to the overlay and the chip',
         () async {
       activateRoad();

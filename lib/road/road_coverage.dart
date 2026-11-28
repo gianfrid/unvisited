@@ -104,6 +104,12 @@ class ViewportCoverage {
 
   String? _lastRectangle;
 
+  /// The exact corners the memoized report was clipped for: the chip
+  /// answers "the roads on screen", so its memo may only serve an
+  /// unchanged view - any movement recomputes the scalar walk.
+  LatLng? _lastSouthWest;
+  LatLng? _lastNorthEast;
+
   int _corridorVersion = 0;
 
   int _computedAtVersion = -1;
@@ -115,10 +121,22 @@ class ViewportCoverage {
   void invalidate() {
     _corridorVersion++;
     _lastReport = null;
+    _lastSouthWest = null;
+    _lastNorthEast = null;
     _lastOverlay = const [];
+    _coveredSouthWest = null;
+    _coveredNorthEast = null;
   }
 
   String? _lastOverlayRectangle;
+
+  /// The covered rectangle (the view grown by a quarter per axis) the
+  /// memoized overlay was clipped for: a later view inside it is
+  /// provably covered by the same list, so the geometry pass still
+  /// skips recenters and small pans - but a pan beyond the margin
+  /// recomputes, and no view is served roads it cannot see.
+  LatLng? _coveredSouthWest;
+  LatLng? _coveredNorthEast;
 
   int _computedOverlayAtVersion = -1;
 
@@ -130,7 +148,11 @@ class ViewportCoverage {
   /// bucket LRU: one transient decode per settle, no second geometry
   /// cache here. Ways fully covered by some corridor draw nothing, so
   /// they stay out. Below the [overlayMaxTiles] floor the list is
-  /// empty - the chip keeps the wider view, the overlay abstains.
+  /// empty - the chip keeps the wider view, the overlay abstains. The
+  /// clip targets the covered rectangle (the view plus a 25% margin)
+  /// and the memo serves it to any later view inside that rectangle,
+  /// so a recenter or a small pan skips the geometry pass while every
+  /// road on screen is guaranteed to be in the served list.
   Future<List<OverlayWay>> unvisitedIn(
     LatLng southWest,
     LatLng northEast,
@@ -142,15 +164,33 @@ class ViewportCoverage {
       if (identical(_lastOverlay, const [])) return _lastOverlay;
       _lastOverlay = const [];
       _lastOverlayRectangle = null;
+      _coveredSouthWest = null;
+      _coveredNorthEast = null;
       return _lastOverlay;
     }
     final (x0, y0, x1, y1) = rectangle;
     final memoKey = '$x0,$y0,$x1,$y1';
+    // The clip runs against the covered rectangle (the view grown by a
+    // quarter per axis), and the memo serves this list only while the
+    // incoming view stays inside that rectangle - a stale answer can
+    // never miss roads the screen just gained. What the margin added
+    // beyond the screen is culled at paint.
+    final covered = _expanded(southWest, northEast);
+    final coveredSouthWest = _coveredSouthWest;
+    final coveredNorthEast = _coveredNorthEast;
     if (memoKey == _lastOverlayRectangle &&
-        _computedOverlayAtVersion == _corridorVersion) {
+        _computedOverlayAtVersion == _corridorVersion &&
+        coveredSouthWest != null &&
+        coveredNorthEast != null &&
+        coveredSouthWest.latitude <= southWest.latitude &&
+        coveredNorthEast.latitude >= northEast.latitude &&
+        coveredSouthWest.longitude <= southWest.longitude &&
+        coveredNorthEast.longitude >= northEast.longitude) {
       return _lastOverlay;
     }
     _lastOverlayRectangle = memoKey;
+    _coveredSouthWest = covered.$1;
+    _coveredNorthEast = covered.$2;
 
     // Multi-bucket ways register in every bucket their bbox touches -
     // deduplicate by id; the stretches would be identical anyway.
@@ -164,8 +204,10 @@ class ViewportCoverage {
           if (!seen.add(way.id)) continue;
           final pts = way.points;
           if (pts.length < 2) continue;
-          // Same clip as the chip pass: only ways whose bbox reaches
-          // the visible rectangle are drawn.
+          // The clip for the covered rectangle (see the memo above):
+          // a way whose bbox reaches it is in the list even when only
+          // the margin holds it - the screen culls that at paint, and
+          // a small pan into the margin finds it already glowing.
           var minLat = double.infinity;
           var maxLat = double.negativeInfinity;
           var minLon = double.infinity;
@@ -176,10 +218,10 @@ class ViewportCoverage {
             if (p.longitude < minLon) minLon = p.longitude;
             if (p.longitude > maxLon) maxLon = p.longitude;
           }
-          if (minLat > northEast.latitude ||
-              maxLat < southWest.latitude ||
-              minLon > northEast.longitude ||
-              maxLon < southWest.longitude) {
+          if (minLat > covered.$2.latitude ||
+              maxLat < covered.$1.latitude ||
+              minLon > covered.$2.longitude ||
+              maxLon < covered.$1.longitude) {
             continue;
           }
           final stretches =
@@ -195,6 +237,19 @@ class ViewportCoverage {
   }
 
   String _tileKey(int x, int y) => '${x}_$y';
+
+  /// The view grown by 25% per axis: the covered rectangle an overlay
+  /// answer is clipped for and memoized under. Small enough that a
+  /// deliberate pan crosses it and recomputes; wide enough that a
+  /// follow-camera recenter stays inside and skips the geometry pass.
+  (LatLng, LatLng) _expanded(LatLng southWest, LatLng northEast) {
+    final lat = (northEast.latitude - southWest.latitude) * 0.25;
+    final lon = (northEast.longitude - southWest.longitude) * 0.25;
+    return (
+      LatLng(southWest.latitude - lat, southWest.longitude - lon),
+      LatLng(northEast.latitude + lat, northEast.longitude + lon),
+    );
+  }
 
   /// The x/y of the z12 tile containing [p] - the numbering
   /// [roadBucketKeyFor] buckets by, y growing southward.
@@ -298,10 +353,20 @@ class ViewportCoverage {
     if (rectangle == null) return null;
     final (x0, y0, x1, y1) = rectangle;
     final key = '$x0,$y0,$x1,$y1';
-    if (key == _lastRectangle && _computedAtVersion == _corridorVersion) {
+    // The chip answers "the roads on screen", so the memo serves only
+    // an unchanged view: duplicate settles (a rotation tap, a camera
+    // settle that moved nothing) skip, while any real movement walks
+    // the cached scalar summaries again - the number never answers an
+    // older viewport.
+    if (key == _lastRectangle &&
+        _computedAtVersion == _corridorVersion &&
+        _lastSouthWest == southWest &&
+        _lastNorthEast == northEast) {
       return _lastReport;
     }
     _lastRectangle = key;
+    _lastSouthWest = southWest;
+    _lastNorthEast = northEast;
 
     // Way summaries for the viewport, deduplicated across tiles: a way
     // registers in every bucket its bbox touches, so it must count

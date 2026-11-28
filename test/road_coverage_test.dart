@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:unvisited/road/road_store.dart';
 import 'package:unvisited/road/road_coverage.dart';
+import 'package:unvisited/road/road_format.dart';
 
 import 'helpers.dart';
 
@@ -26,6 +27,36 @@ void main() {
         const LatLng(52.515, 13.400),
         const LatLng(52.525, 13.415)
       );
+
+  /// Two views inside the same z12 tile rectangle (a pan between them
+  /// never leaves it): the narrow one's corners cut Main Street
+  /// (52.5200) and Service Road (52.5200719) out, the wider one shows
+  /// them. Both passes' memos are therefore keyed identically across
+  /// the pan - the freshness of the served answer is what these probe.
+  (LatLng, LatLng) narrowView() => (
+        const LatLng(52.5202, 13.400),
+        const LatLng(52.525, 13.415)
+      );
+
+  (LatLng, LatLng) widerView() => (
+        const LatLng(52.515, 13.400),
+        const LatLng(52.5248, 13.415)
+      );
+
+  /// Asserts the two pan views share one z12 bucket key - the premise
+  /// the memo-freshness tests rest on.
+  void expectSameTileRectangle() {
+    final buckets = {
+      for (final p in [
+        narrowView().$1,
+        narrowView().$2,
+        widerView().$1,
+        widerView().$2,
+      ])
+        roadBucketKeyFor(p.latitude, p.longitude),
+    };
+    expect(buckets, hasLength(1));
+  }
 
   test('sums every viewport way into the denominator', () async {
     final report = await coverage.coverage(blockView().$1, blockView().$2, {});
@@ -210,6 +241,47 @@ void main() {
       expect(identical(first, second), isTrue);
       expect(store.parsedBucketCount, parsed);
     });
+
+    test('a pan inside the same tiles keeps the glow covering the view',
+        () async {
+      expectSameTileRectangle();
+      // The narrow view cuts Main Street and Service Road out; the
+      // margin clip may keep them in the list (they sit off-screen and
+      // get culled at paint), but the roads on screen must be in it.
+      final narrow =
+          await coverage.unvisitedIn(narrowView().$1, narrowView().$2, {});
+      expect(narrow.map((w) => w.$1), containsAll(['1002', '1003']));
+      // A pan inside the same tile rectangle: the memo must not serve
+      // the first view's clipped answer - the roads that just entered
+      // the screen have to be in it.
+      final wider =
+          await coverage.unvisitedIn(widerView().$1, widerView().$2, {});
+      expect(wider.map((w) => w.$1).toSet(),
+          {'1001', '1002', '1003', '1004'});
+    });
+
+    test('a recenter inside the margin still skips the geometry pass',
+        () async {
+      final first =
+          await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
+      final parsed = store.parsedBucketCount;
+      // A follow-camera recenter: meters of drift, well inside the
+      // 25% margin - the memo still serves the same list instance.
+      final recentered = await coverage.unvisitedIn(
+          const LatLng(52.5151, 13.4002), const LatLng(52.5251, 13.4152), {});
+      expect(identical(first, recentered), isTrue);
+      expect(store.parsedBucketCount, parsed);
+    });
+
+    test('zooming in inside the margin skips the geometry pass', () async {
+      final first =
+          await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
+      // A tighter view is contained in the covered rectangle, so the
+      // answer it reuses - clipped for a larger view - covers it.
+      final zoomed = await coverage.unvisitedIn(
+          const LatLng(52.517, 13.402), const LatLng(52.523, 13.413), {});
+      expect(identical(first, zoomed), isTrue);
+    });
   });
 
   group('viewport clipping', () {
@@ -248,6 +320,29 @@ void main() {
       final overlay =
           await coverage.unvisitedIn(blockView().$1, blockView().$2, {});
       expect(overlay.length, 4);
+    });
+
+    test('a pan inside the same tiles refreshes the share', () async {
+      expectSameTileRectangle();
+      // The chip answers "the roads on screen": its number must follow
+      // the exact corners, never the first view that happened to share
+      // the tile rectangle.
+      final narrow =
+          await coverage.coverage(narrowView().$1, narrowView().$2, {});
+      expect(narrow!.wayCount, 2,
+          reason: 'only Cross Avenue and Parallel Lane reach the corners');
+      final wider =
+          await coverage.coverage(widerView().$1, widerView().$2, {});
+      expect(wider!.wayCount, 4,
+          reason: 'the pan brought Main and Service into view');
+    });
+
+    test('an unchanged viewport still skips the chip pass', () async {
+      final first =
+          await coverage.coverage(blockView().$1, blockView().$2, {});
+      final second =
+          await coverage.coverage(blockView().$1, blockView().$2, {});
+      expect(identical(first, second), isTrue);
     });
   });
 }
