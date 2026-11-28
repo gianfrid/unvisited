@@ -199,35 +199,39 @@ class TopToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppStrings.ofContext(context);
     final cassette = model.buttonStyle == 'cassette';
-    return FloatingToolbar(
-      children: [
-        if (!model.isRecording)
-          HeaderAction(
-            icon: const Icon(Icons.add),
-            label: strings.importLabel,
-            tooltip: strings.importTooltip,
-            onTap: onImport,
-            cassette: cassette,
-          ),
-        Builder(
-          builder: (context) => HeaderAction(
-            icon: const BadgeIcon(),
-            label: strings.tracksLabel,
-            tooltip: strings.tracksLabel,
-            onTap: () => Scaffold.of(context).openEndDrawer(),
-            cassette: cassette,
-          ),
-        ),
-        if (model.isRecording) RecordingSpeedSegment(model: model),
+    final children = [
+      if (!model.isRecording)
         HeaderAction(
-          icon: const Icon(Icons.settings_outlined),
-          label: strings.settingsLabel,
-          tooltip: strings.settingsLabel,
-          onTap: onOpenSettings,
+          icon: const Icon(Icons.add),
+          label: strings.importLabel,
+          tooltip: strings.importTooltip,
+          onTap: onImport,
           cassette: cassette,
         ),
-      ],
-    );
+      Builder(
+        builder: (context) => HeaderAction(
+          icon: const BadgeIcon(),
+          label: strings.tracksLabel,
+          tooltip: strings.tracksLabel,
+          onTap: () => Scaffold.of(context).openEndDrawer(),
+          cassette: cassette,
+        ),
+      ),
+      if (model.isRecording) RecordingSpeedSegment(model: model),
+      HeaderAction(
+        icon: const Icon(Icons.settings_outlined),
+        label: strings.settingsLabel,
+        tooltip: strings.settingsLabel,
+        onTap: onOpenSettings,
+        cassette: cassette,
+      ),
+    ];
+    // The floating deck: no pill behind the keys — each cap carries its
+    // own throw shadow over the map (the flat style keeps its pill).
+    if (cassette) {
+      return Row(mainAxisSize: MainAxisSize.min, children: children);
+    }
+    return FloatingToolbar(children: children);
   }
 }
 

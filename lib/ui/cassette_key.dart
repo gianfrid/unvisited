@@ -8,9 +8,10 @@
 /// captions are the action's own, unchanged.
 ///
 /// Everything is drawn with [BoxDecoration]s and one [AnimationController]
-/// — no new packages. [CassetteDeck] is the face panel the keys sit in;
-/// the clusters swap it in for their usual pill container when the style
-/// is active.
+/// — no new packages. The keys float directly on the map — no panel
+/// behind them, their own throw shadows carry the depth — and
+/// [CassetteScrubber] is the retro replay scrubber (recessed groove,
+/// capstan thumb) that rides with the style.
 library;
 
 import 'package:material_ui/material_ui.dart';
@@ -254,32 +255,89 @@ class _RecLight extends StatelessWidget {
   );
 }
 
-/// The deck face the keys sit in: the same rounded footprint (24 radius,
-/// the same padding) as the clusters' usual pill containers, so switching
-/// the style moves nothing — only the surface changes.
-class CassetteDeck extends StatelessWidget {
-  const CassetteDeck({super.key, required this.child});
+/// The retro replay scrubber: the playback Slider dressed as a cassette
+/// transport control — a recessed dark groove with the played length
+/// tinted, and a tall capstan-style thumb the cursor rides. Behavior
+/// (seeking, clamping, live feed) is the wrapped Slider's own.
+class CassetteScrubber extends StatelessWidget {
+  const CassetteScrubber({
+    super.key,
+    required this.value,
+    required this.onChanged,
+  });
 
-  final Widget child;
+  final double value;
+  final ValueChanged<double> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [scheme.surfaceContainerHighest, scheme.surface],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: .5)),
-        boxShadow: const [
-          BoxShadow(blurRadius: 6, color: Colors.black26, offset: Offset(0, 2)),
-        ],
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: 10,
+        trackShape: const RoundedRectSliderTrackShape(),
+        // One dark groove: the played length carries the tint color so
+        // the progress reads without the Material glow.
+        activeTrackColor: scheme.primary.withValues(alpha: 0.9),
+        inactiveTrackColor: scheme.surfaceContainerHighest,
+        thumbShape: const _CapstanThumbShape(),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+        thumbColor: scheme.surfaceContainerLow,
       ),
-      child: child,
+      child: Slider(value: value, onChanged: onChanged),
+    );
+  }
+}
+
+/// The scrubber's thumb: a vertical capstan — a tall rounded cap raised
+/// off the groove, drawn like the keys' caps (top-lit face, one-pixel
+/// throw below).
+class _CapstanThumbShape extends SliderComponentShape {
+  const _CapstanThumbShape();
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) => const Size(12, 22);
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    required bool isDiscrete,
+    required TextPainter labelPainter,
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required TextDirection textDirection,
+    required Size sizeWithOverflow,
+    required double textScaleFactor,
+    required double value,
+  }) {
+    final canvas = context.canvas;
+    final cap = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: center, width: 10, height: 22),
+      const Radius.circular(3),
+    );
+    // The throw, then the cap's top-lit face, then its edge.
+    canvas.drawRRect(
+      cap.shift(const Offset(0, 1)),
+      Paint()..color = Colors.black26,
+    );
+    canvas.drawRRect(
+      cap,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFF0F0EC), Color(0xFFC2C2BC)],
+        ).createShader(cap.outerRect),
+    );
+    canvas.drawRRect(
+      cap,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = const Color(0xFF8F8F88),
     );
   }
 }

@@ -197,11 +197,10 @@ class MapControlPill extends StatelessWidget {
           ),
       ],
     );
-    // The pill's face either way: the translucent surface pill, or the
-    // deck panel the keys sit in — same radius, padding and shadow, so
-    // the pill's footprint never moves between styles.
+    // The floating deck: no panel behind the keys — each cap carries its
+    // own throw shadow over the map (the flat style keeps its pill).
     if (cassette) {
-      return CassetteDeck(key: const ValueKey('control-pill'), child: keys);
+      return KeyedSubtree(key: const ValueKey('control-pill'), child: keys);
     }
     return Container(
       key: const ValueKey('control-pill'),
@@ -390,61 +389,40 @@ class RecordClusterState extends State<RecordCluster> {
           cassette: cassette,
         ),
       if (widget.gpsWorking || recording)
-        if (cassette && recording) ...[
-          // The engaged REC key: latched for the whole session, LED
-          // blinking while it writes, steady while paused. Pressing an
-          // already-engaged deck key does nothing — pause/resume lives
-          // on the pause key below.
-          HeaderAction(
-            icon: const Icon(Icons.fiber_manual_record),
-            label: strings.recordLabel,
-            tooltip: strings.recordLabel,
-            onTap: null,
-            width: 56,
-            iconSize: 24,
-            cassette: cassette,
-            latched: true,
-            rec: true,
-            led: paused ? CassetteLed.steady : CassetteLed.blink,
+        // The one record slot (either style): REC raised while idle,
+        // then Pause/Resume through the session. In the cassette style
+        // it carries the deck's clues: the cap stays latched down for
+        // the whole session — LED blinking while recording, steady
+        // while paused — and the glyph is the red REC only while idle.
+        HeaderAction(
+          icon: Icon(
+            recording
+                ? (paused ? Icons.play_arrow : Icons.pause)
+                : Icons.fiber_manual_record,
           ),
-          HeaderAction(
-            icon: Icon(paused ? Icons.play_arrow : Icons.pause),
-            label: paused ? strings.resumeLabel : strings.pauseLabel,
-            tooltip: paused ? strings.resumeLabel : strings.pauseLabel,
-            onTap: paused ? model.resumeRecording : model.pauseRecording,
-            width: 56,
-            iconSize: 24,
-            cassette: cassette,
-            latched: paused,
-          ),
-        ] else
-          HeaderAction(
-            icon: Icon(
-              recording
-                  ? (paused ? Icons.play_arrow : Icons.pause)
-                  : Icons.fiber_manual_record,
-            ),
-            label: recording
-                ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                : strings.recordLabel,
-            tooltip: recording
-                ? (paused ? strings.resumeLabel : strings.pauseLabel)
-                : strings.recordLabel,
-            onTap: recording
-                ? (paused ? model.resumeRecording : model.pauseRecording)
-                : _startRecording,
-            width: 56,
-            iconSize: 24,
-            cassette: cassette,
-            // Red REC glyph: this branch is the record key while idle
-            // (either style — the flag is ignored by the flat one).
-            rec: true,
-          ),
+          label: recording
+              ? (paused ? strings.resumeLabel : strings.pauseLabel)
+              : strings.recordLabel,
+          tooltip: recording
+              ? (paused ? strings.resumeLabel : strings.pauseLabel)
+              : strings.recordLabel,
+          onTap: recording
+              ? (paused ? model.resumeRecording : model.pauseRecording)
+              : _startRecording,
+          width: 56,
+          iconSize: 24,
+          cassette: cassette,
+          latched: recording,
+          rec: !recording,
+          led: !recording
+              ? CassetteLed.off
+              : (paused ? CassetteLed.steady : CassetteLed.blink),
+        ),
     ];
-    // The same rounded footprint either way: a flat Material pill, or
-    // the deck face the keys sit in (cassette_key.dart).
+    // The floating deck: no panel behind the keys — each cap carries its
+    // own throw shadow over the map (the flat style keeps its pill).
     if (cassette) {
-      return CassetteDeck(
+      return KeyedSubtree(
         key: const ValueKey('record-cluster'),
         child: Column(mainAxisSize: MainAxisSize.min, children: children),
       );

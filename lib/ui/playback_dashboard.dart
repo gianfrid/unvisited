@@ -257,22 +257,37 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                   // marker and trace along while scrubbing. A slider drag
                   // is not a map gesture, so it never releases the
                   // follow-camera — the camera glides to each scrubbed
-                  // position through the same per-tick feed.
+                  // position through the same per-tick feed. The cassette
+                  // style dresses the same drag as a transport scrubber
+                  // (groove + capstan); the behavior is one Slider's.
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Slider(
-                          key: const ValueKey('playback-scrubber'),
-                          value: playback.progressFraction,
-                          onChanged: (fraction) => widget.model.player.seekTo(
-                            Duration(
-                              milliseconds:
-                                  (playback.total.inMilliseconds * fraction)
-                                      .round(),
+                        if (widget.model.buttonStyle == 'cassette')
+                          CassetteScrubber(
+                            key: const ValueKey('playback-scrubber'),
+                            value: playback.progressFraction,
+                            onChanged: (fraction) => widget.model.player.seekTo(
+                              Duration(
+                                milliseconds:
+                                    (playback.total.inMilliseconds * fraction)
+                                        .round(),
+                              ),
+                            ),
+                          )
+                        else
+                          Slider(
+                            key: const ValueKey('playback-scrubber'),
+                            value: playback.progressFraction,
+                            onChanged: (fraction) => widget.model.player.seekTo(
+                              Duration(
+                                milliseconds:
+                                    (playback.total.inMilliseconds * fraction)
+                                        .round(),
+                              ),
                             ),
                           ),
-                        ),
                         // The timer, centered with the seek bar above it:
                         // muted and smaller than the title, tabular figures
                         // so the ticking seconds don't jitter its width.

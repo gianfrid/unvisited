@@ -23,76 +23,75 @@ void fakeFix(FakePositionSource source, double lat, [double? ele]) {
 }
 
 void main() {
-  testWidgets(
-    'cassette record cluster latches REC and blinks while recording',
-    (tester) async {
-      final root = createRoot();
-      final cache = createCache();
-      final model = await createModel(root);
-      await model.setButtonStyle('cassette');
-      mockGeolocator(
-        tester,
-        permission: 3,
-        position: {'lat': 52.5200, 'lon': 13.4050},
-      );
+  testWidgets('cassette record key latches and blinks through a session', (
+    tester,
+  ) async {
+    final root = createRoot();
+    final cache = createCache();
+    final model = await createModel(root);
+    await model.setButtonStyle('cassette');
+    mockGeolocator(
+      tester,
+      permission: 3,
+      position: {'lat': 52.5200, 'lon': 13.4050},
+    );
 
-      await pumpMapPage(
-        tester,
-        model: model,
-        cache: cache,
-        locationSupported: true,
-      );
-      await tester.pump();
-      await tester.pump();
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: cache,
+      locationSupported: true,
+    );
+    await tester.pump();
+    await tester.pump();
 
-      // The deck key that carries the given glyph.
-      CassetteKey deckKey(IconData icon) => tester.widget<CassetteKey>(
-        find
-            .ancestor(of: find.byIcon(icon), matching: find.byType(CassetteKey))
-            .first,
-      );
+    // The deck key that carries the given glyph.
+    CassetteKey deckKey(IconData icon) => tester.widget<CassetteKey>(
+      find
+          .ancestor(of: find.byIcon(icon), matching: find.byType(CassetteKey))
+          .first,
+    );
 
-      // Idle: the REC key rides raised with a dark LED, and the pause and
-      // stop keys do not exist yet.
-      expect(deckKey(Icons.fiber_manual_record).latched, isFalse);
-      expect(deckKey(Icons.fiber_manual_record).led, CassetteLed.off);
-      expect(find.byIcon(Icons.stop), findsNothing);
+    // Idle: the single record key rides raised with a dark LED and the
+    // red REC glyph; no stop key exists yet.
+    expect(deckKey(Icons.fiber_manual_record).latched, isFalse);
+    expect(deckKey(Icons.fiber_manual_record).led, CassetteLed.off);
+    expect(deckKey(Icons.fiber_manual_record).rec, isTrue);
+    expect(find.byIcon(Icons.stop), findsNothing);
 
-      final source = FakePositionSource();
-      await model.startRecording(source: source, permissionGate: false);
-      fakeFix(source, 52.5200, 42.0);
-      fakeFix(source, 52.5201, 43.0);
-      await tester.pump();
-      await tester.pump();
+    final source = FakePositionSource();
+    await model.startRecording(source: source, permissionGate: false);
+    fakeFix(source, 52.5200, 42.0);
+    fakeFix(source, 52.5201, 43.0);
+    await tester.pump();
+    await tester.pump();
 
-      // Recording: REC is latched with the LED blinking, and pausing moved
-      // to its own raised key, with Stop alongside.
-      expect(deckKey(Icons.fiber_manual_record).latched, isTrue);
-      expect(deckKey(Icons.fiber_manual_record).led, CassetteLed.blink);
-      expect(deckKey(Icons.pause).latched, isFalse);
-      expect(find.byIcon(Icons.stop), findsOneWidget);
+    // Recording: the same key, latched down, reading Pause with the LED
+    // blinking; Stop rides above it.
+    expect(deckKey(Icons.pause).latched, isTrue);
+    expect(deckKey(Icons.pause).led, CassetteLed.blink);
+    expect(deckKey(Icons.pause).rec, isFalse);
+    expect(find.byIcon(Icons.stop), findsOneWidget);
 
-      // The blink loops: pumps step it without an exception (it never
-      // settles, so pumpAndSettle is off the table while it runs).
-      await tester.pump(const Duration(milliseconds: 600));
-      await tester.pump(const Duration(milliseconds: 600));
-      expect(tester.takeException(), isNull);
+    // The blink loops: pumps step it without an exception (it never
+    // settles, so pumpAndSettle is off the table while it runs).
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(tester.takeException(), isNull);
 
-      // Paused: the pause key latches (reading Resume), REC stays down and
-      // its LED goes steady — the deck-standby convention.
-      model.pauseRecording();
-      await tester.pump();
-      expect(deckKey(Icons.play_arrow).latched, isTrue);
-      expect(deckKey(Icons.fiber_manual_record).latched, isTrue);
-      expect(deckKey(Icons.fiber_manual_record).led, CassetteLed.steady);
+    // Paused: still latched, reading Resume, LED steady — the deck's
+    // standby convention.
+    model.pauseRecording();
+    await tester.pump();
+    expect(deckKey(Icons.play_arrow).latched, isTrue);
+    expect(deckKey(Icons.play_arrow).led, CassetteLed.steady);
 
-      // Resumed: the pause key rides raised again and the LED blinks.
-      model.resumeRecording();
-      await tester.pump();
-      expect(deckKey(Icons.pause).latched, isFalse);
-      expect(deckKey(Icons.fiber_manual_record).led, CassetteLed.blink);
-    },
-  );
+    // Resumed: back to the latched Pause with the LED blinking.
+    model.resumeRecording();
+    await tester.pump();
+    expect(deckKey(Icons.pause).latched, isTrue);
+    expect(deckKey(Icons.pause).led, CassetteLed.blink);
+  });
 
   testWidgets('the standard style keeps the flat actions', (tester) async {
     final model = await createModel();
@@ -112,7 +111,6 @@ void main() {
 
     expect(model.buttonStyle, 'standard');
     expect(find.byType(CassetteKey), findsNothing);
-    expect(find.byType(CassetteDeck), findsNothing);
     // The flat record action, exactly as before the style existed.
     expect(find.byIcon(Icons.fiber_manual_record), findsOneWidget);
   });
@@ -145,9 +143,9 @@ void main() {
     expect(model.buttonStyle, 'cassette');
 
     // The deck chrome is already live behind the sheet: the control pill
-    // and toolbar keys drew as transport keys.
+    // and toolbar keys drew as floating transport keys — no panel
+    // behind them, so nothing but the keys themselves changed type.
     expect(find.byType(CassetteKey), findsWidgets);
-    expect(find.byType(CassetteDeck), findsOneWidget);
 
     // And back: the flat style returns with the setting. 'Standard' also
     // labels the map-layer segment, so the tap is aimed at this sheet's
@@ -167,5 +165,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(model.buttonStyle, 'standard');
     expect(find.byType(CassetteKey), findsNothing);
+  });
+
+  testWidgets('the cassette scrubber dresses the slider as a transport bar', (
+    tester,
+  ) async {
+    double? dragged;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: CassetteScrubber(value: 0.5, onChanged: (v) => dragged = v),
+          ),
+        ),
+      ),
+    );
+
+    // The groove and the capstan thumb, not the default Material slider
+    // skin (the shapes are private, so they assert by runtime type).
+    final theme = tester.widget<SliderTheme>(find.byType(SliderTheme));
+    expect(theme.data.trackHeight, 10);
+    expect(theme.data.thumbShape.runtimeType.toString(), '_CapstanThumbShape');
+
+    // A drag still seeks: the wrapped Slider's own behavior.
+    await tester.drag(find.byType(Slider), const Offset(40, 0));
+    expect(dragged, isNotNull);
+    expect(tester.takeException(), isNull);
   });
 }
