@@ -192,4 +192,47 @@ void main() {
     expect(dragged, isNotNull);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('the cassette replay bar latches one play/pause key', (
+    tester,
+  ) async {
+    final model = await createModel();
+    model.store.importBytes(fixture('morning_walk.gpx'));
+    await model.setButtonStyle('cassette');
+
+    await pumpMapPage(
+      tester,
+      model: model,
+      cache: createCache(),
+      locationSupported: false,
+    );
+    model.startPlayback(model.tracks.single);
+    await tester.pump();
+
+    // The deck key that carries the given glyph.
+    CassetteKey deckKey(IconData icon) => tester.widget<CassetteKey>(
+      find
+          .ancestor(of: find.byIcon(icon), matching: find.byType(CassetteKey))
+          .first,
+    );
+
+    // A started replay is already playing: the single key starts
+    // latched down, reading Pause.
+    expect(deckKey(Icons.pause).latched, isTrue);
+
+    // Paused: raised again, reading Play — one key, both directions.
+    await tester.tap(find.byKey(const ValueKey('playback-play')));
+    await tester.pump();
+    expect(deckKey(Icons.play_arrow).latched, isFalse);
+
+    // Resumed: latched down, reading Pause.
+    await tester.tap(find.byKey(const ValueKey('playback-play')));
+    await tester.pump();
+    expect(deckKey(Icons.pause).latched, isTrue);
+
+    // EJECT closes the bar.
+    await tester.tap(find.byKey(const ValueKey('playback-close')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('playback-bar')), findsNothing);
+  });
 }

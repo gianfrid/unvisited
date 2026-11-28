@@ -202,37 +202,35 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
               Row(
                 children: [
                   // The transport keys: deck keys while the cassette style
-                  // is on — PLAY latched while the replay runs, PAUSE
-                  // latched while it stands, EJECT closing the bar — or
-                  // the flat play/pause toggle the rest of the time.
-                  if (widget.model.buttonStyle == 'cassette') ...[
+                  // is on — the single play/pause key mirrors the record
+                  // key's pattern: latched down reading Pause while the
+                  // replay runs, raised reading Play/Replay otherwise;
+                  // EJECT closes the bar. The flat style keeps its own
+                  // one IconButton toggle.
+                  if (widget.model.buttonStyle == 'cassette')
                     CassetteKey(
                       key: const ValueKey('playback-play'),
-                      icon: Icon(
-                        playback.finished ? Icons.replay : Icons.play_arrow,
-                      ),
-                      label: playback.finished
-                          ? strings.playbackReplay
-                          : strings.playbackPlay,
+                      icon: Icon(icon),
+                      label: playing
+                          ? strings.pauseLabel
+                          : (playback.finished
+                                ? strings.playbackReplay
+                                : strings.playbackPlay),
                       tooltip: tooltip,
                       width: 56,
                       latched: playing,
                       onTap: () {
-                        widget.model.player.play();
-                        // The play (re)arms the follow-camera — the
-                        // replay button's behavior after the finish.
-                        _armAndFeed();
+                        if (playing) {
+                          widget.model.player.pause();
+                        } else {
+                          widget.model.player.play();
+                          // The play (re)arms the follow-camera — the
+                          // replay button's behavior after the finish.
+                          _armAndFeed();
+                        }
                       },
-                    ),
-                    CassetteKey(
-                      icon: const Icon(Icons.pause),
-                      label: strings.pauseLabel,
-                      tooltip: strings.pauseLabel,
-                      width: 56,
-                      latched: playback.status == PlaybackStatus.paused,
-                      onTap: () => widget.model.player.pause(),
-                    ),
-                  ] else
+                    )
+                  else
                     IconButton(
                       key: const ValueKey('playback-play'),
                       tooltip: tooltip,
