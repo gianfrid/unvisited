@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Unvisited — cassette button style mockup</title>
+<style>
+  :root {
+    --bg: #101014;
+    --fg: #e8e8ec;
+    --muted: #9a9aa4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: system-ui, sans-serif;
+    padding: 28px; display: flex; flex-direction: column; gap: 36px;
+  }
+  h1 { font-size: 20px; }
+  h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
+  p.note { color: var(--muted); font-size: 13px; max-width: 640px; line-height: 1.5; }
+  .row { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+  .scene { display: flex; gap: 22px; align-items: flex-start; }
+  .state-label { font-size: 12px; color: var(--muted); text-align: center; margin-top: 8px; }
+  .panel { padding: 4px 6px 10px; }
+
+  /* ---- The deck face (dark "Walkman" version) ---- */
+  .deck {
+    background: linear-gradient(165deg, #34343b 0%, #232329 55%, #1c1c21 100%);
+    border: 1px solid #0c0c0f;
+    border-radius: 18px;
+    padding: 10px 8px;
+    box-shadow: 0 10px 26px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .deck.light {
+    background: linear-gradient(165deg, #ececec 0%, #d8d8d8 60%, #c9c9c9 100%);
+    border: 1px solid #9d9d9d;
+    box-shadow: 0 10px 26px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  .keys { display: flex; flex-direction: column; gap: 9px; }
+
+  /* ---- One transport key ---- */
+  .key {
+    position: relative;
+    width: 74px; height: 52px;
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 1px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform .09s ease, box-shadow .09s ease, background .09s ease;
+    font-size: 10px; letter-spacing: .09em; font-weight: 600;
+    background: linear-gradient(180deg, #f6f6f3 0%, #e2e2dd 70%, #d4d4cf 100%);
+    color: #2c2c30;
+    border: 1px solid #8f8f88;
+    box-shadow: 0 4px 0 #7c7c74, 0 7px 10px rgba(0,0,0,.35), inset 0 1px 0 #fff;
+  }
+  .key .glyph { font-size: 15px; line-height: 1; }
+  .key.rec .glyph { color: #c62828; }
+  .key:hover { filter: brightness(1.03); }
+
+  /* Pressed/latched: the cap sinks, the bevel collapses */
+  .key.latched {
+    transform: translateY(4px);
+    background: linear-gradient(180deg, #c9c9c4 0%, #bcbcb7 100%);
+    box-shadow: 0 0 0 #7c7c74, inset 0 2px 7px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.35);
+    color: #565650;
+  }
+  .key.latched .glyph { opacity: .85; }
+
+  /* ---- The REC LED ---- */
+  .led {
+    position: absolute; top: 7px; right: 8px;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #4a1518; border: 1px solid #2b0b0d;
+    transition: background .15s;
+  }
+  .led.on  { background: #ff453a; box-shadow: 0 0 6px #ff453a; }
+  .led.blink { background: #ff453a; box-shadow: 0 0 6px #ff453a; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { background: #5a1b1e; box-shadow: none; } }
+
+  /* ---- Playback deck (horizontal row) ---- */
+  .deck.h { padding: 8px 10px; }
+  .deck.h .keys { flex-direction: row; }
+  .scrubber {
+    flex: 1; margin: 0 14px; height: 6px; border-radius: 3px;
+    background: #2c2c31; border: 1px solid #101014;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.5);
+    align-self: center; position: relative;
+  }
+  .scrubber::after {
+    content: ""; position: absolute; left: 38%; top: -4px;
+    width: 4px; height: 12px; border-radius: 2px;
+    background: linear-gradient(180deg,#f0f0ec,#c9c9c3);
+    box-shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+  .deckbar { display: flex; align-items: center; width: 430px; }
+
+  /* ---- Settings mockup ---- */
+  .settings {
+    background: #f5f5f2; color: #1c1b1f; border-radius: 16px;
+    padding: 18px 20px; width: 400px; font-size: 13px;
+    box-shadow: 0 8px 20px rgba(0,0,0,.4);
+  }
+  .settings .seg { display: flex; margin-top: 10px; border: 1px solid #b9b9b2; border-radius: 20px; overflow: hidden; }
+  .settings .seg div { flex: 1; text-align: center; padding: 8px 0; background: #e9e9e4; border-right: 1px solid #b9b9b2; }
+  .settings .seg div:last-child { border-right: none; }
+  .settings .seg .sel { background: #5b5768; color: #fff; font-weight: 600; }
+  .settings small { color: #6d6d74; }
+</style>
+</head>
+<body>
+
+<h1>Cassette-deck button style — mockup</h1>
+<p class="note">
+  The record cluster as a vertical bank of transport keys (a phone's map edge),
+  in the three states of a session. A latched key stays sunk while its function
+  is engaged; the REC LED blinks while recording and goes steady while paused
+  (deck-standby convention). The first deck is live — click the keys:
+  <b>REC</b> starts recording, <b>PAUSE</b> pauses/resumes, <b>STOP</b> stops.
+</p>
+
+<div class="row">
+  <div>
+    <h2>Live (dark face)</h2>
+    <div class="deck panel" id="live">
+      <div class="keys">
+        <div class="key" onclick="alert('Camera (unchanged behavior)')">
+          <span class="glyph">&#x1F4F7;&#xFE0E;</span>CAMERA
+        </div>
+        <div class="key rec" id="kRec" onclick="evRec()">
+          <span class="led" id="led"></span>
+          <span class="glyph">&#9679;</span><span id="lblRec">REC</span>
+        </div>
+        <div class="key" id="kPause" onclick="evPause()" style="visibility:hidden">
+          <span class="glyph">&#10073;&#10073;</span><span id="lblPause">PAUSE</span>
+        </div>
+        <div class="key" id="kStop" onclick="evStop()" style="visibility:hidden">
+          <span class="glyph">&#9632;</span>STOP
+        </div>
+      </div>
+    </div>
+    <div class="state-label" id="liveState">Idle — nothing recording</div>
+  </div>
+
+  <div class="scene">
+    <div>
+      <h2>Recording</h2>
+      <div class="deck panel">
+        <div class="keys">
+          <div class="key"><span class="glyph">&#x1F4F7;&#xFE0E;</span>CAMERA</div>
+          <div class="key rec latched"><span class="led blink"></span><span class="glyph">&#9679;</span>REC</div>
+          <div class="key"><span class="glyph">&#10073;&#10073;</span>PAUSE</div>
+          <div class="key"><span class="glyph">&#9632;</span>STOP</div>
+        </div>
+      </div>
+      <div class="state-label">REC latched, LED blinking</div>
+    </div>
+    <div>
+      <h2>Paused</h2>
+      <div class="deck panel">
+        <div class="keys">
+          <div class="key"><span class="glyph">&#x1F4F7;&#xFE0E;</span>CAMERA</div>
+          <div class="key rec latched"><span class="led on"></span><span class="glyph">&#9679;</span>REC</div>
+          <div class="key latched"><span class="glyph">&#9654;</span>RESUME</div>
+          <div class="key"><span class="glyph">&#9632;</span>STOP</div>
+        </div>
+      </div>
+      <div class="state-label">REC stays down, LED steady; PAUSE latched (reads RESUME)</div>
+    </div>
+    <div>
+      <h2>Light face</h2>
+      <div class="deck light panel">
+        <div class="keys">
+          <div class="key" style="background:linear-gradient(180deg,#4a4a50,#333338);color:#e6e6ea;border-color:#101014;box-shadow:0 4px 0 #0c0c0e,0 7px 10px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.18)">
+            <span class="glyph">&#x1F4F7;&#xFE0E;</span>CAMERA</div>
+          <div class="key rec latched"><span class="led blink"></span><span class="glyph">&#9679;</span>REC</div>
+          <div class="key"><span class="glyph">&#10073;&#10073;</span>PAUSE</div>
+          <div class="key"><span class="glyph">&#9632;</span>STOP</div>
+        </div>
+      </div>
+      <div class="state-label">Light theme: silver face, dark caps (classic deck)</div>
+    </div>
+  </div>
+</div>
+
+<div>
+  <h2>Replay deck (playback bar)</h2>
+  <p class="note">The same keys horizontally, replacing the playback card's IconButtons:
+  PLAY latches down while the replay runs. REW/FF step the cursor like the zoom keys.</p>
+  <div class="deck h">
+    <div class="deckbar">
+      <div class="keys">
+        <div class="key"><span class="glyph">&#9664;&#9664;</span>REW</div>
+        <div class="key"><span class="glyph">&#9654;</span>PLAY</div>
+        <div class="key"><span class="glyph">&#10073;&#10073;</span>PAUSE</div>
+        <div class="key"><span class="glyph">&#9654;&#9654;</span>FF</div>
+        <div class="key"><span class="glyph">&#10007;</span>EJECT</div>
+      </div>
+      <div class="scrubber"></div>
+    </div>
+  </div>
+</div>
+
+<div>
+  <h2>Settings row</h2>
+  <div class="settings">
+    <b>Button style</b><br>
+    <small>How the map buttons look</small>
+    <div class="seg">
+      <div>Standard</div>
+      <div class="sel">Cassette</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // state: 'idle' | 'recording' | 'paused'
+  let st = 'idle';
+  function render() {
+    document.getElementById('kRec').classList.toggle('latched', st !== 'idle');
+    document.getElementById('kRec').style.visibility = 'visible';
+    document.getElementById('lblRec').textContent = 'REC';
+    const led = document.getElementById('led');
+    led.className = 'led' + (st === 'recording' ? ' blink' : st === 'paused' ? ' on' : '');
+    const pause = document.getElementById('kPause');
+    pause.style.visibility = st !== 'idle' ? 'visible' : 'hidden';
+    pause.classList.toggle('latched', st === 'paused');
+    document.getElementById('lblPause').textContent = st === 'paused' ? 'RESUME' : 'PAUSE';
+    document.getElementById('kStop').style.visibility = st !== 'idle' ? 'visible' : 'hidden';
+    document.getElementById('liveState').textContent =
+      st === 'idle' ? 'Idle — nothing recording' :
+      st === 'recording' ? 'Recording — REC latched, LED blinking' :
+      'Paused — LED steady, PAUSE latched (click to resume)';
+  }
+  function evRec() { if (st === 'idle') st = 'recording'; render(); }
+  function evPause() { if (st === 'recording') st = 'paused'; else if (st === 'paused') st = 'recording'; render(); }
+  function evStop() { st = 'idle'; render(); }
+  render();
+</script>
+</body>
+</html>

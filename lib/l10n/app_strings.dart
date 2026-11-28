@@ -126,7 +126,8 @@ abstract class AppStrings {
 
   /// Shown while a fix is being acquired: the GPS can take seconds to
   /// answer, and an unchanged button reads as a dead one.
-  String get locating;  String get tracksLabel;
+  String get locating;
+  String get tracksLabel;
   String get settingsLabel;
 
   // Import sheet.
@@ -200,6 +201,10 @@ abstract class AppStrings {
   String get traceStyleCircles;
   String get traceStylePencil;
   String get traceStyleInk;
+  String get buttonStyle;
+  String get buttonStyleSubtitle;
+  String get buttonStyleStandard;
+  String get buttonStyleCassette;
   String get themeSubtitle;
   String get systemTheme;
   String get lightTheme;
@@ -296,6 +301,9 @@ abstract class AppStrings {
   String get playbackSpeed;
   String get playbackClose;
 
+  /// The cassette style's close key: the deck's eject.
+  String get playbackEject;
+
   // The track info dialog's labels (values are plain numbers/formats).
   String get infoStart;
   String get infoFormat;
@@ -365,6 +373,8 @@ class EnglishStrings extends AppStrings {
   @override
   String get playbackClose => 'Close playback';
   @override
+  String get playbackEject => 'Eject';
+  @override
   String get infoStart => 'Started';
   @override
   String get infoFormat => 'Format';
@@ -418,8 +428,7 @@ class EnglishStrings extends AppStrings {
   String get followReleasedHint =>
       'Camera free — long-press the map to re-center';
   @override
-  String get twoFingerPanHint =>
-      'Two fingers to pan the map freely';
+  String get twoFingerPanHint => 'Two fingers to pan the map freely';
   @override
   String get cameraLabel => 'Camera';
   @override
@@ -448,8 +457,7 @@ class EnglishStrings extends AppStrings {
   @override
   String get photoReposition => 'Reposition';
   @override
-  String get photoRepositionHint =>
-      'Tap on the map where the photo was taken';
+  String get photoRepositionHint => 'Tap on the map where the photo was taken';
   @override
   String get photosSetting => 'Photos';
   @override
@@ -596,6 +604,14 @@ class EnglishStrings extends AppStrings {
   @override
   String get traceStyleInk => 'Ink';
   @override
+  String get buttonStyle => 'Button style';
+  @override
+  String get buttonStyleSubtitle => 'How the map buttons look';
+  @override
+  String get buttonStyleStandard => 'Standard';
+  @override
+  String get buttonStyleCassette => 'Cassette';
+  @override
   String get systemTheme => 'System';
   @override
   String get lightTheme => 'Light';
@@ -628,8 +644,7 @@ class EnglishStrings extends AppStrings {
   @override
   String get batteryOptimization => 'Battery optimization';
   @override
-  String get batteryExcluded =>
-      'Recording is exempt from the battery manager';
+  String get batteryExcluded => 'Recording is exempt from the battery manager';
   @override
   String get batteryAdvisory =>
       'Battery saving can interrupt recording — tap to manage';
@@ -754,6 +769,8 @@ class ItalianStrings extends AppStrings {
   @override
   String get playbackClose => 'Chiudi la riproduzione';
   @override
+  String get playbackEject => 'Espelli';
+  @override
   String get infoStart => 'Iniziata';
   @override
   String get infoFormat => 'Formato';
@@ -808,8 +825,7 @@ class ItalianStrings extends AppStrings {
   String get followReleasedHint =>
       'Camera libera — tieni premuta la mappa per ricentrare';
   @override
-  String get twoFingerPanHint =>
-      'Due dita per muovere liberamente la mappa';
+  String get twoFingerPanHint => 'Due dita per muovere liberamente la mappa';
   @override
   String get cameraLabel => 'Foto';
   @override
@@ -993,6 +1009,14 @@ class ItalianStrings extends AppStrings {
   @override
   String get traceStyleInk => 'Inchiostro';
   @override
+  String get buttonStyle => 'Stile dei pulsanti';
+  @override
+  String get buttonStyleSubtitle => 'Aspetto dei pulsanti della mappa';
+  @override
+  String get buttonStyleStandard => 'Standard';
+  @override
+  String get buttonStyleCassette => 'Cassetta';
+  @override
   String get systemTheme => 'Sistema';
   @override
   String get lightTheme => 'Chiaro';
@@ -1037,7 +1061,8 @@ class ItalianStrings extends AppStrings {
       'Recuperata una registrazione non terminata: $name';
 
   @override
-  String get keepScreenOn => 'Mantieni lo schermo acceso durante la registrazione';
+  String get keepScreenOn =>
+      'Mantieni lo schermo acceso durante la registrazione';
   @override
   String get keepScreenOnSubtitle =>
       'Lo schermo resta acceso durante una sessione di registrazione';

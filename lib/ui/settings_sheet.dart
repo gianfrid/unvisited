@@ -164,6 +164,33 @@ class SettingsSheet extends StatelessWidget {
                   ),
                   ListTile(
                     dense: true,
+                    title: Text(strings.buttonStyle),
+                    subtitle: Text(strings.buttonStyleSubtitle),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 0,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: SegmentedButton<String>(
+                      segments: [
+                        ButtonSegment(
+                          value: 'standard',
+                          label: Text(strings.buttonStyleStandard),
+                        ),
+                        ButtonSegment(
+                          value: 'cassette',
+                          label: Text(strings.buttonStyleCassette),
+                        ),
+                      ],
+                      selected: {model.buttonStyle},
+                      onSelectionChanged: (selection) =>
+                          model.setButtonStyle(selection.first),
+                    ),
+                  ),
+                  ListTile(
+                    dense: true,
                     title: Text(strings.controlSide),
                     subtitle: Text(strings.controlSideSubtitle),
                     contentPadding: const EdgeInsets.symmetric(
@@ -415,15 +442,13 @@ Future<void> _exportCatalog(BuildContext context, AppModel model) async {
       mimeType: 'application/zip',
     );
     if (saved != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(strings.exportDone)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(strings.exportDone)));
     }
   } on Exception {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(strings.exportFailed)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(strings.exportFailed)));
     }
   }
 }
@@ -442,15 +467,14 @@ Future<void> _importCatalog(BuildContext context, AppModel model) async {
   try {
     final added = model.importCatalogBytes(File(path).readAsBytesSync());
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(strings.catalogImported(added))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.catalogImported(added))));
     }
   } on Exception {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(strings.catalogImportFailed)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(strings.catalogImportFailed)));
     }
   }
 }
@@ -475,9 +499,8 @@ Future<void> _saveDebugLog(BuildContext context) async {
     mimeType: 'application/gzip',
   );
   if (saved != null && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(strings.debugLogSaved)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(strings.debugLogSaved)));
   }
 }
 

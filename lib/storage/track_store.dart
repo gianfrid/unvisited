@@ -65,48 +65,48 @@ class StoredTrack {
   Map<String, List<List<LatLng>>> unlockedWays = {};
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'name': name,
-        'format': format,
-        'file': file,
-        'pointCount': pointCount,
-        'distanceMeters': distanceMeters,
-        'startTimeUtc': startTimeUtc?.toIso8601String(),
-        'durationSeconds': durationSeconds,
-        'movingSeconds': movingSeconds,
-        'visible': visible,
-        // Written only when non-empty: indexes from before road matching
-        // (and tracks imported without road data) stay unchanged.
-        if (unlockedWays.isNotEmpty)
-          'unlockedWays': {
-            for (final entry in unlockedWays.entries)
-              entry.key: [
-                for (final corridor in entry.value)
-                  encodePolyline5(
-                      [for (final p in corridor) (p.latitude, p.longitude)]),
-              ],
-          },
-      };
+    'id': id,
+    'name': name,
+    'format': format,
+    'file': file,
+    'pointCount': pointCount,
+    'distanceMeters': distanceMeters,
+    'startTimeUtc': startTimeUtc?.toIso8601String(),
+    'durationSeconds': durationSeconds,
+    'movingSeconds': movingSeconds,
+    'visible': visible,
+    // Written only when non-empty: indexes from before road matching
+    // (and tracks imported without road data) stay unchanged.
+    if (unlockedWays.isNotEmpty)
+      'unlockedWays': {
+        for (final entry in unlockedWays.entries)
+          entry.key: [
+            for (final corridor in entry.value)
+              encodePolyline5([
+                for (final p in corridor) (p.latitude, p.longitude),
+              ]),
+          ],
+      },
+  };
 
   static StoredTrack fromMap(Map<String, dynamic> m) => StoredTrack(
-        id: m['id'] as String,
-        name: m['name'] as String,
-        format: m['format'] as String,
-        file: m['file'] as String,
-        pointCount: (m['pointCount'] as num).toInt(),
-        distanceMeters: (m['distanceMeters'] as num).toDouble(),
-        startTimeUtc: m['startTimeUtc'] == null
-            ? null
-            : DateTime.tryParse(m['startTimeUtc'] as String),
-        durationSeconds: m['durationSeconds'] == null
-            ? null
-            : (m['durationSeconds'] as num).toDouble(),
-        movingSeconds: m['movingSeconds'] == null
-            ? null
-            : (m['movingSeconds'] as num).toDouble(),
-        visible: m['visible'] as bool? ?? true,
-      )
-        ..unlockedWays = _unlockedWaysFrom(m['unlockedWays']);
+    id: m['id'] as String,
+    name: m['name'] as String,
+    format: m['format'] as String,
+    file: m['file'] as String,
+    pointCount: (m['pointCount'] as num).toInt(),
+    distanceMeters: (m['distanceMeters'] as num).toDouble(),
+    startTimeUtc: m['startTimeUtc'] == null
+        ? null
+        : DateTime.tryParse(m['startTimeUtc'] as String),
+    durationSeconds: m['durationSeconds'] == null
+        ? null
+        : (m['durationSeconds'] as num).toDouble(),
+    movingSeconds: m['movingSeconds'] == null
+        ? null
+        : (m['movingSeconds'] as num).toDouble(),
+    visible: m['visible'] as bool? ?? true,
+  )..unlockedWays = _unlockedWaysFrom(m['unlockedWays']);
 
   /// Tolerates a missing or malformed field: an old index (or a hand-edited
   /// one) must never break startup.
@@ -120,8 +120,7 @@ class StoredTrack {
         if (encoded is! String) continue;
         try {
           corridors.add([
-            for (final (lat, lon) in decodePolyline5(encoded))
-              LatLng(lat, lon),
+            for (final (lat, lon) in decodePolyline5(encoded)) LatLng(lat, lon),
           ]);
         } on RoadFormatException {
           // A corrupt corridor is dropped, not fatal.
@@ -161,12 +160,12 @@ class StoredPhoto {
   final DateTime takenAt;
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'file': file,
-        'lat': lat,
-        'lon': lon,
-        'takenAt': takenAt.toIso8601String(),
-      };
+    'id': id,
+    'file': file,
+    'lat': lat,
+    'lon': lon,
+    'takenAt': takenAt.toIso8601String(),
+  };
 
   /// Tolerant read, like [StoredTrack.fromMap]: a malformed or partial
   /// entry returns null so one bad photo never breaks the whole catalog.
@@ -264,6 +263,7 @@ class AppSettings {
     this.themeMode = 'system',
     this.tileLayer = 'standard',
     this.fogStyle = defaultFogStyle,
+    this.buttonStyle = 'standard',
     this.mapRotation = 'north',
     this.keepScreenOn = true,
     this.debugLogging = false,
@@ -296,6 +296,12 @@ class AppSettings {
   /// how the unlocked fog reads over the tiles. Normalized (unknown
   /// values fall back) on read; see fog_of_war.dart.
   final String fogStyle;
+
+  /// Button visual style: 'standard' (the default) or 'cassette' (the
+  /// map's buttons draw as cassette-deck transport keys, latching down
+  /// while their function is engaged — see cassette_key.dart). Stored
+  /// raw; normalized on read in [TrackStore.buttonStyle].
+  final String buttonStyle;
 
   /// The recording follow-camera's rotation mode: 'north' (the default —
   /// the map stays north-up) or 'course' (course-up, where below the
@@ -337,34 +343,35 @@ class AppSettings {
   /// Legacy rotation values ('off'/'on', from before the named modes) map
   /// to 'north'/'course'; anything else falls back to the 'north' default.
   static String _migrateMapRotation(String? v) => switch (v) {
-        'on' => 'course',
-        'off' => 'north',
-        // The removed explicit compass mode: course mode now contains
-        // its low-speed compass takeover.
-        'compass' => 'course',
-        _ => v ?? 'north',
-      };
+    'on' => 'course',
+    'off' => 'north',
+    // The removed explicit compass mode: course mode now contains
+    // its low-speed compass takeover.
+    'compass' => 'course',
+    _ => v ?? 'north',
+  };
 
   /// Tolerant read: a missing or malformed field falls back to the
   /// default, so even a hand-edited index cannot break startup.
   factory AppSettings.fromMap(Map<dynamic, dynamic> m) => AppSettings(
-        tint: (m['tint'] as String?) ?? 'green',
-        recordingTint: (m['recordingTint'] as String?) ?? 'red',
-        zoomSliderSide: (m['zoomSliderSide'] as String?) ?? 'right',
-        language: (m['language'] as String?) ?? 'system',
-        themeMode: (m['themeMode'] as String?) ?? 'system',
-        tileLayer: (m['tileLayer'] as String?) ?? 'standard',
-        fogStyle: (m['fogStyle'] as String?) ?? defaultFogStyle,
-        mapRotation: _migrateMapRotation(m['mapRotation'] as String?),
-        keepScreenOn: (m['keepScreenOn'] as bool?) ?? true,
-        debugLogging: (m['debugLogging'] as bool?) ?? false,
-        showUnvisitedRoads: (m['showUnvisitedRoads'] as bool?) ?? true,
-        photos: (m['photos'] as bool?) ?? true,
-        roadsFile: m['roadsFile'] as String?,
-        aggregateColors:
-            (m['aggregateColors'] as Map<Object?, Object?>? ?? {})
-                .map((k, v) => MapEntry(k as String, v as String)),
-      );
+    tint: (m['tint'] as String?) ?? 'green',
+    recordingTint: (m['recordingTint'] as String?) ?? 'red',
+    zoomSliderSide: (m['zoomSliderSide'] as String?) ?? 'right',
+    language: (m['language'] as String?) ?? 'system',
+    themeMode: (m['themeMode'] as String?) ?? 'system',
+    tileLayer: (m['tileLayer'] as String?) ?? 'standard',
+    fogStyle: (m['fogStyle'] as String?) ?? defaultFogStyle,
+    buttonStyle: (m['buttonStyle'] as String?) ?? 'standard',
+    mapRotation: _migrateMapRotation(m['mapRotation'] as String?),
+    keepScreenOn: (m['keepScreenOn'] as bool?) ?? true,
+    debugLogging: (m['debugLogging'] as bool?) ?? false,
+    showUnvisitedRoads: (m['showUnvisitedRoads'] as bool?) ?? true,
+    photos: (m['photos'] as bool?) ?? true,
+    roadsFile: m['roadsFile'] as String?,
+    aggregateColors: (m['aggregateColors'] as Map<Object?, Object?>? ?? {}).map(
+      (k, v) => MapEntry(k as String, v as String),
+    ),
+  );
 
   AppSettings copyWith({
     String? tint,
@@ -374,6 +381,7 @@ class AppSettings {
     String? themeMode,
     String? tileLayer,
     String? fogStyle,
+    String? buttonStyle,
     String? mapRotation,
     bool? keepScreenOn,
     bool? debugLogging,
@@ -382,55 +390,58 @@ class AppSettings {
     String? roadsFile,
     bool clearRoadsFile = false,
     Map<String, String>? aggregateColors,
-  }) =>
-      AppSettings(
-        tint: tint ?? this.tint,
-        recordingTint: recordingTint ?? this.recordingTint,
-        zoomSliderSide: zoomSliderSide ?? this.zoomSliderSide,
-        language: language ?? this.language,
-        themeMode: themeMode ?? this.themeMode,
-        tileLayer: tileLayer ?? this.tileLayer,
-        fogStyle: fogStyle ?? this.fogStyle,
-        mapRotation: mapRotation ?? this.mapRotation,
-        keepScreenOn: keepScreenOn ?? this.keepScreenOn,
-        debugLogging: debugLogging ?? this.debugLogging,
-        showUnvisitedRoads: showUnvisitedRoads ?? this.showUnvisitedRoads,
-        photos: photos ?? this.photos,
-        roadsFile:
-            clearRoadsFile ? null : roadsFile ?? this.roadsFile,
-        aggregateColors: aggregateColors ?? this.aggregateColors,
-      );
+  }) => AppSettings(
+    tint: tint ?? this.tint,
+    recordingTint: recordingTint ?? this.recordingTint,
+    zoomSliderSide: zoomSliderSide ?? this.zoomSliderSide,
+    language: language ?? this.language,
+    themeMode: themeMode ?? this.themeMode,
+    tileLayer: tileLayer ?? this.tileLayer,
+    fogStyle: fogStyle ?? this.fogStyle,
+    buttonStyle: buttonStyle ?? this.buttonStyle,
+    mapRotation: mapRotation ?? this.mapRotation,
+    keepScreenOn: keepScreenOn ?? this.keepScreenOn,
+    debugLogging: debugLogging ?? this.debugLogging,
+    showUnvisitedRoads: showUnvisitedRoads ?? this.showUnvisitedRoads,
+    photos: photos ?? this.photos,
+    roadsFile: clearRoadsFile ? null : roadsFile ?? this.roadsFile,
+    aggregateColors: aggregateColors ?? this.aggregateColors,
+  );
 
   /// The index's `settings` entry, in the field names `load` reads.
   Map<String, Object?> toMap() => {
-        'tint': tint,
-        'zoomSliderSide': zoomSliderSide,
-        'language': language,
-        'themeMode': themeMode,
-        'tileLayer': tileLayer,
-        'fogStyle': fogStyle,
-        'mapRotation': mapRotation,
-        'keepScreenOn': keepScreenOn,
-        'debugLogging': debugLogging,
-        'showUnvisitedRoads': showUnvisitedRoads,
-        'photos': photos,
-        'recordingTint': recordingTint,
-        if (roadsFile != null) 'roadsFile': roadsFile,
-        if (aggregateColors.isNotEmpty)
-          'aggregateColors': Map<String, String>.of(aggregateColors),
-      };
+    'tint': tint,
+    'zoomSliderSide': zoomSliderSide,
+    'language': language,
+    'themeMode': themeMode,
+    'tileLayer': tileLayer,
+    'fogStyle': fogStyle,
+    'buttonStyle': buttonStyle,
+    'mapRotation': mapRotation,
+    'keepScreenOn': keepScreenOn,
+    'debugLogging': debugLogging,
+    'showUnvisitedRoads': showUnvisitedRoads,
+    'photos': photos,
+    'recordingTint': recordingTint,
+    if (roadsFile != null) 'roadsFile': roadsFile,
+    if (aggregateColors.isNotEmpty)
+      'aggregateColors': Map<String, String>.of(aggregateColors),
+  };
 }
 
 class TrackStore {
   TrackStore(this.root, {TrackImporter? importer})
-      : importer = importer ??
-            TrackImporter(parsers: [
+    : importer =
+          importer ??
+          TrackImporter(
+            parsers: [
               GpxParser(),
               FitParser(),
               KmzParser(),
               TcxParser(),
               KmlParser(KmzParser()),
-            ]);
+            ],
+          );
 
   /// Store root directory (e.g. the app's documents dir).
   final Directory root;
@@ -442,8 +453,7 @@ class TrackStore {
     return d;
   }
 
-  File get indexFile =>
-      File('${root.path}${Platform.pathSeparator}index.json');
+  File get indexFile => File('${root.path}${Platform.pathSeparator}index.json');
 
   Directory get photosDir {
     final d = Directory('${root.path}${Platform.pathSeparator}photos');
@@ -483,6 +493,11 @@ class TrackStore {
 
   /// The normalized fog display style (unknown stored values fall back).
   String get fogStyle => fogStyleOrDefault(_settings.fogStyle);
+
+  /// The normalized button visual style: 'cassette', or 'standard' for
+  /// anything else (a hand-edited index cannot break the chrome).
+  String get buttonStyle =>
+      _settings.buttonStyle == 'cassette' ? 'cassette' : 'standard';
   String get mapRotation => _settings.mapRotation;
   bool get keepScreenOn => _settings.keepScreenOn;
   bool get debugLogging => _settings.debugLogging;
@@ -571,6 +586,10 @@ class TrackStore {
   /// or 'ink').
   Future<void> saveFogStyle(String style) async =>
       _apply(_settings.copyWith(fogStyle: style));
+
+  /// Saves the button visual style ('standard' or 'cassette').
+  Future<void> saveButtonStyle(String style) async =>
+      _apply(_settings.copyWith(buttonStyle: style));
 
   /// Saves whether the recording follow-camera rotates course-up
   /// ('on' or 'off'; 'off' keeps the map north-up).
@@ -706,12 +725,20 @@ class TrackStore {
     final archive = Archive();
     if (indexFile.existsSync()) {
       archive.addFile(
-        ArchiveFile('index.json', indexFile.lengthSync(), indexFile.readAsBytesSync()),
+        ArchiveFile(
+          'index.json',
+          indexFile.lengthSync(),
+          indexFile.readAsBytesSync(),
+        ),
       );
     }
     for (final f in tracksDir.listSync().whereType<File>()) {
       archive.addFile(
-        ArchiveFile('tracks/${f.uri.pathSegments.last}', f.lengthSync(), f.readAsBytesSync()),
+        ArchiveFile(
+          'tracks/${f.uri.pathSegments.last}',
+          f.lengthSync(),
+          f.readAsBytesSync(),
+        ),
       );
     }
     return Uint8List.fromList(ZipEncoder().encode(archive));
@@ -821,10 +848,11 @@ class TrackStore {
   /// preference-adjacent catalog field: it survives like the rest of the
   /// track entry and is deleted with the track.
   void saveUnlockedWays(
-      StoredTrack track, Map<String, List<List<LatLng>>> corridors) {
+    StoredTrack track,
+    Map<String, List<List<LatLng>>> corridors,
+  ) {
     track.unlockedWays = {
-      for (final entry in corridors.entries)
-        entry.key: List.of(entry.value),
+      for (final entry in corridors.entries) entry.key: List.of(entry.value),
     };
     _saveIndex();
   }
@@ -873,15 +901,16 @@ class TrackStore {
       'tracks': _tracks.map((t) => t.toMap()).toList(),
       // Written only when non-empty: indexes from before photos stay
       // unchanged (the same rule as unlockedWays).
-      if (_photos.isNotEmpty)
-        'photos': _photos.map((p) => p.toMap()).toList(),
+      if (_photos.isNotEmpty) 'photos': _photos.map((p) => p.toMap()).toList(),
       if (_lastPositionLat != null && _lastPositionLon != null)
         'lastPosition': {'lat': _lastPositionLat, 'lon': _lastPositionLon},
       'settings': _settings.toMap(),
     };
     root.createSync(recursive: true);
-    indexFile.writeAsStringSync(const JsonEncoder.withIndent('  ').convert(map),
-        flush: true);
+    indexFile.writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert(map),
+      flush: true,
+    );
   }
 
   String _pathFor(StoredTrack t) =>
@@ -889,8 +918,6 @@ class TrackStore {
 
   String _photoPathFor(StoredPhoto p) =>
       '${photosDir.path}${Platform.pathSeparator}${p.file}';
-
-
 
   /// The stored file of a track, as imported (never rewritten on the way
   /// out — export ships the very bytes the catalog keeps).
@@ -958,8 +985,14 @@ class TrackStore {
     if (at(0, 0x89) && at(1, 0x50) && at(2, 0x4E) && at(3, 0x47)) {
       return 'png';
     }
-    if (at(0, 0x52) && at(1, 0x49) && at(2, 0x46) && at(3, 0x46) &&
-        at(8, 0x57) && at(9, 0x45) && at(10, 0x42) && at(11, 0x50)) {
+    if (at(0, 0x52) &&
+        at(1, 0x49) &&
+        at(2, 0x46) &&
+        at(3, 0x46) &&
+        at(8, 0x57) &&
+        at(9, 0x45) &&
+        at(10, 0x42) &&
+        at(11, 0x50)) {
       return 'webp';
     }
     // JPEG's SOI marker covers the by-far common case; anything unknown

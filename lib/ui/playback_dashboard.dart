@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart';
 import 'app_model.dart';
+import 'cassette_key.dart';
 import 'follow_camera.dart';
 import 'format.dart';
 import 'map_actions.dart' show showMapToast;
@@ -134,7 +135,9 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
     // North mode feeds 0.0, not null: null means "hold the current
     // rotation" (stale course), while north-up must actively glide the
     // rotation back to 0.
-    final heading = widget.model.mapRotation == 'course' ? playback.course : 0.0;
+    final heading = widget.model.mapRotation == 'course'
+        ? playback.course
+        : 0.0;
     _follow.update(playback.position, heading);
   }
 
@@ -198,22 +201,54 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
             children: [
               Row(
                 children: [
-                  IconButton(
-                    key: const ValueKey('playback-play'),
-                    tooltip: tooltip,
-                    icon: Icon(icon),
-                    iconSize: 24,
-                    onPressed: () {
-                      if (playing) {
-                        widget.model.player.pause();
-                      } else {
+                  // The transport keys: deck keys while the cassette style
+                  // is on — PLAY latched while the replay runs, PAUSE
+                  // latched while it stands, EJECT closing the bar — or
+                  // the flat play/pause toggle the rest of the time.
+                  if (widget.model.buttonStyle == 'cassette') ...[
+                    CassetteKey(
+                      key: const ValueKey('playback-play'),
+                      icon: Icon(
+                        playback.finished ? Icons.replay : Icons.play_arrow,
+                      ),
+                      label: playback.finished
+                          ? strings.playbackReplay
+                          : strings.playbackPlay,
+                      tooltip: tooltip,
+                      width: 56,
+                      latched: playing,
+                      onTap: () {
                         widget.model.player.play();
                         // The play (re)arms the follow-camera — the
                         // replay button's behavior after the finish.
                         _armAndFeed();
-                      }
-                    },
-                  ),
+                      },
+                    ),
+                    CassetteKey(
+                      icon: const Icon(Icons.pause),
+                      label: strings.pauseLabel,
+                      tooltip: strings.pauseLabel,
+                      width: 56,
+                      latched: playback.status == PlaybackStatus.paused,
+                      onTap: () => widget.model.player.pause(),
+                    ),
+                  ] else
+                    IconButton(
+                      key: const ValueKey('playback-play'),
+                      tooltip: tooltip,
+                      icon: Icon(icon),
+                      iconSize: 24,
+                      onPressed: () {
+                        if (playing) {
+                          widget.model.player.pause();
+                        } else {
+                          widget.model.player.play();
+                          // The play (re)arms the follow-camera — the
+                          // replay button's behavior after the finish.
+                          _armAndFeed();
+                        }
+                      },
+                    ),
                   const SizedBox(width: 8),
                   // The position scrubber with the timer centered under
                   // it: a drag jumps the cursor to any point of the
@@ -245,24 +280,37 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                           '${formatDuration(playback.elapsed)} / '
                           '${formatDuration(playback.total)}',
                           key: const ValueKey('playback-timer'),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
                                 color: Theme.of(context)
                                     .colorScheme
                                     .onSurfaceVariant,
-                                fontFeatures: const [FontFeature.tabularFigures()],
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
                               ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    key: const ValueKey('playback-close'),
-                    tooltip: strings.playbackClose,
-                    icon: const Icon(Icons.close),
-                    iconSize: 24,
-                    onPressed: () => widget.model.stopPlayback(),
-                  ),
+                  if (widget.model.buttonStyle == 'cassette')
+                    CassetteKey(
+                      key: const ValueKey('playback-close'),
+                      icon: const Icon(Icons.eject),
+                      label: strings.playbackEject,
+                      tooltip: strings.playbackClose,
+                      width: 56,
+                      onTap: () => widget.model.stopPlayback(),
+                    )
+                  else
+                    IconButton(
+                      key: const ValueKey('playback-close'),
+                      tooltip: strings.playbackClose,
+                      icon: const Icon(Icons.close),
+                      iconSize: 24,
+                      onPressed: () => widget.model.stopPlayback(),
+                    ),
                 ],
               ),
               Row(
@@ -273,9 +321,8 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                       playback.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                      style: Theme.of(context).textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                   const Spacer(),
@@ -294,11 +341,9 @@ class PlaybackDashboardState extends State<PlaybackDashboard>
                         : '—',
                     key: const ValueKey('playback-instant-speed'),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurfaceVariant,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                   const SizedBox(width: 4),
                   TextButton(
