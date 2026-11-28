@@ -1829,22 +1829,35 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   /// flutter_map culls off-screen polylines and simplifies them per zoom;
   /// LOD variants are deferred until catalog scale demands them.
   /// The unvisited roads of the settled viewport: every way's
-  /// unmatched stretches as dashed polylines in a neutral ink that
-  /// reads as "background target" - deliberately outside the
-  /// exploration tint family, since these are the roads nothing has
-  /// discovered yet. Dashes keep them distinct from the solid dark
-  /// corridors drawn over them.
+  /// unmatched stretches as a soft glow in a neutral ink that reads
+  /// as "background target" - deliberately outside the exploration
+  /// tint family, since these are the roads nothing has discovered
+  /// yet. The glow is two stacked strokes: a faint wide wash under a
+  /// crisper core (mockup-approved values), which keeps them distinct
+  /// from the solid dark corridors drawn over them where the old dash
+  /// pattern used to.
   List<Polyline> _buildUnvisitedPolylines() {
-    return [
+    final stretches = [
       for (final way in widget.model.viewportOverlay)
         for (final stretch in way.$2)
-          if (stretch.length > 1)
-            Polyline(
-              points: stretch,
-              strokeWidth: 3,
-              color: Colors.blueGrey.withValues(alpha: 0.55),
-              pattern: StrokePattern.dashed(segments: [8, 6]),
-            ),
+          if (stretch.length > 1) stretch,
+    ];
+    // Two passes, not wash+core per stretch, so a crossing road's wash
+    // never covers another road's core: every core sits above every
+    // wash, uniform at junctions.
+    return [
+      for (final stretch in stretches)
+        Polyline(
+          points: stretch,
+          strokeWidth: 11,
+          color: Colors.blueGrey.withValues(alpha: 0.09),
+        ),
+      for (final stretch in stretches)
+        Polyline(
+          points: stretch,
+          strokeWidth: 6.5,
+          color: Colors.blueGrey.withValues(alpha: 0.18),
+        ),
     ];
   }
 

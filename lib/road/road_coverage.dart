@@ -90,7 +90,7 @@ class ViewportCoverage {
 
   /// The overlay's floor, tighter than the chip's: drawing every
   /// unmatched way across a 6x6-tile city view is dense noise, so the
-  /// dashed layer only renders when the viewport spans at most this
+  /// glow layer only renders when the viewport spans at most this
   /// many z12 tiles per axis. The chip keeps its wider floor.
   final int overlayMaxTiles;
 
@@ -125,7 +125,7 @@ class ViewportCoverage {
   List<OverlayWay> _lastOverlay = const [];
 
   /// The still-unvisited stretches of every way in the viewport, for
-  /// the dashed overlay layer (see [coverage] for the corner semantics
+  /// the glow overlay layer (see [coverage] for the corner semantics
   /// and the corridor merge). Geometry reads go through the store's own
   /// bucket LRU: one transient decode per settle, no second geometry
   /// cache here. Ways fully covered by some corridor draw nothing, so

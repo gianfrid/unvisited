@@ -320,7 +320,7 @@ class AppSettings {
   final bool debugLogging;
 
   /// Whether the unvisited-roads presentation draws (Settings ->
-  /// "Show unvisited roads", default on): the dashed overlay and the
+  /// "Show unvisited roads", default on): the glow overlay and the
   /// coverage chip. While off the whole coverage pass is skipped — no
   /// geometry decode per settle — and both disappear from the map.
   final bool showUnvisitedRoads;
@@ -502,7 +502,7 @@ class TrackStore {
   bool get keepScreenOn => _settings.keepScreenOn;
   bool get debugLogging => _settings.debugLogging;
 
-  /// Whether the dashed unvisited-roads overlay draws (default on).
+  /// Whether the glowing unvisited-roads overlay draws (default on).
   bool get showUnvisitedRoads => _settings.showUnvisitedRoads;
 
   /// Whether the geotagged-photos feature is on (default on).
@@ -604,7 +604,7 @@ class TrackStore {
   Future<void> saveDebugLogging(bool on) async =>
       _apply(_settings.copyWith(debugLogging: on));
 
-  /// Saves whether the dashed unvisited-roads overlay draws (default
+  /// Saves whether the glowing unvisited-roads overlay draws (default
   /// on); the coverage chip is not affected.
   Future<void> saveShowUnvisitedRoads(bool on) async =>
       _apply(_settings.copyWith(showUnvisitedRoads: on));

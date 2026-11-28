@@ -635,7 +635,7 @@ class EnglishStrings extends AppStrings {
   String get showUnvisitedRoads => 'Show unvisited roads';
   @override
   String get showUnvisitedRoadsSubtitle =>
-      'Dashed: the roads this view still has left';
+      'The roads this view still has left';
   @override
   String roadsUnvisitedInView(int percent) => 'Unvisited roads here: $percent%';
   @override
@@ -1040,7 +1040,7 @@ class ItalianStrings extends AppStrings {
   String get showUnvisitedRoads => 'Mostra le strade non visitate';
   @override
   String get showUnvisitedRoadsSubtitle =>
-      'Tratteggiate: le strade che restano da esplorare qui';
+      'Le strade che restano da esplorare qui';
   @override
   String roadsUnvisitedInView(int percent) =>
       'Strade non visitate qui: $percent%';

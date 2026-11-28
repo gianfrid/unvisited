@@ -5175,7 +5175,7 @@ void main() {
     expect(find.text('Show unvisited roads'), findsNothing);
   });
 
-  testWidgets('the overlay toggle switches the dashed layer off', (
+  testWidgets('the overlay toggle switches the glow layer off', (
     tester,
   ) async {
     final root = createRoot();
@@ -5194,7 +5194,7 @@ void main() {
     expect(await model.activateRoadFile(roadFile.path), isNull);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
-    expect(_dashedPolylines(tester), isNotEmpty, reason: 'on by default');
+    expect(_unvisitedPolylines(tester), isNotEmpty, reason: 'on by default');
 
     await tester.tap(find.byTooltip('Settings'));
     await tester.pump(const Duration(milliseconds: 300));
@@ -5210,20 +5210,20 @@ void main() {
     await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
     await tester.pump(const Duration(milliseconds: 400));
     expect(model.showUnvisitedRoads, isFalse);
-    // The map below the sheet rebuilds: dashed roads and the chip both
+    // The map below the sheet rebuilds: glow roads and the chip both
     // go with the setting.
-    expect(_dashedPolylines(tester), isEmpty);
+    expect(_unvisitedPolylines(tester), isEmpty);
     expect(find.textContaining('Unvisited roads here'), findsNothing);
 
     // Back on: the still-settled viewport restores both without a pan.
     await tester.tap(find.descendant(of: row, matching: find.byType(Switch)));
     await tester.pump(const Duration(milliseconds: 400));
     expect(model.showUnvisitedRoads, isTrue);
-    expect(_dashedPolylines(tester), isNotEmpty);
+    expect(_unvisitedPolylines(tester), isNotEmpty);
     expect(find.textContaining('Unvisited roads here'), findsOneWidget);
   });
 
-  testWidgets('the unvisited-roads overlay dashes only with a region',
+  testWidgets('the unvisited-roads overlay glows only with a region',
       (tester) async {
     final root = createRoot();
     final cache = createCache();
@@ -5236,10 +5236,10 @@ void main() {
       locationSupported: false,
     );
 
-    // No region: the settled Berlin start camera shows no dashed
+    // No region: the settled Berlin start camera shows no glow
     // roads at all.
     await tester.pump(const Duration(milliseconds: 400));
-    expect(_dashedPolylines(tester), isEmpty);
+    expect(_unvisitedPolylines(tester), isEmpty);
 
     final roadFile = File(
       '${root.path}${Platform.pathSeparator}test_roads.unvisited-roads',
@@ -5251,12 +5251,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
 
-    final dashed = _dashedPolylines(tester);
-    expect(dashed, isNotEmpty,
+    final glow = _unvisitedPolylines(tester);
+    expect(glow, isNotEmpty,
         reason: 'the start camera covers the fixture streets');
-    expect(dashed.first.pattern, isA<StrokePattern>());
-    // All four fixture ways are dark with no walked tracks yet.
-    expect(dashed.length, greaterThanOrEqualTo(4));
+    // The glow is the two-pass blue-grey pair: every road draws both
+    // a faint wide wash and a crisper core.
+    expect(
+      glow.map((p) => p.strokeWidth).toSet(),
+      allOf(contains(11.0), contains(6.5)),
+    );
+    // All four fixture ways glow with no walked tracks yet.
+    expect(glow.length, greaterThanOrEqualTo(8));
   });
 
   testWidgets('the camera action needs a location platform and a fix', (
@@ -5644,13 +5649,15 @@ Future<void> _tapMapAt(WidgetTester tester, LatLng latLng) async {
   await tester.pump();
 }
 
-/// The map's dashed (unvisited-roads) polylines - every other polyline
-/// in the layers is a solid corridor or live trace.
-List<Polyline> _dashedPolylines(WidgetTester tester) => [
+/// The map's unvisited-roads glow polylines - every other polyline in
+/// the layers is a colored corridor or a live trace, so the blue-grey
+/// ink pair (faint wide wash + crisper core) identifies them.
+List<Polyline> _unvisitedPolylines(WidgetTester tester) => [
       for (final layer
           in tester.widgetList<PolylineLayer>(find.byType(PolylineLayer)))
         for (final p in layer.polylines)
-          if (p.pattern.segments != null) p,
+          if (p.color == Colors.blueGrey.withValues(alpha: 0.09) ||
+              p.color == Colors.blueGrey.withValues(alpha: 0.18)) p,
     ];
 
 /// Mirrors the app's private `_AppLocaleDelegate` (main.dart): MaterialApp

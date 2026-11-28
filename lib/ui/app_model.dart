@@ -723,7 +723,7 @@ class AppModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Whether the unvisited-roads presentation draws: the dashed
+  /// Whether the unvisited-roads presentation draws: the glow
   /// overlay and the coverage chip together. Turning it back on
   /// recomputes the still-settled viewport — a static camera never
   /// settles again on its own, and neither the layer nor the chip must
@@ -745,7 +745,7 @@ class AppModel extends ChangeNotifier {
     if (value == showUnvisitedRoads) return;
     await store.saveShowUnvisitedRoads(value);
     // Either way the visible answer changes: off clears the report and
-    // the dashed layer immediately, on restores both — a static camera
+    // the glow layer immediately, on restores both — a static camera
     // never settles again on its own.
     if (_viewportCorners != null) _recomputeViewportCoverage();
     notifyListeners();

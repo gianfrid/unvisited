@@ -289,7 +289,7 @@ class SettingsSheet extends StatelessWidget {
                   // Show the unvisited-roads presentation: a persistent
                   // setting (default on) shown only with an active region -
                   // without one there is nothing to toggle and an inert
-                  // switch would read as a bug. It gates the dashed overlay
+                  // switch would read as a bug. It gates the glow overlay
                   // and the coverage chip together.
                   if (model.roadsName != null)
                     ListTile(
