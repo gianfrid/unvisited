@@ -163,6 +163,49 @@ List<double> laneOffsetsPerVertex(
   return out;
 }
 
+/// The contiguous run of [points] around the point nearest [near]:
+/// extends in both directions while the accumulated ground distance
+/// from that nearest point stays within [windowMeters]. Pure math for
+/// the member-picking reveal — the spread lanes draw only this local
+/// stretch of the tracks passing a tap, never their full geometry, so
+/// the reveal's cost is O(window), not O(track).
+List<LatLng> laneWindow(
+  List<LatLng> points,
+  LatLng near, {
+  required double windowMeters,
+}) {
+  if (points.isEmpty) return const [];
+  var bestI = 0;
+  var bestD = double.infinity;
+  for (var i = 0; i < points.length; i++) {
+    final d = haversineMeters(points[i].latitude, points[i].longitude,
+        near.latitude, near.longitude);
+    if (d < bestD) {
+      bestD = d;
+      bestI = i;
+    }
+  }
+  var lo = bestI;
+  var acc = 0.0;
+  while (lo > 0) {
+    final a = points[lo - 1], b = points[lo];
+    final d = haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude);
+    if (acc + d > windowMeters) break;
+    acc += d;
+    lo--;
+  }
+  var hi = bestI;
+  acc = 0.0;
+  while (hi < points.length - 1) {
+    final a = points[hi], b = points[hi + 1];
+    final d = haversineMeters(a.latitude, a.longitude, b.latitude, b.longitude);
+    if (acc + d > windowMeters) break;
+    acc += d;
+    hi++;
+  }
+  return points.sublist(lo, hi + 1);
+}
+
 double _cosLat(double lat) {
   // Longitude cells shrink with the cosine of the latitude; floor near
   // the poles so the grid stays finite.

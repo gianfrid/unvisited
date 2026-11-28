@@ -9,6 +9,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../aggregate/member_colors.dart' show MemberColorAssignment;
+import '../geo.dart' show haversineMeters;
 import '../l10n/app_strings.dart';
 import '../playback/track_playback.dart';
 import '../storage/track_store.dart' show StoredPhoto;
@@ -57,8 +58,10 @@ class _LeaderTipPainter extends CustomPainter {
       oldDelegate.color != color || oldDelegate.down != down;
 }
 
-/// One member lane in member-picking mode: as drawn and hit-tested —
-/// decimated, segment-split, and offset sideways by its lane index.
+/// One member's geometry in member-picking mode: as drawn and
+/// hit-tested — decimated, segment-split, on its true geometry. The
+/// sideways lane offset exists only in a tap's reveal window (see
+/// MapPage._revealLanes); plain lines never spread.
 class _MemberLane {
   _MemberLane(this.id, this.assignment, this.visible, this.segments);
 
@@ -199,8 +202,8 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   double _fogCellSize = baseCellSizeMeters;
 
   /// The camera zoom quantized to half-steps, for the member-picking
-  /// lanes: their lane spacing converts from ground meters to pixels with
-  /// the current zoom, so it refreshes twice per zoom level.
+  /// reveal lanes: their lane spacing converts from ground meters to
+  /// pixels with the current zoom, so it refreshes twice per zoom level.
   double _fogZoomStep = 0.0;
 
   /// True while a locate attempt is in flight. Acquiring a fix takes
@@ -484,6 +487,13 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
       }
     }
     if (model.pickedMemberId == null) _bubbleAt = null;
+    if (!model.memberPicking) {
+      // Leaving picking mode drops the reveal with it: the spread
+      // window belongs to the mode's tap, not to the selection.
+      _revealTap = null;
+      _revealIds = const [];
+      _revealLanesKey = null;
+    }
     _wasMemberPicking = model.memberPicking;
     // The selection bar's hide button fired: offer the undo toast.
     final hideEpoch = model.aggregateHideEpoch;
@@ -625,50 +635,113 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
 
   // --- Member-picking mode -------------------------------------------------
 
-  /// All member lanes of the current selection at the current zoom
-  /// half-step, memoized: lane offsets are in ground meters and change
-  /// with the zoom band, like the fog coarsening.
-  List<_MemberLane>? _memberLanesCache;
-  String? _memberLanesKey;
+  /// Every member of the current selection as plain lines on their true
+  /// geometry, memoized on the fog band and membership: no lane
+  /// spreading, no overlap grid. Spreading every member's full geometry
+  /// through per-vertex offsets was the mode's cost with many members —
+  /// and overlapping members are indistinguishable on their shared
+  /// ground anyway. The spread appears only through a tap's reveal
+  /// (see [_revealLanes]).
+  List<_MemberLane>? _plainLanesCache;
+  String? _plainLanesKey;
 
-  List<_MemberLane> _memberLanes() {
+  List<_MemberLane> _plainMemberLanes() {
     final model = widget.model;
     final ids = model.selectedMemberIds ?? const <String>[];
     if (model.selectedAggregate == null || ids.isEmpty) return const [];
-    final zoom = _cameraZoom ?? _mapController.camera.zoom;
     final byId = {for (final t in model.store.tracks) t.id: t};
     final visKey = [
       for (final id in ids) '${id[0]}${byId[id]?.visible == true ? 1 : 0}',
     ].join(',');
-    final key = '$_fogZoomStep|${ids.join(',')}|$visKey';
-    if (key == _memberLanesKey && _memberLanesCache != null) {
-      return _memberLanesCache!;
-    }
-    _memberLanesKey = key;
+    final key = '$_fogCellSize|${ids.join(',')}|$visKey';
+    final cached = _plainLanesCache;
+    if (key == _plainLanesKey && cached != null) return cached;
+    _plainLanesKey = key;
     final assignments = model.memberAssignments;
-    // Decimate every member first, in lane order: one point list per
-    // member drives both the overlap grid and the drawn segments.
+    final lanes = <_MemberLane>[];
+    for (final id in ids) {
+      final t = byId[id];
+      final assignment = assignments[id];
+      if (t == null || assignment == null) continue;
+      final segments = <List<LatLng>>[];
+      for (final seg in splitTrackSegments(model.pointsOf(t))) {
+        final dec = decimate(seg, _fogLineDecimation());
+        if (dec.length >= 2) segments.add(dec);
+      }
+      lanes.add(_MemberLane(id, assignment, t.visible, segments));
+    }
+    _plainLanesCache = lanes;
+    return lanes;
+  }
+
+  /// The reveal: the members a picking tap found passing one spot, and
+  /// the tap itself. Set when a tap meets more than one member within
+  /// its tolerance — exactly those members, and only they, draw as
+  /// spread lanes in a ±500 m window around the tap; everything else
+  /// stays plain. A single-member tap picks directly and clears it.
+  /// Cleared when picking mode ends (see [_onModelChanged]).
+  LatLng? _revealTap;
+  List<String> _revealIds = const [];
+
+  /// The revealed spread lanes for [_revealTap] / [_revealIds], memoized:
+  /// lane spacing is in ground meters and changes with the zoom band,
+  /// like the fog coarsening. The window keeps the cost O(window), not
+  /// O(member).
+  List<_MemberLane>? _revealLanesCache;
+  String? _revealLanesKey;
+
+  static const _revealWindowMeters = 500.0;
+
+  List<_MemberLane> _revealLanes() {
+    final tap = _revealTap;
+    if (tap == null || _revealIds.isEmpty) return const [];
+    final model = widget.model;
+    final byId = {for (final t in model.store.tracks) t.id: t};
+    final zoom = _cameraZoom ?? _mapController.camera.zoom;
+    final key = [
+      '$_fogZoomStep',
+      tap.latitude,
+      tap.longitude,
+      _revealIds.join(','),
+      for (final id in _revealIds)
+        '${id[0]}${byId[id]?.visible == true ? 1 : 0}',
+    ].join('|');
+    final cached = _revealLanesCache;
+    if (key == _revealLanesKey && cached != null) return cached;
+    _revealLanesKey = key;
+    final assignments = model.memberAssignments;
     final orderedIds = [
-      for (final id in ids)
+      for (final id in _revealIds)
         if (byId[id] != null && assignments[id] != null) id,
     ]..sort((x, y) => assignments[x]!.lane.compareTo(assignments[y]!.lane));
-    final decSegments = <String, List<List<LatLng>>>{};
-    final membersPoints = <List<LatLng>>[];
+    // Each involved member's local stretch: the segment whose nearest
+    // point is closest to the tap, windowed ±500 m along it.
+    final plainById = {for (final l in _plainMemberLanes()) l.id: l};
+    final windows = <List<LatLng>>[];
     for (final id in orderedIds) {
-      final segs = <List<LatLng>>[];
-      for (final seg in splitTrackSegments(model.pointsOf(byId[id]!))) {
-        final dec = decimate(seg, _fogLineDecimation());
-        if (dec.length >= 2) segs.add(dec);
+      final lane = plainById[id];
+      if (lane == null) continue;
+      List<LatLng>? bestSeg;
+      var bestD = double.infinity;
+      for (final seg in lane.segments) {
+        for (final p in seg) {
+          final d = haversineMeters(
+              p.latitude, p.longitude, tap.latitude, tap.longitude);
+          if (d < bestD) {
+            bestD = d;
+            bestSeg = seg;
+          }
+        }
       }
-      decSegments[id] = segs;
-      membersPoints.add([for (final s in segs) ...s]);
+      windows.add(bestSeg == null
+          ? const <LatLng>[]
+          : laneWindow(bestSeg, tap, windowMeters: _revealWindowMeters));
     }
     // Lane spacing: 3 screen px at the current zoom. Offsets are adaptive
     // per vertex (laneOffsetsPerVertex): a track alone at a vertex stays
     // on its true geometry; overlapping members spread ±0.5, ±1.5, …
     // lanes around it. Two members count as overlapping within ~7.5 px.
-    final laneMeters =
-        3.0 *
+    final laneMeters = 3.0 *
         groundResolution(
           zoom: zoom,
           latitude: _mapController.camera.center.latitude,
@@ -677,20 +750,26 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final lanes = <_MemberLane>[];
     for (var i = 0; i < orderedIds.length; i++) {
       final id = orderedIds[i];
-      final segments = <List<LatLng>>[];
-      for (final seg in decSegments[id]!) {
-        final offsets = laneOffsetsPerVertex(
-          seg,
-          selfIndex: i,
-          membersPoints: membersPoints,
-          laneMeters: laneMeters,
-          overlapMeters: overlapMeters,
-        );
-        segments.add(offsetLanePointsPerVertex(seg, offsets));
+      final win = windows[i];
+      final plain = plainById[id]!;
+      if (win.length < 2) {
+        // A stub window has nothing to spread; the member stays as its
+        // plain line (drawn separately).
+        lanes.add(_MemberLane(
+            id, assignments[id]!, plain.visible, const []));
+        continue;
       }
-      lanes.add(_MemberLane(id, assignments[id]!, byId[id]!.visible, segments));
+      final offsets = laneOffsetsPerVertex(
+        win,
+        selfIndex: i,
+        membersPoints: windows,
+        laneMeters: laneMeters,
+        overlapMeters: overlapMeters,
+      );
+      lanes.add(_MemberLane(id, assignments[id]!, plain.visible,
+          [offsetLanePointsPerVertex(win, offsets)]));
     }
-    _memberLanesCache = lanes;
+    _revealLanesCache = lanes;
     return lanes;
   }
 
@@ -707,7 +786,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
 
   /// Lane candidates for a picking-mode tap at map-local [offset], nearest
   /// first, within [tolerancePx]: (member id, px distance). Hit-tested
-  /// against the same offset lane geometry the layer draws, so what the
+  /// against the same plain geometry the layer draws, so what the
   /// user aims at is what hits.
   List<(String, double)> _laneCandidatesAt(
     Offset offset, {
@@ -715,7 +794,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
   }) {
     final camera = _mapController.camera;
     final out = <(String, double)>[];
-    for (final lane in _memberLanes()) {
+    for (final lane in _plainMemberLanes()) {
       var best = tolerancePx;
       for (final seg in lane.segments) {
         for (var i = 0; i < seg.length - 1; i++) {
@@ -778,6 +857,15 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     _lastPickTapTime = now;
     _lastPickCandidateIds = ids;
     _cycleIndex = index;
+    // The reveal: only a spot several members pass shows them spread —
+    // a single-member point needs nothing beyond its plain line.
+    if (ids.length > 1) {
+      _revealTap = tap;
+      _revealIds = ids;
+    } else {
+      _revealTap = null;
+      _revealIds = const [];
+    }
     model.pickMember(candidates[index].$1);
     // The bubble anchors itself above the tap point (see _memberBubble),
     // so the spot stays tappable — a repeated tap there cycles coincident
@@ -786,14 +874,17 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     setState(() {});
   }
 
-  /// Member-picking mode: one parallel lane per member of the selected
-  /// aggregate, each in its own assigned tint (see
-  /// [AppModel.memberAssignments]) so overlapping tracks read side by side
-  /// in different colors. Hidden members stay as dashed grey ghost lanes.
-  /// The picked (or, on desktop, hovered) lane glows — a wide translucent
-  /// halo under a solid line with a light border. Plain colored lines in
-  /// every fog style: the mode is temporary and must read as "the tracks
-  /// themselves".
+  /// Member-picking mode: every member of the selected aggregate as a
+  /// plain line on its true geometry, each in its own assigned tint
+  /// (see [AppModel.memberAssignments]) — overlapping members read as
+  /// one line, their shared ground being indistinguishable anyway.
+  /// Where a tap finds several members passing one spot, exactly those
+  /// reveal as parallel spread lanes in a ±500 m window around the tap
+  /// (see [_revealLanes]). Hidden members stay as dashed grey ghost
+  /// lines. The picked (or, on desktop, hovered) revealed lane glows —
+  /// a wide translucent halo under a solid line with a light border.
+  /// Plain colored lines in every fog style: the mode is temporary and
+  /// must read as "the tracks themselves".
   List<Widget> _memberPickLayers() {
     final model = widget.model;
     if (model.selectedAggregate == null) return const [];
@@ -802,7 +893,7 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     final ghosts = <Polyline>[];
     final lanes = <Polyline>[];
     final glow = <Polyline>[];
-    for (final lane in _memberLanes()) {
+    void drawPlain(_MemberLane lane, {required bool revealedWindow}) {
       final color =
           exploredAreaColor(lane.assignment.tintKey).withValues(alpha: 1);
       if (!lane.visible) {
@@ -814,9 +905,9 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
             pattern: StrokePattern.dashed(segments: [6.0, 6.0]),
           ));
         }
-        continue;
+        return;
       }
-      final hot = lane.id == picked || lane.id == hovered;
+      final hot = revealedWindow && (lane.id == picked || lane.id == hovered);
       for (final seg in lane.segments) {
         if (hot) {
           glow.add(Polyline(
@@ -839,6 +930,13 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
           ));
         }
       }
+    }
+
+    for (final lane in _plainMemberLanes()) {
+      drawPlain(lane, revealedWindow: false);
+    }
+    for (final lane in _revealLanes()) {
+      drawPlain(lane, revealedWindow: true);
     }
     final all = [...ghosts, ...lanes, ...glow];
     if (all.isEmpty) return const [];
@@ -2177,11 +2275,14 @@ class _MapPageState extends State<MapPage> with SingleTickerProviderStateMixin {
     );
   }
 
-  /// Desktop hover in picking mode: glow the lane under the cursor.
+  /// Desktop hover in picking mode: glow a *revealed* lane under the
+  /// cursor — plain lines do not glow (their overlaps are not spread,
+  /// so a hover there would glow an ambiguous spot).
   void _onPickingHover(PointerHoverEvent event) {
     if (!widget.model.memberPicking) return;
     final candidates = _laneCandidatesAt(event.localPosition, tolerancePx: 12);
-    final id = candidates.isEmpty ? null : candidates.first.$1;
+    final hit = candidates.isEmpty ? null : candidates.first.$1;
+    final id = hit != null && _revealIds.contains(hit) ? hit : null;
     if (id != _hoveredMemberId) setState(() => _hoveredMemberId = id);
   }
 }

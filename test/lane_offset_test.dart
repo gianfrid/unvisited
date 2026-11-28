@@ -155,4 +155,50 @@ void main() {
       expect(offsetLanePointsPerVertex(pts, [1.0]), pts);
     });
   });
+
+  group('laneWindow', () {
+    // At lat 45: 0.001 deg lon ≈ 78.7 m between consecutive points.
+    final corridor = [
+      for (var i = 0; i < 21; i++) LatLng(45.0, 9.0 + i * 0.001),
+    ];
+
+    test('spans the window around the nearest point', () {
+      // The tap lands exactly on index 11; six ~78.7 m steps fit in
+      // 500 m each way (472 m < 500 < 551 m), so the run is 13 points.
+      final win = laneWindow(
+          corridor, const LatLng(45.0, 9.011), windowMeters: 500);
+      expect(win.first, corridor[5]);
+      expect(win.last, corridor[17]);
+      expect(win, hasLength(13));
+    });
+
+    test('picks the point nearest the tap, not the track start', () {
+      // Nearest is index 15 (the tap sits 0.0004 deg west of it); with
+      // a 160 m window two steps fit each way (157 m < 160 < 236 m).
+      final win = laneWindow(
+          corridor, const LatLng(45.0, 9.0154), windowMeters: 160);
+      expect(win.first, corridor[13]);
+      expect(win.last, corridor[17]);
+      expect(win, hasLength(5));
+    });
+
+    test('a track shorter than the window stays whole', () {
+      final short = [corridor[0], corridor[1], corridor[2]];
+      expect(
+        laneWindow(short, const LatLng(45.0, 9.001), windowMeters: 500),
+        short,
+      );
+    });
+
+    test('an empty or single-point track deggrades safely', () {
+      expect(laneWindow(const [], const LatLng(45.0, 9.0),
+          windowMeters: 500), isEmpty);
+      expect(
+        laneWindow(
+            [const LatLng(45.0, 9.0)], const LatLng(45.0, 9.0),
+            windowMeters: 500),
+        [const LatLng(45.0, 9.0)],
+      );
+    });
+  });
 }

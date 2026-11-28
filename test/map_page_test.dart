@@ -2764,6 +2764,134 @@ void main() {
     },
   );
 
+  List<Polyline> memberPolylines(WidgetTester tester) => tester
+      .widgetList<PolylineLayer>(find.byType(PolylineLayer))
+      .expand((l) => l.polylines)
+      .toList();
+
+  testWidgets(
+    'member-picking: plain coincident lines; a multi-track tap reveals '
+    'only the passing members, spread',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      // Alpha and Gamma share the exact geometry: plain lines sit exactly
+      // on top of each other (no spread), and a tap on the shared spot
+      // reveals both as offset lanes.
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0, '2026-06-01T08:00:00Z')));
+      model.store.importBytes(
+          utf8.encode(twoPointGpx(9.0, '2026-06-03T08:00:00Z')));
+      final ids = model.store.tracks.map((t) => t.id).toList();
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+      await tapAtMapPoint(tester, model, firstPointOf(model, ids.first));
+      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.memberPicking, isTrue);
+
+      // Before any pick: exactly one plain polyline per member, both on
+      // the true geometry — no lane spreading anywhere.
+      final plain = memberPolylines(tester);
+      expect(plain, hasLength(2));
+      expect(plain[0].points, plain[1].points,
+          reason: 'coincident members draw coincident plain lines');
+
+      // A tap on the shared spot picks one member AND reveals the
+      // passers as spread lanes: the plain pair stays, plus the picked
+      // lane under its glow, plus the other member's offset window lane.
+      await tapAtMapPoint(tester, model, firstPointOf(model, ids.first));
+      expect(model.pickedMemberId, isNotNull);
+      final revealed = memberPolylines(tester);
+      expect(revealed, hasLength(5));
+      final widths = revealed.map((p) => p.strokeWidth).toList();
+      expect(widths.where((w) => w == 11), hasLength(1),
+          reason: 'the picked lane glows');
+      expect(widths.where((w) => w == 4.5), hasLength(1),
+          reason: 'the picked lane draws as a hot spread lane');
+      final spread = revealed
+          .where((p) => p.strokeWidth == 4)
+          .map((p) => p.points.first)
+          .toSet();
+      expect(spread, hasLength(2),
+          reason:
+              'the plain pair stays coincident; the revealed other member '
+              'is offset from the true geometry');
+
+      // A tap away from every member exits picking: the reveal goes with
+      // the mode, leaving no member layer at all (circles fog style).
+      final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+      await tester.tapAt(mapOrigin + const Offset(5, 5));
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(model.memberPicking, isFalse);
+      expect(find.byType(PolylineLayer), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a single-member tap picks directly and reveals nothing',
+    (tester) async {
+      final root = createRoot();
+      final cache = createCache();
+      final model = AppModel(TrackStore(root));
+      // Alpha runs ~2.2 km diagonally north-east; Gamma touches it near
+      // the middle (same aggregate), but Alpha's far end is Gamma-free
+      // ground.
+      String diagonalRun(String name, String time, List<double> steps) =>
+          '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<gpx version="1.1" creator="test"><trk><name>$name</name><trkseg>'
+          '${[
+            for (final i in steps)
+              '<trkpt lat="${45.0 + i * 0.0001}" lon="${9.0 + i * 0.0001}">'
+                  '<time>$time</time></trkpt>',
+          ].join()}'
+          '</trkseg></trk></gpx>\n';
+      final r1 = model.store.importBytes(utf8.encode(
+          diagonalRun('Alpha', '2026-06-01T08:00:00Z', [for (var i = 0; i <= 20; i++) i.toDouble()])));
+      final r2 = model.store.importBytes(utf8
+          .encode(diagonalRun('Gamma', '2026-06-02T08:00:00Z', [7.0, 8.0])));
+      expect(r1.outcome, isA<ImportSucceeded>());
+      expect(r2.outcome, isA<ImportSucceeded>());
+      final aId = model.store.tracks.first.id;
+      expect(model.aggregates.single.trackIds, hasLength(2));
+
+      await pumpMapPage(
+        tester,
+        model: model,
+        cache: cache,
+        locationSupported: false,
+      );
+      await tester.pump();
+      await tapAtMapPoint(
+          tester, model, firstPointOf(model, model.store.tracks.first.id));
+      await tester.tap(find.byKey(const ValueKey('selection-tracks')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(model.memberPicking, isTrue);
+      final before = memberPolylines(tester);
+      expect(before, hasLength(2), reason: 'one plain line per member');
+
+      // Alpha's east end: only Alpha passes there — the pick is direct,
+      // no reveal lanes appear on top of the plain pair.
+      final eastEnd = model
+          .pointsOf(model.store.tracks.singleWhere((t) => t.id == aId))
+          .last;
+      await tapAtMapPoint(tester, model, eastEnd);
+      expect(model.pickedMemberId, aId);
+      expect(memberPolylines(tester), hasLength(2),
+          reason: 'a single-member spot reveals nothing');
+    },
+  );
+
   testWidgets(
     'selection bar and recording chip stack in the bottom column, below the actions',
     (tester) async {
